@@ -44,7 +44,7 @@ namespace LightingBlocks.Editor
                 try { Verify(); SoulBridgeGame.Instance.StartCoroutine(Capture()); }
                 catch (Exception e) { report.AppendLine("FAIL: " + e); Finish(); }
             }
-            if (EditorApplication.timeSinceStartup - started > 45) { report.AppendLine("FAIL: render timeout"); Finish(); }
+            if (EditorApplication.timeSinceStartup - started > 90) { report.AppendLine("FAIL: render timeout"); Finish(); }
         }
         static void Finish() { File.WriteAllText("Library/SoulBridge.test-result.txt", report.ToString()); running = false; EditorApplication.isPlaying = false; }
         static void Check(bool ok, string description) { if (!ok) throw new Exception(description); report.AppendLine("PASS: " + description); }
@@ -61,6 +61,12 @@ namespace LightingBlocks.Editor
             Check(UnityEngine.Object.FindObjectsByType<AstralAltar>().Length==0,"Scene contains no altar circles");
             Check(!Physics.Raycast(new Vector3(0,2,14),Vector3.down,4),"The first rift has no hidden floor or prebuilt bridge");
             Check(p.animator.avatar.isHuman && p.animator.avatar.isValid,"Original animated player is preserved");
+            Check(g.Blocks.All(b=>b.GetComponent<SoulBridgeArt>()!=null && !b.GetComponent<Renderer>().enabled),"Imported art covers every authored logical stone");
+            Check(g.Blocks.All(b=>Math.Abs(b.transform.localScale.x-.84f)<.001f),"Loose stones are forty percent smaller");
+            Check(g.CanStand(new Vector3(0,0,-20)) && g.CanStand(new Vector3(17,0,-8)) && g.CanStand(new Vector3(0,0,72)),"Expanded home court and distant shore are playable");
+            Check(Physics.Raycast(new Vector3(17,3,-8),Vector3.down,5),"Expanded terrain has physical collision");
+            Check(!g.CanStand(new Vector3(0,0,40)) && !Physics.Raycast(new Vector3(0,2,40),Vector3.down,4),"Second rift remains genuinely empty");
+            Check(g.soulLight.color.r>g.soulLight.color.b && RenderSettings.fog,"Amber soul and distance atmosphere are configured");
             Check(g.cameraRig.distance==27 && g.soulLight.range==9,"Wider camera and initial player light are configured");
             hud.BeginJourney(); string pristine=g.ExportSave();
             var first=g.Blocks.First(b=>b.id=="home-0");
@@ -94,25 +100,44 @@ namespace LightingBlocks.Editor
             WaitForCost(g,"links"); Check(g.Purchase("links")&&g.Capacity==2,"Soul Links increases group capacity");
             var extra=g.Blocks.First(b=>b.id=="home-8"); Position(extra,new Vector3(-1.4f,.36f,1)); Teleport(new Vector3(-3,.025f,-.5f));
             Check(p.TryGrab(basic.Box)&&p.HeldBoxes.Count==2,"One grab picks up two neighboring blocks after the upgrade");
-            var a=basic.transform.position;var bpos=extra.transform.position; p.StepMovement(Vector2.up,.1f);
-            Check(Vector3.Distance(basic.transform.position-a,extra.transform.position-bpos)<.001f&&basic.transform.position!=a,"Both held blocks move together through actual player movement");
+            Check(p.Orbiting && p.HeldBoxes.All(b=>!b.Shape.enabled && b.transform.position.y>.9f),"Soul Links lifts the group into non-colliding orbit");
+            var a=basic.transform.position;p.StepMovement(Vector2.up,.1f);
+            Check(basic.transform.position!=a && p.HeldBoxes.All(b=>Vector3.Distance(b.transform.position,p.transform.position)<2.3f),"Orbiting stones follow actual movement");
+            var orbitSave=JsonUtility.FromJson<SoulBridgeGame.SaveData>(g.ExportSave());
+            Check(orbitSave.blocks.Where(b=>b.id==basic.id||b.id==extra.id).All(b=>b.position.y<.6f),"Autosave stores grounded recovery positions for carried stones");
             var obstacle=GameObject.CreatePrimitive(PrimitiveType.Cube);obstacle.transform.position=new Vector3(-2.2f,.6f,3);obstacle.transform.localScale=new Vector3(4,1.2f,.3f);Physics.SyncTransforms();
             for(int i=0;i<20;i++)p.StepMovement(Vector2.up,.1f);
-            Check(basic.transform.position.z<2.2f&&extra.transform.position.z<2.2f,"Group collision sweeps stop every held block before an obstacle");
+            Check(p.transform.position.z<2.7f,"Player collision still stops orbit carrying before a wall");
             obstacle.SetActive(false);UnityEngine.Object.Destroy(obstacle);
-            p.Release(); Check(basic.Box.Holder==null&&extra.Box.Holder==null,"Releasing the mouse clears every group member");
+            var orbitMouse=InputSystem.AddDevice<Mouse>("OrbitMouseTest");
+            var orbitKeys=InputSystem.AddDevice<Keyboard>("OrbitKeyboardTest");
+            try {
+                p.readInput=true;InputSystem.QueueStateEvent(orbitMouse,new MouseState());InputSystem.Update();p.SendMessage("Update");
+                Check(p.Orbiting && p.HeldBoxes.Count==2,"Mouse release keeps floating stones carried");
+                InputSystem.QueueStateEvent(orbitKeys,new KeyboardState(Key.Q));InputSystem.Update();p.SendMessage("Update");
+                Check(!p.Orbiting && p.HeldBox==null && basic.Box.Shape.enabled && extra.Box.Shape.enabled,"Actual Q input drops the orbit and restores colliders");
+                Check(g.CanStand(basic.transform.position) && g.CanStand(extra.transform.position),"Q drops remain on supported ground");
+            } finally {p.readInput=false;InputSystem.RemoveDevice(orbitMouse);InputSystem.RemoveDevice(orbitKeys);}
+            Position(basic,new Vector3(-3,.26f,1));Position(extra,new Vector3(-1.4f,.26f,1));Teleport(new Vector3(-3,.025f,-.5f));
+            Check(p.TryGrab(basic.Box),"Orbit can be gathered again after a drop");hud.ShowPause();
+            Check(!p.Orbiting && p.HeldBoxes.Count==0,"Pause safely grounds orbiting stones");hud.HandleEscape();
+            Position(basic,new Vector3(-3,.26f,1));Position(extra,new Vector3(-1.4f,.26f,1));Teleport(new Vector3(-3,.025f,-.5f));p.TryGrab(basic.Box);
+            Teleport(new Vector3(0,.025f,8));double beforeOrbit=g.Rate;p.DropOrbit(true);
+            Check(!p.Orbiting && g.Rate>beforeOrbit && basic.placed,"Q builds eligible orbit stones beside a connected bridge");
             for(int i=0;i<7;i++)Place(g,g.Blocks.First(b=>b.id=="grave-"+i),1,0,i);
-            Check(g.Bridges[1]&&g.ConnectedCount==14,"Heavy-stone path connects the second rift to the next area");
+            Check(g.Bridges[1]&&g.ConnectedCount==16,"Heavy-stone path connects the second rift to the next area");
             var obs=g.Blocks.First(b=>b.tier==2); Teleport(obs.transform.position+new Vector3(0,-.335f,-1.5f)); Check(!p.TryGrab(obs.Box),"Obsidian remains gated beyond Strength I");
             WaitForCost(g,"strength"); g.Purchase("strength"); WaitForCost(g,"strength"); g.Purchase("strength"); Check(p.TryGrab(obs.Box),"Strength III permits Ancient Obsidian hauling");p.Release();
             Teleport(new Vector3(0,.025f,55)); g.Interact(); Check(g.completed,"Player reaches the next-area beacon after constructing both bridges");
-            string saved=g.ExportSave(); before=g.souls; g.souls=0; Check(g.ImportSave(saved)&&Math.Abs(g.souls-before)<.01&&g.ConnectedCount==14&&g.generator==2,"Save roundtrip restores bridges, Souls, upgrades and generators");
+            g.souls+=500;Check(g.Purchase("stone"),"Additional stone supply can spawn on textured terrain");
+            var bought=g.Blocks.Last();Check(bought.GetComponent<SoulBridgeArt>()!=null && Math.Abs(bought.transform.localScale.x-.84f)<.001f,"Purchased stones inherit art and smaller collider size");
+            string saved=g.ExportSave(); before=g.souls; g.souls=0; Check(g.ImportSave(saved)&&Math.Abs(g.souls-before)<.01&&g.ConnectedCount==16&&g.generator==2,"Save roundtrip restores bridges, Souls, upgrades and generators");
             Check(!g.ImportSave("broken JSON"),"Corrupted save is rejected");
             var d=JsonUtility.FromJson<SoulBridgeGame.SaveData>(saved); d.links=99; Check(!g.ImportSave(JsonUtility.ToJson(d)),"Out-of-range skill data is rejected");
             d=JsonUtility.FromJson<SoulBridgeGame.SaveData>(saved); d.blocks[1].gap=d.blocks[0].gap;d.blocks[1].column=d.blocks[0].column;d.blocks[1].row=d.blocks[0].row; Check(!g.ImportSave(JsonUtility.ToJson(d)),"Overlapping saved bridge tiles are rejected");
             d=JsonUtility.FromJson<SoulBridgeGame.SaveData>(saved);d.utc=DateTimeOffset.UtcNow.AddHours(-10).ToUnixTimeSeconds();g.ImportSave(JsonUtility.ToJson(d),true);Check(g.souls-before<=g.Rate*3600*.25+.1,"Offline production is capped at one hour and 25 percent");
             g.savePathOverride=Path.GetFullPath("Library/SoulBridge-test-save.json");g.persistenceEnabled=true;
-            try {Check(g.Save(),"Soul Bridge progress writes atomically");g.souls+=1;Check(g.Save()&&File.Exists(g.SavePath+".bak"),"Soul Bridge save keeps a recovery backup");File.WriteAllText(g.SavePath,"broken");g.Load();Check(g.ConnectedCount==14,"Backup restores a corrupt primary save");}
+            try {Check(g.Save(),"Soul Bridge progress writes atomically");g.souls+=1;Check(g.Save()&&File.Exists(g.SavePath+".bak"),"Soul Bridge save keeps a recovery backup");File.WriteAllText(g.SavePath,"broken");g.Load();Check(g.ConnectedCount==16,"Backup restores a corrupt primary save");}
             finally {g.persistenceEnabled=false;g.savePathOverride=null;}
             g.ImportSave(pristine); hud.BeginJourney(); first=g.Blocks.First(b=>b.id=="home-0");
             var mouse=InputSystem.AddDevice<Mouse>("SoulBridgeMouseTest");

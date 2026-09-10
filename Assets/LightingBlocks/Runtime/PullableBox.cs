@@ -34,9 +34,10 @@ namespace LightingBlocks
 
         public void Highlight(bool nearby)
         {
+            var art=GetComponent<SoulBridgeArt>(); if(art!=null) { art.Highlight(nearby); return; }
             if (surface == null) return;
             surface.GetPropertyBlock(properties);
-            properties.SetColor("_BaseColor", Holder != null ? new Color(1f, .73f, .22f) : nearby ? new Color(.4f, 1f, .85f) : baseColor);
+            properties.SetColor("_BaseColor", Holder != null ? new Color(1f, .73f, .22f) : nearby ? new Color(1f, .94f, .76f) : baseColor);
             surface.SetPropertyBlock(properties);
         }
 

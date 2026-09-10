@@ -45,11 +45,11 @@ namespace LightingBlocks
 #else
         int windowWidth = 1280, windowHeight = 720;
 #endif
-        static readonly Color Ink = new Color(.025f, .04f, .09f, .98f);
-        static readonly Color Card = new Color(.065f, .09f, .15f, .98f);
-        static readonly Color White = new Color(.91f, .95f, 1);
-        static readonly Color Muted = new Color(.62f, .72f, .84f);
-        static readonly Color Mint = new Color(.43f, 1, .8f);
+        static readonly Color Ink = new Color(.055f, .045f, .04f, .97f);
+        static readonly Color Card = new Color(.12f, .105f, .09f, .98f);
+        static readonly Color White = new Color(.95f, .90f, .82f);
+        static readonly Color Muted = new Color(.73f, .69f, .61f);
+        static readonly Color Mint = new Color(.90f, .72f, .36f);
         class PurchaseBinding { public string id, description; public Button button; public Text detail; }
 
         void Awake()
@@ -244,8 +244,8 @@ namespace LightingBlocks
             Label("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
             Label("Controls Subtitle", panel, "Keyboard and mouse", 32, 82, 786, 26, 18, Muted, TextAnchor.MiddleCenter);
             string[,] rows = {
-                {"Move", "W / A / S / D"}, {"Grab nearby blocks / haul a group", "Hold left mouse button"},
-                {"Release / build bridge tile", "Release left mouse button"}, {"Move the camera", "Arrow keys / screen edges / middle drag"},
+                {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
+                {"Drop / build bridge tiles", "Q in orbit; release mouse when dragging"}, {"Move the camera", "Arrow keys / screen edges / middle drag"},
                 {"Zoom", "Mouse wheel"}, {"Center camera on player", "Hold Space"},
                 {"Open / close skill tree", "Tab or K"}, {"Pause / resume / go back", "Esc"},
                 {"Drag speed / multi-block hauling", "1 / 2"}, {"Strength / lighting soul / Soul Well", "3 / 4 / 5"},
@@ -266,7 +266,7 @@ namespace LightingBlocks
             skillsClose = Button("Skills Close", panel, "CLOSE [TAB]", 922, 26, 170, 44, () => SetView(ScreenView.Playing));
             Label("Skill Help", panel, "Connected paths and Soul Wells keep generating while you choose your powers.", 30, 80, 1040, 33, 19, Muted);
             SkillCard(panel, "speed", "SWIFT HAULING", "Move blocks faster across your paths.", 24, 142);
-            SkillCard(panel, "links", "SOUL LINKS", "Drag a group of nearby loose blocks with one click.", 389, 142);
+            SkillCard(panel, "links", "SOUL LINKS", "Gather orbiting stones with a click. Press Q to drop or build.", 389, 142);
             SkillCard(panel, "strength", "ASTRAL STRENGTH", "Haul stronger stones for the deeper rift.", 754, 142);
             SkillCard(panel, "radiance", "LIGHTING SOUL", "Reveal more terrain around the player.", 24, 375);
             SkillCard(panel, "generator", "SOUL WELL", "A second source of Souls, independent of bridge length.", 389, 375);
@@ -323,18 +323,19 @@ namespace LightingBlocks
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
             feedbackPanel.SetActive(showFeedback); noticeText.text = showFeedback ? game.Notice : "";
-            string hint = "WASD to move · Left click to haul\nE for your objective · Tab for powers";
+            string hint = game.links>0 ? "WASD to move · Click to gather · Q to drop\nE for your objective · Tab for powers" : "WASD to move · Hold left mouse to haul\nE for your objective · Tab for powers";
             var box = game.player.HeldBox;
             if (box != null)
             {
                 var b = box.GetComponent<SoulBridgeBlock>();
-                if (b != null && game.FindPlacement(b, out _, out _, out _, out _)) hint = "RELEASE TO BUILD THE BRIDGE\nHauling " + game.player.HeldBoxes.Count + "/" + game.Capacity + " blocks";
+                if (game.player.Orbiting) hint = game.FindOrbitPlacement(b,out _) ? "Q TO BUILD AT THE GLOWING EDGE\nOrbiting "+game.player.HeldBoxes.Count+"/"+game.Capacity+" stones" : "SOUL ORBIT · "+game.player.HeldBoxes.Count+"/"+game.Capacity+"\nQ to drop safely · Mouse release keeps carrying";
+                else if (b != null && game.FindPlacement(b, out _, out _, out _, out _)) hint = "RELEASE TO BUILD THE BRIDGE\nHauling " + game.player.HeldBoxes.Count + "/" + game.Capacity + " blocks";
                 else hint = "HAULING " + game.player.HeldBoxes.Count + "/" + game.Capacity + " BLOCKS\nDrag to the glowing path edge, then release";
             }
             else if (game.player.NearbyBox != null)
             {
                 var b = game.player.NearbyBox.GetComponent<SoulBridgeBlock>();
-                if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + " IN REACH\nHold left click to haul";
+                if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
             }
             contextText.text = hint;
             journalText.text = "I — They called it the end of the universe. But souls still wander between its broken shores.\n\n"
@@ -350,10 +351,10 @@ namespace LightingBlocks
             string title = b.id == "speed" ? "Hauling [1]" : b.id == "links" ? "Soul Links [2]" : b.id == "strength" ? "Strength [3]" : b.id == "radiance" ? "Light [4]" : b.id == "generator" ? "Soul Well [5]" : b.id == "stone" ? "Call Stone" : "Call Grave Stone";
             double cost = game.Cost(b.id);
             b.button.interactable = !SimulationPaused;
-            var colors = b.button.colors; colors.normalColor = !done && unlocked && game.souls >= cost ? Color.white : new Color(.48f, .58f, .64f); b.button.colors = colors;
+            var colors = b.button.colors; colors.normalColor = !done && unlocked && game.souls >= cost ? Color.white : new Color(.61f, .56f, .47f); b.button.colors = colors;
             var caption = b.button.GetComponentInChildren<Text>(); caption.resizeTextForBestFit = true; caption.resizeTextMinSize = 14; caption.resizeTextMaxSize = 18;
             caption.text = done ? "FULLY AWAKENED" : (!unlocked ? "LOCKED · " : "") + title + " · " + SoulBridgeGame.Format(cost) + " Souls";
-            string detail = b.id == "speed" ? "Level " + game.speed + "/6 · +0.65m/s per level." : b.id == "links" ? "Level " + game.links + "/3 · Haul " + game.Capacity + " at once.\nEach level adds one block." : b.id == "strength" ? "Level " + game.strength + "/3. Grave Stone: I.\nAncient Obsidian: III." : b.id == "radiance" ? "Level " + game.radiance + "/5 · Range " + (9 + game.radiance * 3) + "m.\nEach level adds 3 metres." : b.id == "generator" ? "Level " + game.generator + "/8 · +" + SoulBridgeGame.Format(game.GeneratorRate) + " Souls/sec.\nNext: +" + SoulBridgeGame.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec." : "Ordinary stones build the first bridge.\nGrave Stones build either bridge.";
+            string detail = b.id == "speed" ? "Level " + game.speed + "/6 · +0.65m/s per level." : b.id == "links" ? "Level " + game.links + "/3 · Orbit " + game.Capacity + " at once. Q drops.\nEach level adds one block." : b.id == "strength" ? "Level " + game.strength + "/3. Grave Stone: I.\nAncient Obsidian: III." : b.id == "radiance" ? "Level " + game.radiance + "/5 · Range " + (9 + game.radiance * 3) + "m.\nEach level adds 3 metres." : b.id == "generator" ? "Level " + game.generator + "/8 · +" + SoulBridgeGame.Format(game.GeneratorRate) + " Souls/sec.\nNext: +" + SoulBridgeGame.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec." : "Ordinary stones build the first bridge.\nGrave Stones build either bridge.";
             if (b.detail != null) b.detail.text = b.description + "\n\n" + detail;
         }
 
@@ -382,10 +383,10 @@ namespace LightingBlocks
         }
         Button Button(string name, Transform parent, string caption, float x, float y, float width, float height, UnityAction action)
         {
-            var r = Panel(name, parent, x, y, width, height, new Color(.1f, .28f, .29f)); var button = r.gameObject.AddComponent<Button>();
+            var r = Panel(name, parent, x, y, width, height, new Color(.30f, .235f, .145f)); var button = r.gameObject.AddComponent<Button>();
             button.targetGraphic = r.GetComponent<Image>(); var colors = button.colors;
             colors.normalColor = Color.white; colors.highlightedColor = new Color(1.3f, 1.5f, 1.4f); colors.selectedColor = colors.highlightedColor;
-            colors.pressedColor = new Color(.6f, .95f, .85f); colors.disabledColor = new Color(.43f, .49f, .57f, .85f); button.colors = colors;
+            colors.pressedColor = new Color(.75f, .63f, .43f); colors.disabledColor = new Color(.43f, .49f, .57f, .85f); button.colors = colors;
             Label("Label", r, caption, 9, 3, width - 18, height - 6, 18, White, TextAnchor.MiddleCenter);
             if (action != null) button.onClick.AddListener(action); return button;
         }

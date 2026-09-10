@@ -58,14 +58,16 @@ namespace LightingBlocks
         void Start()
         {
             Blocks.Clear(); Blocks.AddRange(blocksRoot.GetComponentsInChildren<SoulBridgeBlock>(true));
+            foreach(var b in Blocks) ConfigureBlock(b);
             ApplyUpgrades(); Recalculate(); initialized = true;
             if (persistenceEnabled) Load();
             var obj = GameObject.CreatePrimitive(PrimitiveType.Cube); obj.name = "Next bridge block preview";
             Destroy(obj.GetComponent<Collider>()); ghost = obj.transform; ghost.localScale = new Vector3(1.92f, .025f, 1.92f);
             ghostRenderer = obj.GetComponent<Renderer>(); var m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-            m.SetColor("_BaseColor", new Color(.05f, .27f, .24f)); ghostRenderer.material = m;
+            m.SetColor("_BaseColor", new Color(.32f, .22f, .08f)); ghostRenderer.material = m;
             if (string.IsNullOrEmpty(Notice)) Notify("BUILD A PATH THROUGH THE DARK\nHold left click near a block, drag it to the glowing edge, then release.", false);
             cameraRig.CenterOnPlayer();
+            GameAudio.PlayMusic("music_soul_bridge");
         }
         void Update()
         {
@@ -88,7 +90,8 @@ namespace LightingBlocks
             {
                 bool held = player.HeldBox != null;
                 var block = held ? player.HeldBox.GetComponent<SoulBridgeBlock>() : null;
-                if (block != null && FindPlacement(block, out int g, out int x, out int z, out _))
+                if (player.Orbiting && FindOrbitPlacement(block,out var orbitCell)) ghost.position=orbitCell+Vector3.up*.205f;
+                else if (block != null && FindPlacement(block, out int g, out int x, out int z, out _))
                     ghost.position = Cell(g, x, z) + Vector3.up * .205f;
                 else ghost.position = NextCell() + Vector3.up * .205f;
                 ghost.gameObject.SetActive(!Bridges[1]);
@@ -133,7 +136,7 @@ namespace LightingBlocks
                 case "radiance": radiance++; break; case "generator": generator++; break; default: summoned++; break;
             }
             ApplyUpgrades();
-            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nHold left click to grab up to " + Capacity + " nearby loose blocks together." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Dragging is faster." : "Strength level " + strength + ". Grave Stones need I; Obsidian needs III."));
+            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nClick to gather up to " + Capacity + " floating stones. Q drops or builds them." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Dragging is faster." : "Strength level " + strength + ". Grave Stones need I; Obsidian needs III."));
             Save(); return true;
         }
         public void ApplyUpgrades()
@@ -148,10 +151,10 @@ namespace LightingBlocks
             float zBase = island == 0 ? -4 : 24;
             for (int i = 0; i < 20; i++)
             {
-                var p = new Vector3(-6 + i % 4 * 2.2f, .36f, zBase + i / 4 * 1.8f);
-                if (Physics.OverlapBox(p, new Vector3(.74f, .3f, .74f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore).Length != 0) continue;
+                var p = new Vector3(-6 + i % 4 * 2.2f, .26f, zBase + i / 4 * 1.8f);
+                if (Physics.OverlapBox(p, new Vector3(.44f, .23f, .44f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore).Length != 0) continue;
                 var block = Instantiate(blockPrefabs[tier], p, Quaternion.identity, blocksRoot);
-                block.id = "summoned-" + Guid.NewGuid().ToString("N"); Blocks.Add(block); Physics.SyncTransforms(); return true;
+                block.id = "summoned-" + Guid.NewGuid().ToString("N"); Blocks.Add(block); ConfigureBlock(block); Physics.SyncTransforms(); return true;
             }
             return false;
         }
@@ -171,6 +174,25 @@ namespace LightingBlocks
             if (!adjacent) { reason = "PATH DISCONNECTED\nAttach this block to the end or side of the glowing connected path. Diagonals do not connect."; return false; }
             reason = "RELEASE TO EXTEND THE BRIDGE\nThis connected block will generate Souls."; return true;
         }
+
+        public bool FindOrbitPlacement(SoulBridgeBlock block, out Vector3 target)
+        {
+            target=default; if(block==null || block.placed)return false;
+            var saved=block.transform.position; float best=float.MaxValue; bool found=false;
+            Vector3 forward=player.visual!=null?player.visual.forward:Vector3.forward;
+            var aim=player.transform.position+forward*1.6f;
+            for(int gap=0;gap<2;gap++) for(int row=0;row<Rows;row++) for(int col=-2;col<=2;col++)
+            {
+                Vector3 cell=Cell(gap,col,row); var delta=cell-player.transform.position;delta.y=0;
+                if(delta.magnitude>3.2f)continue;
+                block.transform.position=cell;
+                if(!FindPlacement(block,out _,out _,out _,out _))continue;
+                float score=(cell-aim).sqrMagnitude;
+                if(score<best){best=score;target=cell;found=true;}
+            }
+            block.transform.position=saved;return found;
+        }
+
         public bool TryPlace(SoulBridgeBlock block)
         {
             if (block.placed || block.Box.Holder != null) return false;
@@ -194,7 +216,9 @@ namespace LightingBlocks
             {
                 block.transform.localScale = new Vector3(2, .36f, 2); block.transform.position = Cell(block.gap, block.column, block.row);
             }
-            else block.transform.localScale = new Vector3(1.4f, .7f, 1.4f);
+            else { block.transform.localScale = new Vector3(.84f, .5f, .84f); var ground=block.transform.position; ground.y=.26f; block.transform.position=ground; }
+            block.transform.rotation=Quaternion.identity;
+            var art=block.GetComponent<SoulBridgeArt>(); if(art!=null)art.Refresh();
             block.Box.Body.position = block.transform.position; Physics.SyncTransforms();
         }
         public void Recalculate()
@@ -222,8 +246,9 @@ namespace LightingBlocks
             foreach (var b in Blocks)
             {
                 var property = new MaterialPropertyBlock(); b.GetComponent<Renderer>().GetPropertyBlock(property);
-                property.SetColor("_EmissionColor", b.Connected ? new Color(.06f, .55f, .38f) : Color.black);
+                property.SetColor("_EmissionColor", b.Connected ? new Color(.38f, .22f, .06f) : Color.black);
                 b.GetComponent<Renderer>().SetPropertyBlock(property);
+                var art=b.GetComponent<SoulBridgeArt>(); if(art!=null)art.Refresh();
             }
             if (nextAreaGlow != null) nextAreaGlow.SetActive(Bridges[1]);
         }
@@ -236,7 +261,7 @@ namespace LightingBlocks
         public bool CanStand(Vector3 point)
         {
             // Only island ground and bridge tiles support the player. Loose blocks never bridge the void.
-            bool island = Math.Abs(point.x) <= 9.6f && (point.z >= -8.6f && point.z <= 6.98f || point.z >= 21.02f && point.z <= 33.98f || point.z >= 48.02f && point.z <= 61);
+            bool island = SoulBridgeLandscape.Supports(point);
             if (island) return true;
             return Blocks.Any(b => b.placed && b.Connected && Math.Abs(point.x - b.transform.position.x) <= .99f && Math.Abs(point.z - b.transform.position.z) <= 1.02f);
         }
@@ -276,7 +301,7 @@ namespace LightingBlocks
         public string ExportSave()
         {
             var data = new SaveData { souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
-            foreach (var b in Blocks) data.blocks.Add(new BlockSave { id = b.id, tier = b.tier, placed = b.placed, rewarded = b.rewarded, gap = b.gap, column = b.column, row = b.row, position = b.transform.position });
+            foreach (var b in Blocks) data.blocks.Add(new BlockSave { id = b.id, tier = b.tier, placed = b.placed, rewarded = b.rewarded, gap = b.gap, column = b.column, row = b.row, position = player.SavedBlockPosition(b) });
             return JsonUtility.ToJson(data, true);
         }
         public bool ImportSave(string json, bool offline = false)
@@ -301,7 +326,7 @@ namespace LightingBlocks
             cameraRig.CenterOnPlayer(); return true;
         }
         static bool Finite(double n) => !double.IsNaN(n) && !double.IsInfinity(n);
-        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 30 && p.y >= -5 && p.y <= 10 && p.z >= -20 && p.z <= 75;
+        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 30 && p.y >= -5 && p.y <= 10 && p.z >= -30 && p.z <= 85;
         public bool Save()
         {
             if (!initialized || !persistenceEnabled) return false;

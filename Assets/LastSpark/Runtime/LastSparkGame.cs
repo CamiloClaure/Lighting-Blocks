@@ -63,6 +63,7 @@ namespace LightingBlocks
             Recalculate(); initialized = true;
             if (string.IsNullOrEmpty(Notice)) Notify(firstLight ? "Welcome back. Your constellation is waiting." : "A spark survived. Drag the blue fragment onto a circular altar, then release.", false);
             cameraRig.CenterOnPlayer();
+            GameAudio.PlayMusic("music_last_spark");
         }
         void Update()
         {

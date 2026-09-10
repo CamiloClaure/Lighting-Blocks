@@ -20,15 +20,27 @@ namespace LightingBlocks
         public readonly List<PullableBox> HeldBoxes = new List<PullableBox>();
         public PullableBox NearbyBox { get; private set; }
         public float MovementSpeed { get; private set; }
+        public bool Orbiting { get; private set; }
+        readonly Dictionary<PullableBox, Vector3> pickupPositions = new Dictionary<PullableBox, Vector3>();
+        float orbitAngle;
         CharacterController controller;
         float fallingSpeed;
         float nextEdgeNotice;
+        AudioSource sfx;
+        float strideDistance;
+        float airborneTime;
+        const float StrideLength = 1.7f;
         int animationState;
         static readonly int Idle = Animator.StringToHash("Base Layer.Idle");
         static readonly int Run = Animator.StringToHash("Base Layer.Run");
         static readonly int Pull = Animator.StringToHash("Base Layer.Pull");
 
-        void Awake() { controller = GetComponent<CharacterController>(); }
+        void Awake()
+        {
+            controller = GetComponent<CharacterController>();
+            sfx = gameObject.AddComponent<AudioSource>();
+            sfx.spatialBlend = .8f; sfx.playOnAwake = false; sfx.volume = GameAudio.SfxVolume;
+        }
 
         void Update()
         {
@@ -37,7 +49,12 @@ namespace LightingBlocks
             var mouse = Mouse.current;
             if (!Application.isFocused) { Release(); return; }
             UpdateNearby();
-            if (mouse == null || !mouse.leftButton.isPressed) Release();
+            if (keyboard != null && keyboard.qKey.wasPressedThisFrame) {
+                if (Orbiting) DropOrbit(true); else if(HeldBox!=null) Release();
+                else if(SoulBridgeGame.Instance!=null) SoulBridgeGame.Instance.Notify("NO STONES TO DROP\nClick near a loose stone. Soul Links unlocks floating carry.",false);
+            }
+            else if (Orbiting) { /* Floating carry persists until Q, a menu or focus loss. */ }
+            else if (mouse == null || !mouse.leftButton.isPressed) Release();
             else if (mouse.leftButton.wasPressedThisFrame && !LastSparkHUD.PointerOverUI()) TryGrab(NearbyBox);
             Vector2 input = keyboard == null ? Vector2.zero : new Vector2(
                 (keyboard.dKey.isPressed ? 1 : 0) - (keyboard.aKey.isPressed ? 1 : 0),
@@ -107,14 +124,21 @@ namespace LightingBlocks
                 }
                 soul.Notify("HAULING " + HeldBoxes.Count + " / " + soul.Capacity + " BLOCKS\nWASD to drag · Release left mouse at a glowing path edge.", false);
             }
+            if(soul!=null && soul.links>0) BeginOrbit();
             HeldBox.Highlight(true);
             if (LastSparkGame.Instance != null) LastSparkGame.Instance.Recalculate();
+            if (sfx != null && GameAudio.Grab != null)
+            {
+                sfx.pitch = GameAudio.GrabPitch(box);
+                sfx.PlayOneShot(GameAudio.Grab);
+            }
             return true;
         }
 
         public void Release()
         {
             if (HeldBox == null) return;
+            if (Orbiting) { DropOrbit(false); return; }
             var released = HeldBoxes.Count > 0 ? HeldBoxes.ToArray() : new[] { HeldBox };
             HeldBox = null;
             HeldBoxes.Clear();
@@ -139,15 +163,15 @@ namespace LightingBlocks
             {
                 // Stop at an unsupported edge, including while hauling a group.
                 string edgeReason = null;
-                if (motion.sqrMagnitude > .00001f && !soul.CanStand(before + motion)) edgeReason = "THE PATH ENDS HERE\nRelease your held block at the glowing edge to build the next tile.";
-                foreach (var held in HeldBoxes) if (motion.sqrMagnitude > .00001f && !soul.CanDragAt(held.transform.position + motion)) edgeReason = "YOUR HAUL NEEDS MORE ROOM\nExtend or widen the connected bridge, or move fewer blocks together.";
+                if (motion.sqrMagnitude > .00001f && !soul.CanStand(before + motion)) edgeReason = "THE PATH ENDS HERE\nBuild at the glowing edge: release a dragged stone, or press Q with orbiting stones.";
+                foreach (var held in HeldBoxes) if (!Orbiting && motion.sqrMagnitude > .00001f && !soul.CanDragAt(held.transform.position + motion)) edgeReason = "YOUR HAUL NEEDS MORE ROOM\nExtend or widen the connected bridge, or move fewer blocks together.";
                 if (edgeReason != null)
                 {
                     motion = Vector3.zero;
                     if (Time.unscaledTime >= nextEdgeNotice) { nextEdgeNotice = Time.unscaledTime + 3; soul.Notify(edgeReason, false); }
                 }
             }
-            if (HeldBox != null)
+            if (HeldBox != null && !Orbiting)
             {
                 // Sweep both bodies before translating the pair. Neither can pass through a wall or another box.
                 float distance = motion.magnitude;
@@ -186,16 +210,104 @@ namespace LightingBlocks
             fallingSpeed = controller.isGrounded ? -2f : fallingSpeed - 20f * deltaTime;
             controller.Move(Vector3.up * (fallingSpeed * deltaTime));
 
-            Vector3 facing = HeldBox != null ? HeldBox.transform.position - transform.position : planar;
+            // Footstep cadence comes from distance walked, not a timer, so it slows
+            // by itself when pullSpeed replaces moveSpeed while dragging a block.
+            // isGrounded only reflects the LAST Move(), so it has to be read here,
+            // after the gravity step - reading it after the horizontal move alone
+            // reports false on flat ground and silently wipes the accumulator.
+            if (controller.isGrounded) airborneTime = 0;
+            else airborneTime += deltaTime;
+            // One flickering frame must not reset the stride; a real fall does.
+            if (airborneTime > .18f) strideDistance = 0;
+            else if (planar.magnitude > 0)
+            {
+                strideDistance += planar.magnitude;
+                if (strideDistance >= StrideLength) { strideDistance %= StrideLength; PlayFootstep(); }
+            }
+
+            if(Orbiting) UpdateOrbit(deltaTime);
+            Vector3 facing = HeldBox != null && !Orbiting ? HeldBox.transform.position - transform.position : planar;
             facing.y = 0;
             if (visual != null && facing.sqrMagnitude > .00001f)
                 visual.rotation = Quaternion.RotateTowards(visual.rotation, Quaternion.LookRotation(facing), 720f * deltaTime);
-            int next = HeldBox != null ? Pull : MovementSpeed > .08f ? Run : Idle;
+            int next = HeldBox != null && !Orbiting ? Pull : MovementSpeed > .08f ? Run : Idle;
             if (animator != null)
             {
                 if (animationState != next) { animator.CrossFadeInFixedTime(next, .14f); animationState = next; }
-                animator.speed = HeldBox != null && MovementSpeed < .08f ? 0f : 1f;
+                animator.speed = HeldBox != null && !Orbiting && MovementSpeed < .08f ? 0f : 1f;
             }
+        }
+
+
+        void BeginOrbit()
+        {
+            Orbiting=true; pickupPositions.Clear();
+            foreach(var b in HeldBoxes) { pickupPositions[b]=b.transform.position; b.Shape.enabled=false; }
+            UpdateOrbit(0);
+            SoulBridgeGame.Instance.Notify("SOUL ORBIT · "+HeldBoxes.Count+" / "+SoulBridgeGame.Instance.Capacity+"\nMouse released safely · WASD to carry · Q to drop or build.",false);
+        }
+        public Vector3 SavedBlockPosition(SoulBridgeBlock block)
+        {
+            return pickupPositions.TryGetValue(block.Box,out var grounded) ? grounded : block.transform.position;
+        }
+        void UpdateOrbit(float dt)
+        {
+            orbitAngle+=dt*.8f;
+            for(int i=0;i<HeldBoxes.Count;i++)
+            {
+                float a=orbitAngle+i*Mathf.PI*2/HeldBoxes.Count;
+                Vector3 target=transform.position+new Vector3(Mathf.Cos(a)*1.35f,1.2f+Mathf.Sin(a*2+Time.time)*.12f,Mathf.Sin(a)*1.35f);
+                var box=HeldBoxes[i]; box.Translate(target-box.transform.position);
+                box.transform.rotation=Quaternion.Euler(0,-a*Mathf.Rad2Deg,0);
+            }
+        }
+        // Safe ground is required for loose drops. A carried stone never becomes hidden void-floor.
+        bool FindDrop(PullableBox box, Vector3 origin, out Vector3 position)
+        {
+            for(int ring=1;ring<=10;ring++) for(int i=0;i<16;i++)
+            {
+                float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=.26f;
+                var game=SoulBridgeGame.Instance;
+                if(!game.CanStand(candidate) || !game.CanStand(candidate+new Vector3(.43f,0,.43f)) || !game.CanStand(candidate-new Vector3(.43f,0,.43f)))continue;
+                bool occupied=false;
+                foreach(var hit in Physics.OverlapBox(candidate,new Vector3(.44f,.23f,.44f),Quaternion.identity,~0,QueryTriggerInteraction.Ignore))
+                    if(hit!=box.Shape){occupied=true;break;}
+                if(occupied)continue;
+                position=candidate;return true;
+            }
+            position=default; return false;
+        }
+        public void DropOrbit(bool build)
+        {
+            if(!Orbiting)return;
+            var game=SoulBridgeGame.Instance;
+            int built=0,dropped=0;
+            foreach(var box in HeldBoxes.ToArray())
+            {
+                var block=box.GetComponent<SoulBridgeBlock>();
+                bool place=build && game.FindOrbitPlacement(block,out _);
+                Vector3 target;
+                if(place)game.FindOrbitPlacement(block,out target);
+                else if(!FindDrop(box,transform.position,out target) && !FindDrop(box,pickupPositions[box],out target)) continue;
+                box.transform.rotation=Quaternion.identity; box.Translate(target-box.transform.position);
+                box.Shape.enabled=true; box.Release(); HeldBoxes.Remove(box); pickupPositions.Remove(box);
+                Physics.SyncTransforms();
+                if(place && game.TryPlace(block))built++;else dropped++;
+            }
+            HeldBox=HeldBoxes.Count>0?HeldBoxes[0]:null; Orbiting=HeldBox!=null;
+            if(!Orbiting)pickupPositions.Clear();
+            game.Notify(built>0?"BRIDGE EXTENDED · "+built+" STONES\n+"+SoulBridgeGame.Format(game.Rate)+" Souls/sec total · "+dropped+" dropped nearby."
+                : Orbiting?"DROP AREA BLOCKED\nMove to an open shore and press Q. Remaining stones stay safe in orbit."
+                :"STONES GROUNDED\n"+dropped+" stones dropped safely nearby. Click to gather again.",false);
+            game.Save();
+        }
+
+        void PlayFootstep()
+        {
+            var clips = GameAudio.Footsteps;
+            if (sfx == null || clips == null || clips.Length == 0) return;
+            sfx.pitch = GameAudio.StepPitch * Random.Range(.97f, 1.03f);
+            sfx.PlayOneShot(clips[Random.Range(0, clips.Length)]);
         }
 
         void Limit(RaycastHit hit, ref float allowed)
