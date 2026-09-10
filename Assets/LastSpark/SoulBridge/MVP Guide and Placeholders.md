@@ -1,0 +1,96 @@
+# The Last Spark — Soul Bridge MVP
+
+The current `Assets/Scenes/SampleScene.unity` now uses bridge construction and Souls. The altar-circle version is archived.
+
+## Play the redesigned scene
+
+1. Press Play and choose **Begin Journey**. Hold left mouse near the stone directly ahead of the player.
+2. Use WASD to drag it toward the glowing edge of the shore. The player stops at the gap; the held stone can project beyond the edge.
+3. Release left mouse when the hint says **Release to build the bridge**. The stone flattens into a walkable bridge tile and starts generating Souls.
+4. Bring more stones to connected edges. Seven forward tiles cross the first gap. You can also extend sideways within the bridge corridor; diagonal contact does not connect.
+5. Spend Souls in **Skill Tree [Tab/K]**. Upgrade hauling, group capacity, Strength, the lighting soul, or the independent Soul Well.
+6. Cross to the second shore. Grave Stones require **Strength I** and build across the second rift. Ancient Obsidian requires **Strength III** and has greater production value.
+7. Complete the second bridge, cross to the third shore, and press **E** beside the next-dawn beacon. This completes the MVP chapter; Souls production continues.
+
+Placed bridge tiles are anchored in this MVP. They become the floor; loose stones remain draggable. The two gaps have no hidden floor. Additional stones can be purchased if you build a wider or winding path.
+
+## Controls
+
+| Control | Action |
+|---|---|
+| WASD | Move / haul held blocks |
+| Hold left mouse | Grab a nearby loose block and eligible neighbors up to your capacity |
+| Release left mouse | Release the whole group; eligible stones become connected bridge tiles |
+| Tab / K | Open or close powers |
+| 1 | Buy Swift Hauling |
+| 2 | Buy Soul Links |
+| 3 | Buy Astral Strength |
+| 4 | Buy Lighting Soul |
+| 5 | Buy / improve the Soul Well |
+| E | Explain the objective, or enter the next area beside the completed route's beacon |
+| Arrows / middle mouse drag / screen edges | Pan the strategy camera |
+| Mouse wheel | Zoom, from 14m to 42m; default distance is now 27m |
+| Hold Space | Center the camera on the player |
+| Esc | Pause / resume / back |
+| F1 | Expand or restore Unity's Game view; fullscreen toggle in a built player |
+
+The title menu, Controls view, disabled Music/SFX placeholders, persistent currency display, action feedback, and automatic Game-view fitting remain available. Pause stops production and gameplay. The skill tree blocks world input while Souls continue growing.
+
+## Economy and progression
+
+Only bridge stones connected back to the starting shore count. The second path is powered only after the first bridge reaches its far shore. Each connected stone counts once; touching diagonally does not count.
+
+`Path Souls/sec = sum of connected stone values × (1 + 0.15 × (connected stone count − 1))`
+
+Stone values are **1** for Wandering Stone, **3** for Grave Stone, and **8** for Ancient Obsidian. Adding a connected tile always increases production, including when it closes a loop. The first tile grants 25 Souls; later newly placed stones grant 5 each. A stone cannot repeat its placement reward.
+
+The Soul Well is a separate generator: its first level adds 3 Souls/sec, and each subsequent level adds 1.6 times the previous level's increment. It keeps generating independently of hauling or path length. This provides another way to afford later skills.
+
+| Power | First cost | Levels | Effect |
+|---|---:|---:|---|
+| Swift Hauling | 35 Souls | 6 | +0.65m/s dragging speed per level |
+| Soul Links | 80 Souls | 3 | +1 held block per level, up to 4 together |
+| Astral Strength | 90 Souls | 3 | Grave Stones at I; Obsidian at III |
+| Lighting Soul | 30 Souls | 5 | +3m light range per level; 9m initially, 24m maximum |
+| Soul Well | 60 Souls | 8 | Adds independent production |
+
+Ordinary stone supply starts at 12 Souls, increases slowly, and caps at 60. Grave Stone supply costs 45 Souls and unlocks after the first bridge. Nine ordinary stones, nine Grave Stones, and two Obsidian stones are authored into the scene.
+
+Costs and income are a first tuning pass for playtesting, not a validated retention model.
+
+## Darkness and visibility
+
+The global light is dim. A green-blue lighting soul follows the player and illuminates the nearby floor and blocks. Connected tiles have faint emission to make the constructed route readable. The camera starts farther away with a 60-degree field of view. Upgrading light increases its range and intensity.
+
+## Saves and preserved work
+
+- New progression saves to `soul-bridge-v1.json` in the project's Unity persistent-data folder. The previous Essence save is left untouched.
+- Autosave occurs every 10 seconds of active simulation, after purchases and placement, on focus loss, and on quit. Returning to the title also saves.
+- Saves use a temporary file and `.bak` recovery copy. Offline generation is capped at one hour at 25% rate.
+- New Journey requires confirmation and keeps the previous active save as `.previous`.
+- The old scene is preserved as `Assets/Scenes/SampleScene_BeforeSoulBridge.unity`.
+- `Before-Soul-Bridge-Redesign.zip` backs up the affected scripts, scenes, and project settings. It is not a full copy of every imported project asset.
+
+## Placeholder replacement report
+
+| Placeholder | Replace with | Preserve |
+|---|---|---|
+| Three rectangular dark platforms | Broken floating shores and ruined landings | Island collision boundaries and bridge entry positions |
+| Small rectangular loose stones | Distinct soul-bearing blocks: weathered stone, grave stone, obsidian | Stable IDs, tier, kinematic Rigidbody, root BoxCollider, and `SoulBridgeBlock` |
+| Flattened placed cubes | Modular magical bridge slabs with edge connections | 2×2m tile footprint, top surface at y=0, cardinal connectivity |
+| Glowing square preview | A ghost slab / runic connection outline | Exact eligible placement and clear release feedback |
+| Sphere following the player | An animated lighting soul with a subtle trail | Player attachment, point light, upgradeable range |
+| Cylinder and glowing Soul Well core | A soul fountain or lantern engine | Independent income and visible purchased state |
+| Distant cylinder and sphere | A portal or threshold to the next world | Reachable beacon and E interaction after bridge completion |
+| Flat world text | Environmental signs and restrained wayfinding | Direction to the next shore and stone-tier requirements |
+| Existing animated character | Final traveler model and refined hauling animations | Humanoid idle/run/pull controller and CharacterController behavior |
+| Canvas cards and buttons | Mystical UI art, power icons, and soul currency icon | Scaling, keyboard shortcuts, readable costs, failure explanations, pause and save behavior |
+| Generated chime | Placement, dragging, upgrade, generator and discovery sounds | Distinct feedback for successful actions; Music/SFX options remain placeholders |
+
+## Verification and scope
+
+Use **Tools > Last Spark > Run Soul Bridge Checks**. The older MVP check commands delegate to this suite in the redesigned scene. Checks use isolated saves in `Library`; results are written to `Library/SoulBridge.test-result.txt`.
+
+The suite covers physical dragging, actual bridge support, disconnected placement rejection, Souls generation, group movement and collisions, skill gates, independent generator income, light upgrades, completion, persistence/backup recovery, invalid saves, mouse input, and UI bounds. Rendered gameplay and skill-tree previews accompany this guide.
+
+This MVP contains three shores and two buildable rifts. Further areas, dismantling anchored tiles, full art/audio, and a standalone player build remain outside this revision.
