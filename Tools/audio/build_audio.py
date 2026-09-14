@@ -133,9 +133,8 @@ def build_footsteps():
 # 2. Grab - reach, seize, ring
 # =============================================================================
 # The latch reads as "clicked into place" because the pitch glide arrives on
-# exactly the frequency the bell then holds. 660 Hz is the existing Last Spark
-# chime and E5 is diatonic in the music's D minor, so the grab and the attune
-# chime are the same instrument.
+# exactly the frequency the bell then holds. 660 Hz (E5) is diatonic in the
+# music's D minor, so the grab sounds like part of the same instrument.
 
 GRAB_LEN = 88200
 LATCH = 0.185
@@ -204,29 +203,13 @@ def build_grab():
 
 
 # =============================================================================
-# 3. Music - two loops, 3,386,880 samples each
+# 3. Music - one loop, 3,386,880 samples
 # =============================================================================
 
 Dm = ("Dm", (146.83, 220.00, 293.66, 349.23))
 Bb = ("Bb", (116.54, 174.61, 293.66, 349.23))
-F_ = ("F",  (87.31, 130.81, 261.63, 349.23))
 Gm = ("Gm", (98.00, 146.83, 233.08, 392.00))
-C_ = ("C",  (130.81, 196.00, 329.63, 392.00))
 Am = ("Am", (110.00, 164.81, 261.63, 440.00))
-
-LAST_SPARK = dict(
-    name="music_last_spark",
-    # Ends on minor v, not V7: no leading tone, so the loop point has nothing
-    # left to resolve and never announces itself.
-    chords=(Dm, Bb, F_, Gm, Dm, Bb, C_, Am),
-    lowpass=1600.0, air_centroid=430.0, air_amp=0.11, reverb_wet=0.38,
-    shimmer=True,
-    bells=((19.2, 880.00, 0.55, +0.35), (24.0, 659.26, 0.40, -0.30),
-           (33.6, 587.33, 0.50, +0.20), (38.4, 698.46, 0.35, -0.40),
-           (48.0, 880.00, 0.45, +0.30), (52.8, 1046.50, 0.30, -0.20),
-           (57.6, 659.26, 0.42, +0.40), (67.2, 587.33, 0.48, -0.25),
-           (72.0, 880.00, 0.30, 0.00)),
-)
 
 SOUL_BRIDGE = dict(
     name="music_soul_bridge",
@@ -405,7 +388,7 @@ def main():
     build_grab()
 
     music = {}
-    for preset in (LAST_SPARK, SOUL_BRIDGE):
+    for preset in (SOUL_BRIDGE,):
         print(f"{preset['name']}... (this takes a moment)")
         _, mix = build_music(preset)
         music[preset["name"]] = mix

@@ -1,8 +1,8 @@
 # Immersive pass
 
-Three complaints, three root causes. Every fix runs at **runtime** from `SoulBridgeGame.Start`
-and `SoulBridgeHUD.BuildUI`, so pressing Play applies them - no editor menu to click, no scene
-surgery, and nothing to redo if the scene is rebuilt from `Tools/Last Spark/...`.
+Three complaints, three root causes. Every fix runs at **runtime** from `GameManager.Start`
+and `GameHUD.BuildUI`, so pressing Play applies them - no editor menu to click, no scene
+surgery, and nothing to redo if the scene is rebuilt from `Tools/Lighting Blocks/...`.
 
 ## 1. The world did not fill the screen
 
@@ -10,7 +10,7 @@ Cause: the three shores are polygon islands with literally nothing around them. 
 of pitch the camera never sees a horizon, so every pixel outside the islands was camera
 background.
 
-`SoulBridgeImmersion` (new):
+`WorldDressing` (new):
 - A generated "Deep Valley" polar mesh out to radius 135 around the play area, sitting at
   y = -5 with Perlin hills. It has **no collider**: it is scenery, the bridges stay the only
   way across, and the player's y < -3 recovery still catches every fall.
@@ -29,7 +29,7 @@ background.
 
 ## 2. The skill tree was a card grid
 
-`SoulBridgeSkillTree` (new) draws a real tree from procedural circle sprites (no new assets):
+`SkillTree` (new) draws a real tree from procedural circle sprites (no new assets):
 
     STONE SOURCE --- THE SOUL PATH --- GRAVE SOURCE      (trunk, shows blocks connected)
                     /               \
@@ -65,7 +65,7 @@ before reporting failure.
 
 ## Verified
 
-`Tools/Last Spark/Run Soul Bridge Checks` - 100 PASS, 0 FAIL, including new assertions that the
+`Tools/Lighting Blocks/Run Gameplay Checks` - 100 PASS, 0 FAIL, including new assertions that the
 deeps add no collision, that the valley stays under the courts and drops away in the rifts, that
 no scenery stands inside a court, that no `TextMesh` labels survive, that the canvas is pixel
 perfect, and that branches grow only out of powers that are already awake.

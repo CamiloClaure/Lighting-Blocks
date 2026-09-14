@@ -13,16 +13,16 @@ open format FL imports natively and losslessly.
 
 ## 1. Import the MIDI
 
-`File ▸ Import ▸ MIDI file` → pick `Assets/Resources/Audio/Music/music_last_spark.mid`
-(or `music_soul_bridge.mid`) → choose **import all tracks**.
+`File ▸ Import ▸ MIDI file` → pick `Assets/Resources/Audio/Music/music_soul_bridge.mid`
+→ choose **import all tracks**.
 
 You get three channels, already named:
 
 | Track | Notes | What it is |
 |---|---|---|
 | **Drone** | 2 | D2 + A2 open fifth, held for the whole loop |
-| **Pad** | 32 (8 for Soul Bridge) | The 4-voice chord progression |
-| **Bells** | 9 (5 for Soul Bridge) | Sparse chimes |
+| **Pad** | 8 | The 4-voice chord progression |
+| **Bells** | 5 | Sparse chimes |
 
 Set the project tempo to **50 BPM** if it did not come across. This matters: at 50 BPM one
 bar is exactly 4.8 s and the 16-bar loop is exactly 76.800 s, which is what makes the loop
@@ -76,7 +76,7 @@ Attack 8 ms, no sustain, decay only. Higher partials must die first — that is 
 of a struck bell and it is what stops it sounding like a synth pad.
 
 ### Air bed — Fruity Noise Generator or a white-noise sample
-Heavily filtered noise: a broad rise up to about **430 Hz** (300 Hz for Soul Bridge), then
+Heavily filtered noise: a broad rise up to about **300 Hz**, then
 a steep rolloff above it. Add a slow volume LFO with a period of **25.6 s** and a pan LFO
 at **38.4 s**. Keep it at roughly −19 dB — it should be felt, not heard.
 
@@ -87,7 +87,7 @@ at **38.4 s**. Keep it at roughly −19 dB — it should be felt, not heard.
 Route Drone and Pad to one bus, Bells and Air to another.
 
 **On the Drone + Pad bus only:**
-- **Fruity Filter / EQ: lowpass at 1600 Hz** (1200 Hz for Soul Bridge), steep.
+- **Fruity Filter / EQ: lowpass at 1200 Hz**, steep.
 
 This one filter is the reason footsteps stay audible over the music. It empties the
 2–5 kHz octave, which is exactly where the footstep click and grit sit. The bells are the
@@ -102,7 +102,7 @@ footsteps start to disappear under the music.
 | Decay (RT60) | 4.4 s |
 | High damping | heavy — the tail should darken as it decays |
 | Stereo separation | wide |
-| Wet | 38% (45% for Soul Bridge) |
+| Wet | 45% |
 
 Large, stony, absorptive. The tail is long on purpose: it is what wraps the end of the loop
 back into its beginning.
@@ -120,7 +120,7 @@ the music plays at volume 0.18, so it lands near −33 dBFS in game.
   not add a fade — either one destroys the seamless loop.
 - Length **exactly 76.800 s** (16 bars at 50 BPM).
 - **44100 Hz, 16-bit**, stereo.
-- Save over `Assets/Resources/Audio/Music/music_last_spark.wav` (or `music_soul_bridge.wav`).
+- Save over `Assets/Resources/Audio/Music/music_soul_bridge.wav`.
 
 Then verify the loop still joins cleanly:
 
