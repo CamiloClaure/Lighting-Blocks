@@ -8,10 +8,10 @@ using UnityEngine.SceneManagement;
 
 namespace LightingBlocks.Editor
 {
-    public static class SoulBridgeSetup
+    public static class SceneBuilder
     {
-        const string Root = "Assets/LastSpark/SoulBridge";
-        [MenuItem("Tools/Last Spark/Build Soul Bridge Scene")]
+        const string Root = "Assets/LightingBlocks/Art";
+        [MenuItem("Tools/Lighting Blocks/Build Scene")]
         public static void Build()
         {
             if (EditorApplication.isPlaying) throw new Exception("Stop Play before rebuilding.");
@@ -44,16 +44,16 @@ namespace LightingBlocks.Editor
                 Label(g == 0 ? "BUILD YOUR SOUL PATH" : "DEEP RIFT · GRAVE STONES", new Vector3(0, .07f, z - 1), world, .08f);
                 Label("NEXT SHORE", new Vector3(0, .05f, z + 15.3f), world, .07f);
             }
-            var prefabs = new SoulBridgeBlock[3]; var mats = new[] { ordinary, grave, ancient };
+            var prefabs = new BridgeBlock[3]; var mats = new[] { ordinary, grave, ancient };
             for (int tier = 0; tier < 3; tier++)
             {
                 var obj = Make("Bridge Stone " + tier, PrimitiveType.Cube, new Vector3(0, .36f, 0), new Vector3(1.4f, .7f, 1.4f), mats[tier], null);
                 var rb = obj.AddComponent<Rigidbody>(); rb.isKinematic = true; rb.useGravity = false; rb.constraints = RigidbodyConstraints.FreezeRotation;
-                obj.AddComponent<PullableBox>(); obj.AddComponent<SoulBridgeBlock>().tier = tier;
+                obj.AddComponent<PullableBox>(); obj.AddComponent<BridgeBlock>().tier = tier;
                 var crest = Make("Placeholder tier marking", PrimitiveType.Cube, new Vector3(0, .725f, 0), new Vector3(.4f + tier * .15f, .025f, .15f), rune, obj.transform, false);
                 string path = Root + "/Prefabs/Bridge Stone " + tier + ".prefab";
                 PrefabUtility.SaveAsPrefabAsset(obj, path); UnityEngine.Object.DestroyImmediate(obj);
-                prefabs[tier] = AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<SoulBridgeBlock>();
+                prefabs[tier] = AssetDatabase.LoadAssetAtPath<GameObject>(path).GetComponent<BridgeBlock>();
             }
             var starts = new[] { new Vector3(0,.36f,4.6f), new Vector3(-2,.36f,3), new Vector3(2,.36f,3), new Vector3(-4,.36f,1), new Vector3(4,.36f,1), new Vector3(-2,.36f,-1), new Vector3(2,.36f,-1), new Vector3(-4,.36f,-3), new Vector3(4,.36f,-3) };
             for (int i=0;i<starts.Length;i++) Spawn(prefabs[0], "home-"+i, starts[i], blocks);
@@ -68,9 +68,9 @@ namespace LightingBlocks.Editor
             var soul = Make("Lighting Soul", PrimitiveType.Sphere, player.transform.position + new Vector3(.4f,1.8f,0), Vector3.one * .22f, glow, player.transform, false);
             soul.transform.localPosition = new Vector3(.4f,1.8f,0);
             var light = soul.AddComponent<Light>(); light.type = LightType.Point; light.color = new Color(.55f,1,.8f); light.range=9; light.intensity=3.5f; light.shadows=LightShadows.Soft;
-            var systems = new GameObject("Soul Bridge Systems"); var game = systems.AddComponent<SoulBridgeGame>();
+            var systems = new GameObject("Soul Bridge Systems"); var game = systems.AddComponent<GameManager>();
             game.player=player; game.cameraRig=camera; game.blocksRoot=blocks; game.blockPrefabs=prefabs; game.soulLight=light; game.soulWell=well.transform; game.wellCore=wellCore.GetComponent<Renderer>(); game.exit=exit.transform; game.nextAreaGlow=exitGlow;
-            systems.AddComponent<SoulBridgeHUD>().game=game;
+            systems.AddComponent<GameHUD>().game=game;
             player.transform.position=new Vector3(0,.025f,3); player.readInput=true; player.moveSpeed=4.7f; player.pullSpeed=2.4f; player.grabReach=1.4f;
             var cc = player.GetComponent<CharacterController>(); cc.stepOffset=.4f;
             camera.readInput=true; camera.distance=27; camera.bounds=new Vector2(14,62); camera.minimumFocus=new Vector2(-14,-9);
@@ -79,10 +79,10 @@ namespace LightingBlocks.Editor
             foreach(var sun in UnityEngine.Object.FindObjectsByType<Light>()) if(sun.type==LightType.Directional) {sun.intensity=.055f; sun.color=new Color(.35f,.45f,.65f);}
             RenderSettings.ambientMode=UnityEngine.Rendering.AmbientMode.Flat; RenderSettings.ambientLight=new Color(.018f,.025f,.045f); RenderSettings.fog=false;
             AssetDatabase.SaveAssets(); EditorSceneManager.SaveScene(scene); Selection.activeGameObject=systems;
-            File.WriteAllText("Library/SoulBridge.setup-result.txt", "SUCCESS: 3 shores, 2 genuine gaps, 20 stones, animated player, lighting soul, Souls economy, group hauling, upgrades and separate persistence. Backup: "+backup);
+            File.WriteAllText("Library/LightingBlocks.setup-result.txt", "SUCCESS: 3 shores, 2 genuine gaps, 20 stones, animated player, lighting soul, Souls economy, group hauling, upgrades and separate persistence. Backup: "+backup);
         }
-        static void Spawn(SoulBridgeBlock prefab,string id,Vector3 p,Transform parent)
-        { var obj=(GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject); obj.transform.SetParent(parent,true); obj.transform.position=p; obj.name=id; obj.GetComponent<SoulBridgeBlock>().id=id; }
+        static void Spawn(BridgeBlock prefab,string id,Vector3 p,Transform parent)
+        { var obj=(GameObject)PrefabUtility.InstantiatePrefab(prefab.gameObject); obj.transform.SetParent(parent,true); obj.transform.position=p; obj.name=id; obj.GetComponent<BridgeBlock>().id=id; }
         static GameObject Make(string name,PrimitiveType type,Vector3 p,Vector3 size,Material mat,Transform parent,bool collider=true)
         {var obj=GameObject.CreatePrimitive(type);obj.name=name;obj.transform.position=p;obj.transform.localScale=size;obj.transform.SetParent(parent,true);obj.GetComponent<Renderer>().sharedMaterial=mat;if(!collider)UnityEngine.Object.DestroyImmediate(obj.GetComponent<Collider>());return obj;}
         static Material Mat(string name,Color color,float emission=0)

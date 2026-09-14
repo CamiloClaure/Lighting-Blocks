@@ -1,7 +1,7 @@
 using UnityEngine;
 namespace LightingBlocks
 {
-    public sealed class SoulBridgeAtmosphere : MonoBehaviour
+    public sealed class PlayerAtmosphere : MonoBehaviour
     {
         public Transform soul;
         public Renderer halo;

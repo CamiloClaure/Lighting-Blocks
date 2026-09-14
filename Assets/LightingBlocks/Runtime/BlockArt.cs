@@ -3,18 +3,18 @@ using UnityEngine;
 namespace LightingBlocks
 {
     [DisallowMultipleComponent]
-    public sealed class SoulBridgeArt : MonoBehaviour
+    public sealed class BlockArt : MonoBehaviour
     {
         public Transform looseVisual, placedVisual;
         public Renderer[] bodies, seams;
-        SoulBridgeBlock block;
+        BridgeBlock block;
         MaterialPropertyBlock properties;
         bool nearby;
-        void Awake() { block=GetComponent<SoulBridgeBlock>(); properties=new MaterialPropertyBlock(); Refresh(); }
+        void Awake() { block=GetComponent<BridgeBlock>(); properties=new MaterialPropertyBlock(); Refresh(); }
         public void Highlight(bool value) { nearby=value; Refresh(); }
         public void Refresh()
         {
-            if(block==null) block=GetComponent<SoulBridgeBlock>();
+            if(block==null) block=GetComponent<BridgeBlock>();
             if(block==null || looseVisual==null || placedVisual==null) return;
             if(properties==null)properties=new MaterialPropertyBlock();
             // Art prefabs use physical metres. Cancel the logical root scale, then apply loose shrink.

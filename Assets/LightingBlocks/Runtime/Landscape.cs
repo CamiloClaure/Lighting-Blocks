@@ -6,7 +6,7 @@ namespace LightingBlocks
     // They are listed counter-clockwise: the mesh builders fan from the centroid and rely on it.
     // The edges that face a rift are fixed - the bridge cells are measured from them - so the
     // courts only ever grow sideways and away from the gaps.
-    public static class SoulBridgeLandscape
+    public static class Landscape
     {
         public static readonly Vector2[][] Shores = {
             new[] { new Vector2(-18,-57),new Vector2(4,-58),new Vector2(24,-52),new Vector2(38,-41),new Vector2(45,-26),new Vector2(46,-10),new Vector2(33,2),new Vector2(14,7),new Vector2(-14,7),new Vector2(-30,3),new Vector2(-41,-6),new Vector2(-47,-20),new Vector2(-45,-36),new Vector2(-34,-49) },

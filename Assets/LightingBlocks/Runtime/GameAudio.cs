@@ -32,11 +32,10 @@ namespace LightingBlocks
 
         public static AudioClip Grab => grab != null ? grab : grab = Resources.Load<AudioClip>("Audio/SFX/Bloques");
 
-        // The chapters differ in weight, not in sample: Soul Bridge stone is
-        // heavier than Last Spark crystal, so the same assets are pitched down.
+        // Pitch hooks for the step and grab clips; 1 plays the file as recorded.
         public static float StepPitch => 1f;
         public static float GrabPitch(PullableBox box) =>
-            box != null && box.GetComponent<SoulBridgeBlock>() != null ? 1f : 1f;
+            box != null && box.GetComponent<BridgeBlock>() != null ? 1f : 1f;
 
         public static void PlayMusic(string clipName)
         {

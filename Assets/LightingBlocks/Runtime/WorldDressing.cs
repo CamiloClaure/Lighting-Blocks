@@ -8,7 +8,7 @@ namespace LightingBlocks
     // their full size and fills the rest of the frame at runtime so the camera never looks at
     // empty background: wide courts you have to drag the camera across, a lit valley under them,
     // distant ruin silhouettes, neon paving, a light on every bridge step, and crisp labels.
-    public static class SoulBridgeImmersion
+    public static class WorldDressing
     {
         // The player recovers below y = -3, so scenery at -5 can never be stood on.
         public const float Floor = -5f;
@@ -26,7 +26,7 @@ namespace LightingBlocks
         static Texture2D halo;
         static Material seamNeon, additive;
 
-        public static void Build(SoulBridgeGame game)
+        public static void Build(GameManager game)
         {
             if (game == null || game.blocksRoot == null) return;
             var world = game.blocksRoot.parent;
@@ -39,7 +39,7 @@ namespace LightingBlocks
             Dress(root, world);
             Atmosphere(game);
             WorldLabels.Adopt();
-            SoulBridgeFootlights.Attach(game.player);
+            Footlights.Attach(game.player);
             foreach (var block in game.Blocks) StepLight(block);
         }
 
@@ -50,9 +50,9 @@ namespace LightingBlocks
         // means nobody has to remember to re-run the editor art command.
         static void Reshape(Transform world)
         {
-            for (int i = 0; i < SoulBridgeLandscape.Shores.Length; i++)
+            for (int i = 0; i < Landscape.Shores.Length; i++)
             {
-                var points = SoulBridgeLandscape.Shores[i];
+                var points = Landscape.Shores[i];
                 var floor = Find(world, "ShoreFloor" + i);
                 var cliff = Find(world, "ShoreCliff" + i);
                 if (floor != null)
@@ -117,7 +117,7 @@ namespace LightingBlocks
         public static Bounds CourtBounds()
         {
             var min = new Vector2(float.MaxValue, float.MaxValue); var max = -min;
-            foreach (var shore in SoulBridgeLandscape.Shores)
+            foreach (var shore in Landscape.Shores)
                 foreach (var p in shore) { min = Vector2.Min(min, p); max = Vector2.Max(max, p); }
             var bounds = new Bounds();
             bounds.SetMinMax(new Vector3(min.x, 0, min.y), new Vector3(max.x, 0, max.y));
@@ -146,9 +146,9 @@ namespace LightingBlocks
         public static float ShoreDistance(float x, float z)
         {
             var point = new Vector2(x, z); float best = float.MaxValue;
-            foreach (var shore in SoulBridgeLandscape.Shores)
+            foreach (var shore in Landscape.Shores)
             {
-                if (SoulBridgeLandscape.Inside(point, shore)) return 0;
+                if (Landscape.Inside(point, shore)) return 0;
                 for (int i = 0, j = shore.Length - 1; i < shore.Length; j = i++)
                     best = Mathf.Min(best, EdgeDistance(point, shore[j], shore[i]));
             }
@@ -159,7 +159,7 @@ namespace LightingBlocks
         public static float EdgeGap(float x, float z)
         {
             var point = new Vector2(x, z); float best = float.MaxValue;
-            foreach (var shore in SoulBridgeLandscape.Shores)
+            foreach (var shore in Landscape.Shores)
                 for (int i = 0, j = shore.Length - 1; i < shore.Length; j = i++)
                     best = Mathf.Min(best, EdgeDistance(point, shore[j], shore[i]));
             return best;
@@ -267,7 +267,7 @@ namespace LightingBlocks
             if (Mathf.Abs(x) < RiftHalfWidth && (z > 4 && z < 24 || z > 31 && z < 51)) return false;
             return ShoreDistance(x, z) > 9;
         }
-        static void Atmosphere(SoulBridgeGame game)
+        static void Atmosphere(GameManager game)
         {
             var haze = new Color(.062f, .072f, .098f);
             RenderSettings.fog = true; RenderSettings.fogMode = FogMode.Linear;
@@ -338,14 +338,14 @@ namespace LightingBlocks
         // violet to magenta, so the path reads as one gradient from shore to shore.
         public static Color StepColor(int gap, int row)
         {
-            float t = Mathf.Clamp01((gap * SoulBridgeGame.Rows + row) / (SoulBridgeGame.Rows * 2f - 1));
+            float t = Mathf.Clamp01((gap * GameManager.Rows + row) / (GameManager.Rows * 2f - 1));
             return t < .5f
                 ? Color.Lerp(new Color(.16f, 1f, .92f), new Color(.58f, .42f, 1f), t * 2)
                 : Color.Lerp(new Color(.58f, .42f, 1f), new Color(1f, .3f, .78f), (t - .5f) * 2);
         }
         // Every placed step carries its own light. The renderer runs Forward+, which has no
         // per-object additional-light limit, so seventy small unshadowed points are affordable.
-        public static void StepLight(SoulBridgeBlock block)
+        public static void StepLight(BridgeBlock block)
         {
             if (block == null) return;
             var existing = block.transform.Find("Step light");
@@ -368,9 +368,9 @@ namespace LightingBlocks
             light.intensity = block.Connected ? 4.4f : 1f;
             Seams(block, colour);
         }
-        static void Seams(SoulBridgeBlock block, Color colour)
+        static void Seams(BridgeBlock block, Color colour)
         {
-            var art = block.GetComponent<SoulBridgeArt>();
+            var art = block.GetComponent<BlockArt>();
             if (art == null || art.seams == null) return;
             var properties = new MaterialPropertyBlock();
             foreach (var seam in art.seams)
@@ -396,7 +396,7 @@ namespace LightingBlocks
     // Walking lights the ground. Each completed stride drops a neon pool at the foot that fades
     // over about a second, and if that foot landed on a placed bridge tile, the tile's own light
     // surges with it. The pool is fixed, so a long walk allocates nothing.
-    public sealed class SoulBridgeFootlights : MonoBehaviour
+    public sealed class Footlights : MonoBehaviour
     {
         const int Pool = 8;
         const float Life = 1.2f;
@@ -410,8 +410,8 @@ namespace LightingBlocks
         public static void Attach(BoxPlayer player)
         {
             if (player == null) return;
-            var host = player.GetComponent<SoulBridgeFootlights>();
-            if (host == null) host = player.gameObject.AddComponent<SoulBridgeFootlights>();
+            var host = player.GetComponent<Footlights>();
+            if (host == null) host = player.gameObject.AddComponent<Footlights>();
             host.enabled = true;
         }
         void OnEnable()
@@ -442,7 +442,7 @@ namespace LightingBlocks
                 quad.transform.localPosition = Vector3.up * .04f;
                 quad.transform.localScale = Vector3.one * 2.6f;
                 var disc = quad.GetComponent<Renderer>();
-                disc.sharedMaterial = SoulBridgeImmersion.Additive();
+                disc.sharedMaterial = WorldDressing.Additive();
                 disc.shadowCastingMode = ShadowCastingMode.Off; disc.receiveShadows = false;
                 var print = new Print { root = root, lamp = lamp, disc = disc, block = new MaterialPropertyBlock() };
                 prints.Add(print);
@@ -454,12 +454,12 @@ namespace LightingBlocks
         }
         void Land(Vector3 foot)
         {
-            var game = SoulBridgeGame.Instance;
+            var game = GameManager.Instance;
             if (game == null) return;
             var tile = game.BlockUnder(foot);
             // The footfall takes the colour of the tile it landed on, so a crossing reads as one
             // gradient rather than the path and the walker disagreeing about the palette.
-            var ink = tile != null ? SoulBridgeImmersion.StepColor(tile.gap, tile.row) : new Color(.42f, .92f, 1f);
+            var ink = tile != null ? WorldDressing.StepColor(tile.gap, tile.row) : new Color(.42f, .92f, 1f);
             var print = Borrow();
             print.age = 0; print.ink = ink;
             print.root.position = new Vector3(foot.x, foot.y + .02f, foot.z);
@@ -523,7 +523,7 @@ namespace LightingBlocks
 
         public static void Adopt()
         {
-            var hud = SoulBridgeHUD.Current;
+            var hud = GameHUD.Current;
             if (hud == null || hud.WorldLabelRoot == null) return;
             var host = hud.WorldLabelRoot.GetComponent<WorldLabels>();
             if (host == null) host = hud.WorldLabelRoot.gameObject.AddComponent<WorldLabels>();
@@ -547,11 +547,11 @@ namespace LightingBlocks
             outline.effectColor = new Color(0, 0, 0, .9f); outline.effectDistance = new Vector2(1.4f, -1.4f);
             entries.Add(new Entry { rect = rect, text = text, outline = outline, anchor = anchor + Vector3.up * 1.1f });
         }
-        // The Soul Bridge scene has no camera tagged MainCamera, so Camera.main is null here and
+        // The scene has no camera tagged MainCamera, so Camera.main is null here and
         // every label would silently stop tracking. Ask the game for its rig instead.
         public static Camera View()
         {
-            var game = SoulBridgeGame.Instance;
+            var game = GameManager.Instance;
             if (game != null && game.cameraRig != null)
             {
                 var rig = game.cameraRig.GetComponent<Camera>();

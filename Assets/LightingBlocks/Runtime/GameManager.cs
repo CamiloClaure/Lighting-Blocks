@@ -7,13 +7,13 @@ using UnityEngine.InputSystem;
 
 namespace LightingBlocks
 {
-    public sealed class SoulBridgeGame : MonoBehaviour
+    public sealed class GameManager : MonoBehaviour
     {
-        public static SoulBridgeGame Instance { get; private set; }
+        public static GameManager Instance { get; private set; }
         public BoxPlayer player;
         public StrategyCamera cameraRig;
         public Transform blocksRoot, soulWell, exit;
-        public SoulBridgeBlock[] blockPrefabs;
+        public BridgeBlock[] blockPrefabs;
         public Light soulLight;
         public Renderer wellCore;
         public GameObject nextAreaGlow;
@@ -22,7 +22,7 @@ namespace LightingBlocks
         public double souls;
         public int speed, links, strength, radiance, generator, summoned;
         public bool completed;
-        public readonly List<SoulBridgeBlock> Blocks = new List<SoulBridgeBlock>();
+        public readonly List<BridgeBlock> Blocks = new List<BridgeBlock>();
         public readonly bool[] Bridges = new bool[2];
         public int ConnectedCount { get; private set; }
         public double PathRate { get; private set; }
@@ -47,7 +47,7 @@ namespace LightingBlocks
         {
             Instance = this;
 #if UNITY_EDITOR
-            if (File.Exists(Path.Combine(Application.dataPath, "../Library/SoulBridge.test-active"))) persistenceEnabled = false;
+            if (File.Exists(Path.Combine(Application.dataPath, "../Library/LightingBlocks.test-active"))) persistenceEnabled = false;
 #endif
             audioSource = gameObject.AddComponent<AudioSource>(); audioSource.volume = .18f;
             chime = AudioClip.Create("Placeholder soul connection", 11025, 1, 44100, false);
@@ -57,7 +57,7 @@ namespace LightingBlocks
         }
         void Start()
         {
-            Blocks.Clear(); Blocks.AddRange(blocksRoot.GetComponentsInChildren<SoulBridgeBlock>(true));
+            Blocks.Clear(); Blocks.AddRange(blocksRoot.GetComponentsInChildren<BridgeBlock>(true));
             foreach(var b in Blocks) ConfigureBlock(b);
             ApplyUpgrades(); Recalculate(); initialized = true;
             if (persistenceEnabled) Load();
@@ -67,14 +67,14 @@ namespace LightingBlocks
             m.SetColor("_BaseColor", new Color(.32f, .22f, .08f)); ghostRenderer.material = m;
             if (string.IsNullOrEmpty(Notice)) Notify("BUILD A PATH THROUGH THE DARK\nHold left click near a block, drag it to the glowing edge, then release.", false);
             cameraRig.CenterOnPlayer();
-            SoulBridgeImmersion.Build(this);
+            WorldDressing.Build(this);
             GameAudio.PlayMusic("IntroNoGusta");
         }
         void Update()
         {
-            if (!initialized || SoulBridgeHUD.SimulationPaused) return;
+            if (!initialized || GameHUD.SimulationPaused) return;
             if (autoTick) Advance(Time.deltaTime);
-            if (!SoulBridgeHUD.GameplayBlocked && player.readInput && Application.isFocused && Keyboard.current != null)
+            if (!GameHUD.GameplayBlocked && player.readInput && Application.isFocused && Keyboard.current != null)
             {
                 var k = Keyboard.current;
                 if (k.eKey.wasPressedThisFrame) Interact();
@@ -90,7 +90,7 @@ namespace LightingBlocks
             if (ghost != null)
             {
                 bool held = player.HeldBox != null;
-                var block = held ? player.HeldBox.GetComponent<SoulBridgeBlock>() : null;
+                var block = held ? player.HeldBox.GetComponent<BridgeBlock>() : null;
                 if (player.Orbiting && FindOrbitPlacement(block,out var orbitCell)) ghost.position=orbitCell+Vector3.up*.205f;
                 else if (block != null && FindPlacement(block, out int g, out int x, out int z, out _))
                     ghost.position = Cell(g, x, z) + Vector3.up * .205f;
@@ -100,7 +100,7 @@ namespace LightingBlocks
         }
         public void Advance(float seconds)
         {
-            if (SoulBridgeHUD.SimulationPaused || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
+            if (GameHUD.SimulationPaused || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
             souls += Rate * seconds; saveTimer += seconds;
             if (saveTimer >= 10) { saveTimer = 0; Save(); }
         }
@@ -122,7 +122,7 @@ namespace LightingBlocks
         public int Cap(string id) => id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
         public bool Purchase(string id)
         {
-            if (SoulBridgeHUD.SimulationPaused) return false;
+            if (GameHUD.SimulationPaused) return false;
             if (!(new[] { "speed", "links", "strength", "radiance", "generator", "stone", "grave" }).Contains(id)) return false;
             bool supply = id == "stone" || id == "grave";
             if (!supply && Level(id) >= Cap(id)) return Deny("FULLY AWAKENED\nThis power has reached its maximum level.");
@@ -159,7 +159,7 @@ namespace LightingBlocks
             }
             return false;
         }
-        public bool FindPlacement(SoulBridgeBlock block, out int gap, out int column, out int row, out string reason)
+        public bool FindPlacement(BridgeBlock block, out int gap, out int column, out int row, out string reason)
         {
             gap = block.transform.position.z > 28 ? 1 : 0;
             row = Mathf.Clamp(Mathf.RoundToInt((block.transform.position.z - 8 - gap * 27) / 2), 0, Rows - 1);
@@ -176,7 +176,7 @@ namespace LightingBlocks
             reason = "RELEASE TO EXTEND THE BRIDGE\nThis connected block will generate Souls."; return true;
         }
 
-        public bool FindOrbitPlacement(SoulBridgeBlock block, out Vector3 target)
+        public bool FindOrbitPlacement(BridgeBlock block, out Vector3 target)
         {
             target=default; if(block==null || block.placed)return false;
             var saved=block.transform.position; float best=float.MaxValue; bool found=false;
@@ -194,7 +194,7 @@ namespace LightingBlocks
             block.transform.position=saved;return found;
         }
 
-        public bool TryPlace(SoulBridgeBlock block)
+        public bool TryPlace(BridgeBlock block)
         {
             if (block.placed || block.Box.Holder != null) return false;
             if (!FindPlacement(block, out int gap, out int x, out int z, out string reason))
@@ -211,7 +211,7 @@ namespace LightingBlocks
             Notify(!second && Bridges[1] ? "THE SECOND PATH IS WHOLE\nCross to the distant beacon. Press E beside it to enter the next area." : !first && Bridges[0] ? "A NEW SHORE\nThe next rift needs Grave Stones and Strength I.\nYour old bridge keeps producing Souls." : "PATH EXTENDED · " + ConnectedCount + " BLOCKS\n+" + Format(Rate - before) + " Souls/sec · Total " + Format(Rate) + "/sec");
             Save(); return true;
         }
-        public void ConfigureBlock(SoulBridgeBlock block)
+        public void ConfigureBlock(BridgeBlock block)
         {
             if (block.placed)
             {
@@ -219,7 +219,7 @@ namespace LightingBlocks
             }
             else { block.transform.localScale = new Vector3(.84f, .5f, .84f); var ground=block.transform.position; ground.y=.26f; block.transform.position=ground; }
             block.transform.rotation=Quaternion.identity;
-            var art=block.GetComponent<SoulBridgeArt>(); if(art!=null)art.Refresh();
+            var art=block.GetComponent<BlockArt>(); if(art!=null)art.Refresh();
             block.Box.Body.position = block.transform.position; Physics.SyncTransforms();
         }
         public void Recalculate()
@@ -231,7 +231,7 @@ namespace LightingBlocks
                 if (gap == 1 && !Bridges[0]) break;
                 var tiles = Blocks.Where(b => b.placed && b.gap == gap && (gap == 0 || b.tier > 0)).ToArray();
                 var root = tiles.FirstOrDefault(b => b.column == 0 && b.row == 0); if (root == null) continue;
-                var queue = new Queue<Tuple<SoulBridgeBlock, int>>(); queue.Enqueue(Tuple.Create(root, 0)); root.Connected = true;
+                var queue = new Queue<Tuple<BridgeBlock, int>>(); queue.Enqueue(Tuple.Create(root, 0)); root.Connected = true;
                 while (queue.Count > 0)
                 {
                     var entry = queue.Dequeue(); var block = entry.Item1; int depth = entry.Item2;
@@ -247,10 +247,10 @@ namespace LightingBlocks
             foreach (var b in Blocks)
             {
                 var property = new MaterialPropertyBlock(); b.GetComponent<Renderer>().GetPropertyBlock(property);
-                property.SetColor("_EmissionColor", b.Connected ? SoulBridgeImmersion.StepColor(b.gap, b.row) : Color.black);
+                property.SetColor("_EmissionColor", b.Connected ? WorldDressing.StepColor(b.gap, b.row) : Color.black);
                 b.GetComponent<Renderer>().SetPropertyBlock(property);
-                var art=b.GetComponent<SoulBridgeArt>(); if(art!=null)art.Refresh();
-                SoulBridgeImmersion.StepLight(b);
+                var art=b.GetComponent<BlockArt>(); if(art!=null)art.Refresh();
+                WorldDressing.StepLight(b);
             }
             if (nextAreaGlow != null) nextAreaGlow.SetActive(Bridges[1]);
         }
@@ -263,11 +263,11 @@ namespace LightingBlocks
         public bool CanStand(Vector3 point)
         {
             // Only island ground and bridge tiles support the player. Loose blocks never bridge the void.
-            return SoulBridgeLandscape.Supports(point) || BlockUnder(point) != null;
+            return Landscape.Supports(point) || BlockUnder(point) != null;
         }
         // The connected bridge tile holding up this point, or null. Support and "what am I standing
         // on" are the same question, so they share one box test rather than two copies of it.
-        public SoulBridgeBlock BlockUnder(Vector3 point)
+        public BridgeBlock BlockUnder(Vector3 point)
         {
             return Blocks.FirstOrDefault(b => b.placed && b.Connected && Math.Abs(point.x - b.transform.position.x) <= .99f && Math.Abs(point.z - b.transform.position.z) <= 1.02f);
         }
@@ -285,7 +285,7 @@ namespace LightingBlocks
         }
         public void Interact()
         {
-            if (SoulBridgeHUD.GameplayBlocked) return;
+            if (GameHUD.GameplayBlocked) return;
             if (completed) { Notify("THE NEXT DAWN IS OPEN\nContinue growing your paths and powers.", false); return; }
             if (Bridges[1] && Vector3.Distance(player.transform.position, exit.position) < 3)
             { completed = true; Notify("THE NEXT DAWN\nThe souls were never lost. They were waiting for a way home.\nChapter complete. Your bridges and Soul Well keep generating."); Save(); return; }

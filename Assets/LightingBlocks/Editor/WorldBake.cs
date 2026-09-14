@@ -7,28 +7,28 @@ using UnityEngine.SceneManagement;
 
 namespace LightingBlocks.Editor
 {
-    // SoulBridgeImmersion rebuilds the courts every time the game starts, which keeps the scene
+    // WorldDressing rebuilds the courts every time the game starts, which keeps the scene
     // honest at runtime but leaves the Scene view showing whatever was last baked. This writes the
     // same meshes and the same neon paving to disk so the editor shows the world you actually play.
     [InitializeOnLoad]
-    public static class SoulBridgeWorldBake
+    public static class WorldBake
     {
-        const string Art = "Assets/LastSpark/SoulBridge/IntegratedArt";
-        const string Pack = "Assets/LastSparkArtPack/Materials/M_ENV_Paving.mat";
-        const string Request = "Library/SoulBridge.bake-request";
+        const string Art = "Assets/LightingBlocks/Art/Integrated";
+        const string Pack = "Assets/LightingBlocks/Art/Pack/Materials/M_ENV_Paving.mat";
+        const string Request = "Library/LightingBlocks.bake-request";
 
         // Same trigger the verification harness uses: writing the request file makes an already
         // open editor do the work, so baking never depends on anyone finding the menu item.
-        static SoulBridgeWorldBake() { EditorApplication.update += Poll; }
+        static WorldBake() { EditorApplication.update += Poll; }
         static void Poll()
         {
             if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || !File.Exists(Request)) return;
             File.Delete(Request);
             try { Bake(); }
-            catch (Exception e) { File.WriteAllText("Library/SoulBridgeBake.result.txt", "FAIL: " + e.Message); Debug.LogError(e); }
+            catch (Exception e) { File.WriteAllText("Library/LightingBlocks.bake-result.txt", "FAIL: " + e.Message); Debug.LogError(e); }
         }
 
-        [MenuItem("Tools/Last Spark/Bake Immersive World")]
+        [MenuItem("Tools/Lighting Blocks/Bake Immersive World")]
         public static void Bake()
         {
             if (EditorApplication.isPlaying) throw new Exception("Stop Play before baking the world.");
@@ -40,18 +40,18 @@ namespace LightingBlocks.Editor
             if (!File.Exists(backup)) EditorSceneManager.SaveScene(scene, backup, true);
 
             var paving = Paving();
-            int shores = SoulBridgeLandscape.Shores.Length;
+            int shores = Landscape.Shores.Length;
             for (int i = 0; i < shores; i++)
             {
-                var points = SoulBridgeLandscape.Shores[i];
-                Bind("ShoreFloor" + i, SoulBridgeImmersion.FloorMesh(points, i), paving);
-                Bind("ShoreCliff" + i, SoulBridgeImmersion.CliffMesh(points, i), null);
+                var points = Landscape.Shores[i];
+                Bind("ShoreFloor" + i, WorldDressing.FloorMesh(points, i), paving);
+                Bind("ShoreCliff" + i, WorldDressing.CliffMesh(points, i), null);
             }
             AssetDatabase.SaveAssets();
             EditorSceneManager.MarkSceneDirty(scene);
             EditorSceneManager.SaveScene(scene);
-            var bounds = SoulBridgeImmersion.CourtBounds();
-            File.WriteAllText("Library/SoulBridgeBake.result.txt",
+            var bounds = WorldDressing.CourtBounds();
+            File.WriteAllText("Library/LightingBlocks.bake-result.txt",
                 "SUCCESS: baked " + shores + " courts spanning " + bounds.size.x.ToString("0") + " x " + bounds.size.z.ToString("0") + " metres, neon paving and cliffs, into SampleScene.");
         }
 
@@ -77,7 +77,7 @@ namespace LightingBlocks.Editor
         }
 
         // The neon emission texture and the material that carries it, as real assets. The pixels
-        // come from the same SoulBridgeImmersion.Circuit() the runtime uses, so the baked scene and
+        // come from the same WorldDressing.Circuit() the runtime uses, so the baked scene and
         // Play mode cannot drift apart.
         static Material Paving()
         {

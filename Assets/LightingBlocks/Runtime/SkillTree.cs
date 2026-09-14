@@ -8,9 +8,9 @@ namespace LightingBlocks
     // The powers screen is an actual tree: a trunk with the stone sources at its base, two
     // branches that grow as their parent awakens, and a burst on the node you just bought.
     // Everything is drawn from procedural circle sprites, so it needs no imported art.
-    public sealed class SoulBridgeSkillTree : MonoBehaviour
+    public sealed class SkillTree : MonoBehaviour
     {
-        public SoulBridgeGame game;
+        public GameManager game;
         public Font font;
 
         const float PanelWidth = 1180, PanelHeight = 800;
@@ -54,9 +54,9 @@ namespace LightingBlocks
         float time;
         static Sprite discSprite, ringSprite, dotSprite;
 
-        public static SoulBridgeSkillTree Build(RectTransform panel, SoulBridgeGame game, Font font, UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
+        public static SkillTree Build(RectTransform panel, GameManager game, Font font, UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
         {
-            var tree = panel.gameObject.AddComponent<SoulBridgeSkillTree>();
+            var tree = panel.gameObject.AddComponent<SkillTree>();
             tree.game = game; tree.font = font; tree.root = panel;
             tree.Compose(close, out closeButton, out skills);
             return tree;
@@ -222,7 +222,7 @@ namespace LightingBlocks
                 node.price.text = node.id == "root" ? "BLOCKS CONNECTED"
                     : maxed ? "FULLY AWAKENED"
                     : locked ? "LOCKED"
-                    : SoulBridgeGame.Format(cost) + " Souls";
+                    : GameManager.Format(cost) + " Souls";
                 node.price.color = maxed ? Gold : locked ? Dormant : affordable ? Mint : new Color(.55f, .49f, .40f);
                 for (int i = 0; i < node.pips.Length; i++)
                 {
@@ -264,10 +264,10 @@ namespace LightingBlocks
             detailRequirement.text = Requirement(focus.id);
             bool buyable = focus.id != "root" && !maxed && !locked;
             detailButton.gameObject.SetActive(focus.id != "root");
-            detailButton.interactable = buyable && !SoulBridgeHUD.SimulationPaused;
+            detailButton.interactable = buyable && !GameHUD.SimulationPaused;
             detailButtonLabel.text = maxed ? "FULLY AWAKENED"
                 : locked ? "LOCKED  ·  FINISH THE FIRST BRIDGE"
-                : "AWAKEN  ·  " + SoulBridgeGame.Format(cost) + " Souls";
+                : "AWAKEN  ·  " + GameManager.Format(cost) + " Souls";
             var colors = detailButton.colors;
             colors.normalColor = buyable && game.souls + .0001 >= cost ? Color.white : new Color(.61f, .56f, .47f);
             detailButton.colors = colors;
@@ -280,8 +280,8 @@ namespace LightingBlocks
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";
-                case "generator": return "Hotkey [5].\nNow +" + SoulBridgeGame.Format(game.GeneratorRate) + " Souls/sec.\nNext level: +"
-                    + SoulBridgeGame.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec.";
+                case "generator": return "Hotkey [5].\nNow +" + GameManager.Format(game.GeneratorRate) + " Souls/sec.\nNext level: +"
+                    + GameManager.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec.";
                 case "stone": return "Ordinary stones build the first bridge only.\nThey appear beside the first shore.";
                 case "grave": return "Grave Stones bridge either rift.\nThey appear on the second shore.\nHauling them needs Strength I.";
                 default: return "Connect blocks into a path. Every connected block feeds the tree.";

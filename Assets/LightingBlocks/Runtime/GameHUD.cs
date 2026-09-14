@@ -12,12 +12,12 @@ namespace LightingBlocks
 {
     // A Canvas UI avoids native GUIStyle state being lost during Unity script reloads.
     [DefaultExecutionOrder(-1000)]
-    public sealed class SoulBridgeHUD : MonoBehaviour
+    public sealed class GameHUD : MonoBehaviour
     {
         public enum ScreenView { Title, Playing, Pause, Controls, Skills, Memories, ConfirmNewJourney }
-        public SoulBridgeGame game;
+        public GameManager game;
         public ScreenView View { get; private set; } = ScreenView.Title;
-        public static SoulBridgeHUD Current { get; private set; }
+        public static GameHUD Current { get; private set; }
         public static bool GameplayBlocked => Current != null && Current.View != ScreenView.Playing;
         public static bool SimulationPaused => Current != null && Current.View != ScreenView.Playing && Current.View != ScreenView.Skills && Current.View != ScreenView.Memories;
         public Text SoulsText { get; private set; }
@@ -37,7 +37,7 @@ namespace LightingBlocks
         Button startButton, newButton, resumeButton, controlsBack, skillsClose, memoriesClose;
         ScreenView controlsReturn = ScreenView.Title, confirmReturn = ScreenView.Title;
         readonly List<PurchaseBinding> purchases = new List<PurchaseBinding>();
-        SoulBridgeSkillTree skillTree;
+        SkillTree skillTree;
         readonly List<RaycastResult> raycasts = new List<RaycastResult>();
         PointerEventData pointer;
         EventSystem eventSystem;
@@ -269,7 +269,7 @@ namespace LightingBlocks
         void BuildSkills()
         {
             var panel = CenterPanel("Skill Tree", 1180, 800); skillsPanel = panel.gameObject;
-            skillTree = SoulBridgeSkillTree.Build(panel, game, font, () => SetView(ScreenView.Playing), out skillsClose, out var powers);
+            skillTree = SkillTree.Build(panel, game, font, () => SetView(ScreenView.Playing), out skillsClose, out var powers);
             SkillButtons.Clear();
             foreach (var power in powers) SkillButtons[power.Key] = power.Value;
         }
@@ -309,7 +309,7 @@ namespace LightingBlocks
         {
             if (SoulsText == null || game == null) return;
             SoulsText.text = game.souls.ToString("N1", CultureInfo.InvariantCulture);
-            incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + SoulBridgeGame.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
+            incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
             objectiveText.text = game.Objective;
             bool journey = game.ConnectedCount > 0 || game.souls > 0 || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
@@ -319,14 +319,14 @@ namespace LightingBlocks
             var box = game.player.HeldBox;
             if (box != null)
             {
-                var b = box.GetComponent<SoulBridgeBlock>();
+                var b = box.GetComponent<BridgeBlock>();
                 if (game.player.Orbiting) hint = game.FindOrbitPlacement(b,out _) ? "Q TO BUILD AT THE GLOWING EDGE\nOrbiting "+game.player.HeldBoxes.Count+"/"+game.Capacity+" stones" : "SOUL ORBIT · "+game.player.HeldBoxes.Count+"/"+game.Capacity+"\nQ to drop safely · Mouse release keeps carrying";
                 else if (b != null && game.FindPlacement(b, out _, out _, out _, out _)) hint = "RELEASE TO BUILD THE BRIDGE\nHauling " + game.player.HeldBoxes.Count + "/" + game.Capacity + " blocks";
                 else hint = "HAULING " + game.player.HeldBoxes.Count + "/" + game.Capacity + " BLOCKS\nDrag to the glowing path edge, then release";
             }
             else if (game.player.NearbyBox != null)
             {
-                var b = game.player.NearbyBox.GetComponent<SoulBridgeBlock>();
+                var b = game.player.NearbyBox.GetComponent<BridgeBlock>();
                 if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
             }
             contextText.text = hint;
@@ -347,9 +347,9 @@ namespace LightingBlocks
             var colors = b.button.colors; colors.normalColor = !done && unlocked && game.souls >= cost ? Color.white : new Color(.61f, .56f, .47f); b.button.colors = colors;
             var caption = b.button.GetComponentInChildren<Text>();
             caption.text = done ? "FULLY AWAKENED"
-                : title + "\n" + (unlocked ? "" : "LOCKED  ·  ") + SoulBridgeGame.Format(cost) + " Souls";
+                : title + "\n" + (unlocked ? "" : "LOCKED  ·  ") + GameManager.Format(cost) + " Souls";
             if (b.detail == null) return;
-            string detail = b.id == "speed" ? "Level " + game.speed + "/6 · +0.65m/s per level." : b.id == "links" ? "Level " + game.links + "/3 · Orbit " + game.Capacity + " at once. Q drops.\nEach level adds one block." : b.id == "strength" ? "Level " + game.strength + "/3. Grave Stone: I.\nAncient Obsidian: III." : b.id == "radiance" ? "Level " + game.radiance + "/5 · Range " + (9 + game.radiance * 3) + "m.\nEach level adds 3 metres." : b.id == "generator" ? "Level " + game.generator + "/8 · +" + SoulBridgeGame.Format(game.GeneratorRate) + " Souls/sec.\nNext: +" + SoulBridgeGame.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec." : "Ordinary stones build the first bridge.\nGrave Stones build either bridge.";
+            string detail = b.id == "speed" ? "Level " + game.speed + "/6 · +0.65m/s per level." : b.id == "links" ? "Level " + game.links + "/3 · Orbit " + game.Capacity + " at once. Q drops.\nEach level adds one block." : b.id == "strength" ? "Level " + game.strength + "/3. Grave Stone: I.\nAncient Obsidian: III." : b.id == "radiance" ? "Level " + game.radiance + "/5 · Range " + (9 + game.radiance * 3) + "m.\nEach level adds 3 metres." : b.id == "generator" ? "Level " + game.generator + "/8 · +" + GameManager.Format(game.GeneratorRate) + " Souls/sec.\nNext: +" + GameManager.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec." : "Ordinary stones build the first bridge.\nGrave Stones build either bridge.";
             b.detail.text = b.description + "\n\n" + detail;
         }
 

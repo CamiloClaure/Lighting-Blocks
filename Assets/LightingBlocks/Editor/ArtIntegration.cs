@@ -9,10 +9,10 @@ using UnityEngine.Rendering;
 
 namespace LightingBlocks.Editor
 {
-    public static class SoulBridgeArtIntegration
+    public static class ArtIntegration
     {
-        const string Pack="Assets/LastSparkArtPack/";
-        const string Art="Assets/LastSpark/SoulBridge/IntegratedArt";
+        const string Pack="Assets/LightingBlocks/Art/Pack/";
+        const string Art="Assets/LightingBlocks/Art/Integrated";
         static Material Mat(string name)=>AssetDatabase.LoadAssetAtPath<Material>(Pack+"Materials/M_"+name+".mat");
         static GameObject Prefab(string name)=>AssetDatabase.LoadAssetAtPath<GameObject>(Pack+"Prefabs/"+name+".prefab");
         static GameObject Instance(string name,Transform parent,Vector3 position,float scale=1,float yaw=0)
@@ -34,7 +34,7 @@ namespace LightingBlocks.Editor
             if(collider)obj.AddComponent<MeshCollider>().sharedMesh=mesh;
             return obj;
         }
-        [MenuItem("Tools/Last Spark/Apply Art and Expanded Shores")]
+        [MenuItem("Tools/Lighting Blocks/Apply Art and Expanded Shores")]
         public static void Apply()
         {
             if(EditorApplication.isPlaying)throw new Exception("Stop Play before applying art.");
@@ -44,21 +44,21 @@ namespace LightingBlocks.Editor
             Directory.CreateDirectory(Art);AssetDatabase.Refresh();
             string backup="Assets/Scenes/SampleScene_BeforeArtOrbit.unity";
             if(!File.Exists(backup))EditorSceneManager.SaveScene(scene,backup,true);
-            var game=UnityEngine.Object.FindAnyObjectByType<SoulBridgeGame>();
+            var game=UnityEngine.Object.FindAnyObjectByType<GameManager>();
             if(game==null)throw new Exception("Soul Bridge game missing.");
             var player=game.player;
             foreach(var stone in game.blockPrefabs)
             {
                 string path=AssetDatabase.GetAssetPath(stone);var root=PrefabUtility.LoadPrefabContents(path);
-                AttachStone(root,root.GetComponent<SoulBridgeBlock>().tier);
+                AttachStone(root,root.GetComponent<BridgeBlock>().tier);
                 PrefabUtility.SaveAsPrefabAsset(root,path);PrefabUtility.UnloadPrefabContents(root);
             }
-            foreach(var b in game.blocksRoot.GetComponentsInChildren<SoulBridgeBlock>(true))
+            foreach(var b in game.blocksRoot.GetComponentsInChildren<BridgeBlock>(true))
             {
-                if(b.GetComponent<SoulBridgeArt>()==null)AttachStone(b.gameObject,b.tier);
+                if(b.GetComponent<BlockArt>()==null)AttachStone(b.gameObject,b.tier);
                 b.transform.localScale=b.placed?new Vector3(2,.36f,2):new Vector3(.84f,.5f,.84f);
                 if(!b.placed){var p=b.transform.position;p.y=.26f;b.transform.position=p;}
-                b.GetComponent<SoulBridgeArt>().Refresh();
+                b.GetComponent<BlockArt>().Refresh();
             }
             var world=GameObject.Find("Soul Bridge World").transform;
             foreach(var name in new[]{"Initial Shore","The Silent Reach","Next Dawn","Immersive Shores"})
@@ -79,7 +79,7 @@ namespace LightingBlocks.Editor
             AddLabel("BUILD AT THE LIT EDGE",new Vector3(0,.035f,5.8f),terrain);
             var soul=game.soulLight.transform;soul.GetComponent<Renderer>().sharedMaterial=Mat("SoulCore");
             game.soulLight.color=new Color(1,.73f,.34f);game.soulLight.range=9;game.soulLight.intensity=3.5f;
-            var atmos=player.GetComponent<SoulBridgeAtmosphere>();if(atmos==null)atmos=player.gameObject.AddComponent<SoulBridgeAtmosphere>();atmos.soul=soul;
+            var atmos=player.GetComponent<PlayerAtmosphere>();if(atmos==null)atmos=player.gameObject.AddComponent<PlayerAtmosphere>();atmos.soul=soul;
             var halo=soul.Find("Soul halo");if(halo!=null)UnityEngine.Object.DestroyImmediate(halo.gameObject);
             var haloObject=GameObject.CreatePrimitive(PrimitiveType.Quad);haloObject.name="Soul halo";UnityEngine.Object.DestroyImmediate(haloObject.GetComponent<Collider>());haloObject.transform.SetParent(soul,false);haloObject.transform.localScale=Vector3.one*4;
             var haloMat=new Material(Shader.Find("Universal Render Pipeline/Unlit"));haloMat.name="Soul halo";haloMat.SetTexture("_BaseMap",AssetDatabase.LoadAssetAtPath<Texture2D>(Pack+"Textures/T_FX_SoulHalo.png"));haloMat.SetColor("_BaseColor",new Color(1,.74f,.35f,.35f));
@@ -98,7 +98,7 @@ namespace LightingBlocks.Editor
         {
             string type=tier==0?"Wandering":tier==1?"Grave":"Obsidian";
             foreach(Transform child in root.transform.Cast<Transform>().ToArray())UnityEngine.Object.DestroyImmediate(child.gameObject);
-            var component=root.GetComponent<SoulBridgeArt>();if(component==null)component=root.AddComponent<SoulBridgeArt>();
+            var component=root.GetComponent<BlockArt>();if(component==null)component=root.AddComponent<BlockArt>();
             var loose=Instance("BLK_"+type+"_LooseVisual",root.transform,root.transform.position);
             var placed=Instance("BLK_"+type+"_PlacedVisual",root.transform,root.transform.position);
             loose.transform.localPosition=Vector3.zero;placed.transform.localPosition=Vector3.zero;
@@ -118,12 +118,12 @@ namespace LightingBlocks.Editor
         }
         static void BuildShore(Transform parent,int index)
         {
-            // The floor and cliff geometry comes from SoulBridgeImmersion, which is the same code
+            // The floor and cliff geometry comes from WorldDressing, which is the same code
             // the game runs on Start. Keeping a second copy here is what let the baked scene and
             // Play mode drift apart, so this path only places the props the runtime does not.
-            var points=SoulBridgeLandscape.Shores[index];int count=points.Length;
-            MeshObject("ShoreFloor"+index,SoulBridgeImmersion.FloorMesh(points,index),Mat("ENV_Paving"),parent,true);
-            MeshObject("ShoreCliff"+index,SoulBridgeImmersion.CliffMesh(points,index),Mat("ENV_Cliff"),parent);
+            var points=Landscape.Shores[index];int count=points.Length;
+            MeshObject("ShoreFloor"+index,WorldDressing.FloorMesh(points,index),Mat("ENV_Paving"),parent,true);
+            MeshObject("ShoreCliff"+index,WorldDressing.CliffMesh(points,index),Mat("ENV_Cliff"),parent);
             for(int i=0;i<count;i++)
             {
                 Vector2 a=points[i],b=points[(i+1)%count];
@@ -137,13 +137,13 @@ namespace LightingBlocks.Editor
             var random=new System.Random(41);
             for(int shore=0;shore<3;shore++)
             {
-                var poly=SoulBridgeLandscape.Shores[shore];float minZ=poly.Min(p=>p.y),maxZ=poly.Max(p=>p.y);
+                var poly=Landscape.Shores[shore];float minZ=poly.Min(p=>p.y),maxZ=poly.Max(p=>p.y);
                 for(int side=-1;side<=1;side+=2)
                 {
                     for(float z=minZ+4;z<maxZ-2;z+=5.5f)
                     {
                         float x=side*(13+(float)random.NextDouble()*3);
-                        if(!SoulBridgeLandscape.Inside(new Vector2(x,z),poly))continue;
+                        if(!Landscape.Inside(new Vector2(x,z),poly))continue;
                         Instance("ENV_BrokenColumn",parent,new Vector3(x,0,z),.8f+(float)random.NextDouble()*.6f);
                         Instance("ENV_LowWall",parent,new Vector3(x-side*.8f,0,z+1.8f),1,90);
                         Instance("ENV_RubbleCluster",parent,new Vector3(x-side*2,0,z-1.2f),.8f,(float)random.NextDouble()*360);

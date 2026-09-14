@@ -47,18 +47,18 @@ namespace LightingBlocks
 
         void Update()
         {
-            if (!readInput || SoulBridgeHUD.GameplayBlocked) return;
+            if (!readInput || GameHUD.GameplayBlocked) return;
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
             if (!Application.isFocused) { Release(); return; }
             UpdateNearby();
             if (keyboard != null && keyboard.qKey.wasPressedThisFrame) {
                 if (Orbiting) DropOrbit(true); else if(HeldBox!=null) Release();
-                else if(SoulBridgeGame.Instance!=null) SoulBridgeGame.Instance.Notify("NO STONES TO DROP\nClick near a loose stone. Soul Links unlocks floating carry.",false);
+                else if(GameManager.Instance!=null) GameManager.Instance.Notify("NO STONES TO DROP\nClick near a loose stone. Soul Links unlocks floating carry.",false);
             }
             else if (Orbiting) { /* Floating carry persists until Q, a menu or focus loss. */ }
             else if (mouse == null || !mouse.leftButton.isPressed) Release();
-            else if (mouse.leftButton.wasPressedThisFrame && !SoulBridgeHUD.PointerOverUI()) TryGrab(NearbyBox);
+            else if (mouse.leftButton.wasPressedThisFrame && !GameHUD.PointerOverUI()) TryGrab(NearbyBox);
             Vector2 input = keyboard == null ? Vector2.zero : new Vector2(
                 (keyboard.dKey.isPressed ? 1 : 0) - (keyboard.aKey.isPressed ? 1 : 0),
                 (keyboard.wKey.isPressed ? 1 : 0) - (keyboard.sKey.isPressed ? 1 : 0));
@@ -99,9 +99,9 @@ namespace LightingBlocks
 
         public bool TryGrab(PullableBox box)
         {
-            if (SoulBridgeHUD.GameplayBlocked) return false;
-            var soul = SoulBridgeGame.Instance;
-            var stone = box != null ? box.GetComponent<SoulBridgeBlock>() : null;
+            if (GameHUD.GameplayBlocked) return false;
+            var soul = GameManager.Instance;
+            var stone = box != null ? box.GetComponent<BridgeBlock>() : null;
             if (stone != null && !stone.CanLift)
             {
                 soul.Notify(stone.placed ? "BRIDGE BLOCK ANCHORED\nConnected blocks become the walkable bridge. Grab a loose block to extend it." : stone.Title.ToUpper() + " IS TOO HEAVY\nRequires Strength " + stone.RequiredStrength + "; yours is " + soul.strength + ". Upgrade in Skills [Tab].", false);
@@ -141,19 +141,19 @@ namespace LightingBlocks
             foreach (var box in released)
             {
                 box.Release();
-                var stone = box.GetComponent<SoulBridgeBlock>(); if (stone != null) stone.Released();
+                var stone = box.GetComponent<BridgeBlock>(); if (stone != null) stone.Released();
             }
         }
 
         public void StepMovement(Vector2 input, float deltaTime)
         {
-            if (SoulBridgeHUD.GameplayBlocked || deltaTime <= 0) return;
+            if (GameHUD.GameplayBlocked || deltaTime <= 0) return;
             input = Vector2.ClampMagnitude(input, 1);
             Vector3 forward = viewCamera != null ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized : Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, forward);
             Vector3 motion = (forward * input.y + right * input.x) * (HeldBox != null ? pullSpeed : moveSpeed) * deltaTime;
             Vector3 before = transform.position;
-            var soul = SoulBridgeGame.Instance;
+            var soul = GameManager.Instance;
             if (soul != null)
             {
                 // Stop at an unsupported edge, including while hauling a group.
@@ -239,9 +239,9 @@ namespace LightingBlocks
             Orbiting=true; pickupPositions.Clear();
             foreach(var b in HeldBoxes) { pickupPositions[b]=b.transform.position; b.Shape.enabled=false; }
             UpdateOrbit(0);
-            SoulBridgeGame.Instance.Notify("SOUL ORBIT · "+HeldBoxes.Count+" / "+SoulBridgeGame.Instance.Capacity+"\nMouse released safely · WASD to carry · Q to drop or build.",false);
+            GameManager.Instance.Notify("SOUL ORBIT · "+HeldBoxes.Count+" / "+GameManager.Instance.Capacity+"\nMouse released safely · WASD to carry · Q to drop or build.",false);
         }
-        public Vector3 SavedBlockPosition(SoulBridgeBlock block)
+        public Vector3 SavedBlockPosition(BridgeBlock block)
         {
             return pickupPositions.TryGetValue(block.Box,out var grounded) ? grounded : block.transform.position;
         }
@@ -262,7 +262,7 @@ namespace LightingBlocks
             for(int ring=1;ring<=10;ring++) for(int i=0;i<16;i++)
             {
                 float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=.26f;
-                var game=SoulBridgeGame.Instance;
+                var game=GameManager.Instance;
                 if(!game.CanStand(candidate) || !game.CanStand(candidate+new Vector3(.43f,0,.43f)) || !game.CanStand(candidate-new Vector3(.43f,0,.43f)))continue;
                 bool occupied=false;
                 foreach(var hit in Physics.OverlapBox(candidate,new Vector3(.44f,.23f,.44f),Quaternion.identity,~0,QueryTriggerInteraction.Ignore))
@@ -275,11 +275,11 @@ namespace LightingBlocks
         public void DropOrbit(bool build)
         {
             if(!Orbiting)return;
-            var game=SoulBridgeGame.Instance;
+            var game=GameManager.Instance;
             int built=0,dropped=0;
             foreach(var box in HeldBoxes.ToArray())
             {
-                var block=box.GetComponent<SoulBridgeBlock>();
+                var block=box.GetComponent<BridgeBlock>();
                 bool place=build && game.FindOrbitPlacement(block,out _);
                 Vector3 target;
                 if(place)game.FindOrbitPlacement(block,out target);
@@ -291,7 +291,7 @@ namespace LightingBlocks
             }
             HeldBox=HeldBoxes.Count>0?HeldBoxes[0]:null; Orbiting=HeldBox!=null;
             if(!Orbiting)pickupPositions.Clear();
-            game.Notify(built>0?"BRIDGE EXTENDED · "+built+" STONES\n+"+SoulBridgeGame.Format(game.Rate)+" Souls/sec total · "+dropped+" dropped nearby."
+            game.Notify(built>0?"BRIDGE EXTENDED · "+built+" STONES\n+"+GameManager.Format(game.Rate)+" Souls/sec total · "+dropped+" dropped nearby."
                 : Orbiting?"DROP AREA BLOCKED\nMove to an open shore and press Q. Remaining stones stay safe in orbit."
                 :"STONES GROUNDED\n"+dropped+" stones dropped safely nearby. Click to gather again.",false);
             game.Save();

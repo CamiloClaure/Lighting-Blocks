@@ -7,13 +7,13 @@ namespace LightingBlocks.Editor
     // Game view zoom is separate from Canvas scaling. A QHD render at 1x can
     // crop a correctly laid out Canvas when the editor viewport is smaller.
     [InitializeOnLoad]
-    public static class LastSparkPreviewFit
+    public static class GameViewFit
     {
         struct SizeStamp { public Rect window; public Vector2 target; }
         static readonly Dictionary<EditorWindow, SizeStamp> sizes = new Dictionary<EditorWindow, SizeStamp>();
         static double nextCheck;
 
-        static LastSparkPreviewFit()
+        static GameViewFit()
         {
             EditorApplication.update += Update;
             EditorApplication.playModeStateChanged += state => sizes.Clear();
@@ -21,7 +21,7 @@ namespace LightingBlocks.Editor
 
         static void Update()
         {
-            if (!EditorApplication.isPlaying || SoulBridgeHUD.Current == null || EditorApplication.timeSinceStartup < nextCheck) return;
+            if (!EditorApplication.isPlaying || GameHUD.Current == null || EditorApplication.timeSinceStartup < nextCheck) return;
             nextCheck = EditorApplication.timeSinceStartup + .25;
             foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>())
             {
@@ -35,7 +35,7 @@ namespace LightingBlocks.Editor
             }
         }
 
-        [MenuItem("Tools/Last Spark/Fit Game View")]
+        [MenuItem("Tools/Lighting Blocks/Fit Game View")]
         public static void FitAll()
         {
             foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>())
