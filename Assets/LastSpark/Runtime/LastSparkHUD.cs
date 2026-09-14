@@ -172,9 +172,12 @@ namespace LightingBlocks
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var root = new GameObject("Last Spark Canvas UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             root.transform.SetParent(transform, false); canvas = root.GetComponent<RectTransform>();
-            root.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay; root.GetComponent<Canvas>().sortingOrder = 100;
+            var canvasComponent = root.GetComponent<Canvas>();
+            canvasComponent.renderMode = RenderMode.ScreenSpaceOverlay; canvasComponent.sortingOrder = 100;
+            // Whole-pixel glyph quads and a reference resolution near the real window keep text sharp.
+            canvasComponent.pixelPerfect = true;
             var scaler = root.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1600, 1000); scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+            scaler.referenceResolution = new Vector2(1440, 900); scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
             eventSystem = FindAnyObjectByType<EventSystem>();
             if (eventSystem == null)
             {
@@ -191,10 +194,10 @@ namespace LightingBlocks
             var context = Panel("Interaction Hint", playRoot.transform, 0, 0, 540, 84, Ink);
             context.anchorMin = context.anchorMax = new Vector2(.5f, 0); context.pivot = new Vector2(.5f, 0); context.anchoredPosition = new Vector2(0, 24);
             contextText = Label("Interaction", context, "", 18, 12, 504, 60, 19, White, TextAnchor.MiddleCenter);
-            var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 335, 158, Ink); Bottom(calls, 22, 24, true);
-            Label("Call Heading", calls, "CALL FRAGMENTS", 16, 12, 300, 24, 17, Mint);
-            AddPurchase("star", calls, 14, 44, 307, 46, null, "");
-            AddPurchase("life", calls, 14, 99, 307, 46, null, "");
+            var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 360, 170, Ink); Bottom(calls, 22, 24, true);
+            Label("Call Heading", calls, "CALL FRAGMENTS", 16, 12, 328, 24, 17, Mint);
+            AddPurchase("star", calls, 14, 42, 332, 54, null, "");
+            AddPurchase("life", calls, 14, 102, 332, 54, null, "");
 
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
@@ -203,18 +206,16 @@ namespace LightingBlocks
             var wallet = Panel("Essence Counter", canvas, 22, 20, 350, 132, Ink);
             Label("Essence Label", wallet, "ESSENCE", 20, 12, 310, 23, 17, Mint);
             EssenceText = Label("Essence Amount", wallet, "0.0", 20, 37, 310, 52, 40, Mint);
-            EssenceText.resizeTextForBestFit = true; EssenceText.resizeTextMinSize = 22; EssenceText.resizeTextMaxSize = 40;
             incomeText = Label("Essence Income", wallet, "+0.0 / sec", 20, 94, 310, 26, 18, White);
-            navigation = Rect("Quick Menu", canvas, 0, 0, 440, 58).gameObject;
+            navigation = Rect("Quick Menu", canvas, 0, 0, 476, 58).gameObject;
             var nav = navigation.GetComponent<RectTransform>(); nav.anchorMin = nav.anchorMax = new Vector2(1, 1); nav.pivot = new Vector2(1, 1); nav.anchoredPosition = new Vector2(-22, -20);
             SkillsButton = Button("Skill Tree Shortcut", nav, "SKILL TREE  [TAB]", 0, 0, 202, 58, ToggleSkills);
-            Button("Memories Shortcut", nav, "MEMORIES", 212, 0, 116, 58, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories));
-            Button("Pause Shortcut", nav, "ESC", 338, 0, 102, 58, ShowPause);
+            Button("Memories Shortcut", nav, "MEMORIES", 212, 0, 152, 58, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories));
+            Button("Pause Shortcut", nav, "ESC", 374, 0, 102, 58, ShowPause);
             var feedback = Panel("Action Feedback", canvas, 0, 0, 620, 108, Ink);
             feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -18);
             feedback.GetComponent<Image>().raycastTarget = false; feedbackPanel = feedback.gameObject;
-            noticeText = Label("Action Feedback Text", feedback, "", 16, 10, 588, 88, 20, Mint, TextAnchor.MiddleCenter);
-            noticeText.resizeTextForBestFit = true; noticeText.resizeTextMinSize = 16; noticeText.resizeTextMaxSize = 20;
+            noticeText = Label("Action Feedback Text", feedback, "", 16, 10, 588, 88, 19, Mint, TextAnchor.MiddleCenter);
         }
         void BuildTitle()
         {
@@ -273,14 +274,14 @@ namespace LightingBlocks
             SkillCard(panel, "bridge", "THE STARBRIDGE", "Restore the path to the second island.", 389, 375);
             SkillCard(panel, "ending", "THE FINAL SEED", "Awaken the last memory and complete this chapter.", 754, 375);
             Label("Skill Route", panel, "FIRST LIGHT  →  GROW YOUR CONSTELLATION  →  RESTORE THE BRIDGE  →  AWAKEN THE SEED", 26, 620, 1068, 36, 16, Mint, TextAnchor.MiddleCenter);
-            AddPurchase("star", panel, 349, 667, 422, 43, null, "");
+            AddPurchase("star", panel, 349, 664, 422, 52, null, "");
         }
         void SkillCard(Transform parent, string id, string name, string description, float x, float y)
         {
             var card = Panel("Power - " + id, parent, x, y, 342, 224, Card);
             Label("Power Name", card, name, 17, 16, 308, 31, 23, Mint);
             var detail = Label("Power Requirements", card, "", 17, 54, 308, 107, 17, White);
-            var b = AddPurchase(id, card, 15, 169, 312, 43, detail, description); SkillButtons[id] = b;
+            var b = AddPurchase(id, card, 15, 166, 312, 52, detail, description); SkillButtons[id] = b;
         }
         void BuildMemories()
         {
@@ -362,8 +363,8 @@ namespace LightingBlocks
             colors.normalColor = !done && unlocked && game.essence >= price ? Color.white : new Color(.48f, .58f, .64f);
             b.button.colors = colors;
             var caption = b.button.GetComponentInChildren<Text>();
-            caption.resizeTextForBestFit = true; caption.resizeTextMinSize = 14; caption.resizeTextMaxSize = 18;
-            caption.text = done ? "AWAKENED" : (!unlocked ? "LOCKED · " : "") + name + "  ·  " + LastSparkGame.Format(price) + " Essence";
+            caption.text = done ? "AWAKENED"
+                : name + "\n" + (unlocked ? "" : "LOCKED  ·  ") + LastSparkGame.Format(price) + " Essence";
             if (b.detail != null) b.detail.text = b.description + "\n\n" + requirement;
         }
 

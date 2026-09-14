@@ -118,25 +118,19 @@ namespace LightingBlocks.Editor
         }
         static void BuildShore(Transform parent,int index)
         {
+            // The floor and cliff geometry comes from SoulBridgeImmersion, which is the same code
+            // the game runs on Start. Keeping a second copy here is what let the baked scene and
+            // Play mode drift apart, so this path only places the props the runtime does not.
             var points=SoulBridgeLandscape.Shores[index];int count=points.Length;
-            var vertices=new List<Vector3>();var uv=new List<Vector2>();var triangles=new List<int>();
-            Vector2 centre=Vector2.zero;foreach(var p in points)centre+=p;centre/=count;
-            vertices.Add(new Vector3(centre.x,0,centre.y));uv.Add(centre/8);
-            foreach(var p in points){vertices.Add(new Vector3(p.x,0,p.y));uv.Add(p/8);}
-            for(int i=0;i<count;i++)triangles.AddRange(new[]{0,(i+1)%count+1,i+1});
-            var top=new Mesh{name="Shore "+index};top.SetVertices(vertices);top.SetUVs(0,uv);top.SetTriangles(triangles,0);top.RecalculateNormals();top.RecalculateBounds();
-            MeshObject("ShoreFloor"+index,top,Mat("ENV_Paving"),parent,true);
-            vertices.Clear();uv.Clear();triangles.Clear();
+            MeshObject("ShoreFloor"+index,SoulBridgeImmersion.FloorMesh(points,index),Mat("ENV_Paving"),parent,true);
+            MeshObject("ShoreCliff"+index,SoulBridgeImmersion.CliffMesh(points,index),Mat("ENV_Cliff"),parent);
             for(int i=0;i<count;i++)
             {
-                Vector2 a=points[i],b=points[(i+1)%count];int n=vertices.Count;
-                vertices.AddRange(new[]{new Vector3(a.x,0,a.y),new Vector3(b.x,0,b.y),new Vector3(b.x*.86f,-5-(i%3),centre.y+(b.y-centre.y)*.86f),new Vector3(a.x*.86f,-5-(i%3),centre.y+(a.y-centre.y)*.86f)});
-                float span=Vector2.Distance(a,b)/6;uv.AddRange(new[]{new Vector2(0,1),new Vector2(span,1),new Vector2(span,0),new Vector2(0,0)});triangles.AddRange(new[]{n,n+1,n+2,n,n+2,n+3});
+                Vector2 a=points[i],b=points[(i+1)%count];
                 // Cliff blocks break up the straight silhouette, only below the floor.
                 int segments=Mathf.CeilToInt(Vector2.Distance(a,b)/3);
                 for(int k=0;k<segments;k++){var p=Vector2.Lerp(a,b,(k+.5f)/segments);Instance("ENV_CliffChunk",parent,new Vector3(p.x,-2.1f-(k%3)*.6f,p.y),1.2f,Mathf.Atan2(b.y-a.y,b.x-a.x)*Mathf.Rad2Deg);}
             }
-            var cliff=new Mesh{name="Cliff "+index};cliff.SetVertices(vertices);cliff.SetUVs(0,uv);cliff.SetTriangles(triangles,0);cliff.RecalculateNormals();cliff.RecalculateBounds();MeshObject("ShoreCliff"+index,cliff,Mat("ENV_Cliff"),parent);
         }
         static void Dress(Transform parent)
         {

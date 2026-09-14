@@ -67,13 +67,40 @@ namespace LightingBlocks.Editor
             Check(Physics.Raycast(new Vector3(17,3,-8),Vector3.down,5),"Expanded terrain has physical collision");
             Check(!g.CanStand(new Vector3(0,0,40)) && !Physics.Raycast(new Vector3(0,2,40),Vector3.down,4),"Second rift remains genuinely empty");
             Check(g.soulLight.color.r>g.soulLight.color.b && RenderSettings.fog,"Amber soul and distance atmosphere are configured");
-            Check(g.cameraRig.distance==27 && g.soulLight.range==9,"Wider camera and initial player light are configured");
+            Check(g.cameraRig.distance==22 && g.soulLight.range==9,"Immersive camera distance and initial player light are configured");
+            var deeps=GameObject.Find("Immersive Deeps");
+            Check(deeps!=null && deeps.GetComponentsInChildren<Collider>().Length==0,"Runtime deeps fill the frame without adding collision");
+            Check(deeps.transform.Find("Deep Valley")!=null && SoulBridgeImmersion.Height(0,-10)<-3 && SoulBridgeImmersion.Height(0,14)<-14,"The valley stays under the courts and drops away inside the rifts");
+            Check(deeps.GetComponentsInChildren<Transform>().Count(t=>t.name.StartsWith("Deep ruin"))>40,"Distant ruins dress the valley");
+            Check(deeps.GetComponentsInChildren<Transform>().Where(t=>t.name.StartsWith("Deep ruin")).All(t=>SoulBridgeLandscape.Shores.All(shore=>!SoulBridgeLandscape.Inside(new Vector2(t.position.x,t.position.z),shore))),"No scenery stands inside a playable court");
+            Check(!UnityEngine.Object.FindObjectsByType<TextMesh>().Any(),"Blurry world TextMesh labels are retired");
+            Check(hud.WorldLabelRoot.GetComponentsInChildren<UnityEngine.UI.Text>().Length>=5,"World labels are redrawn by the crisp canvas");
+            Check(hud.GetComponentInChildren<Canvas>().pixelPerfect,"HUD canvas snaps text to whole pixels");
+            var court=SoulBridgeImmersion.CourtBounds();
+            Check(court.size.x>90 && court.size.z>160,"Playable ground spans far more than one screenful");
+            Check(g.CanStand(new Vector3(40,0,-30)) && g.CanStand(new Vector3(44,0,28)) && g.CanStand(new Vector3(0,0,100)),"The enlarged courts are walkable to their far corners");
+            Check(Physics.Raycast(new Vector3(40,3,-30),Vector3.down,5) && Physics.Raycast(new Vector3(0,3,100),Vector3.down,5),"Enlarged courts carry their own collision");
+            Check(g.cameraRig.minimumFocus.x<court.min.x+6 && g.cameraRig.bounds.y>court.max.z-6,"The camera can be dragged to every edge of the courts");
+            var floor0=GameObject.Find("ShoreFloor0");
+            var floorMesh=floor0.GetComponent<MeshFilter>().sharedMesh;
+            Check(floorMesh.tangents.Length==floorMesh.vertexCount && floorMesh.tangents.Any(t=>t.sqrMagnitude>.5f),"Court meshes carry the tangents their normal maps need");
+            Check(deeps.GetComponentsInChildren<Transform>().Count(t=>t.name.StartsWith("Court ruin"))>40,"The widened courts are dressed rather than left bare");
             hud.BeginJourney(); string pristine=g.ExportSave();
+            hud.ToggleSkills();
+            var tree=hud.GetComponentInChildren<SoulBridgeSkillTree>(true);
+            Check(tree!=null && tree.transform.Find("Power strength")!=null && tree.transform.Find("Branch links to strength")!=null,"The skill screen is an actual tree of powers and branches");
+            var trunk=(RectTransform)tree.transform.Find("Branch root to speed");
+            var dormant=(RectTransform)tree.transform.Find("Branch speed to links");
+            for(int i=0;i<90;i++) tree.Refresh();
+            Check(trunk.sizeDelta.x>40 && dormant.sizeDelta.x<=2.5f,"Branches grow only out of powers that are already awake");
+            hud.HandleEscape();
             var first=g.Blocks.First(b=>b.id=="home-0");
             Check(p.TryGrab(first.Box),"Starting block can be grabbed");
             for(int i=0;i<160;i++)p.StepMovement(Vector2.up,.02f);
             Check(p.transform.position.z<7,"Player stops at unsupported shore while projecting the held block");
             p.Release(); Check(first.placed && first.Connected,"Physical WASD dragging and release creates a walkable bridge tile");
+            var step=first.transform.Find("Step light");
+            Check(step!=null && step.gameObject.activeSelf && step.GetComponent<Light>().color.b>.5f,"A placed bridge step lights itself in neon");
             Check(g.ConnectedCount==1 && Math.Abs(g.PathRate-1)<.001 && g.souls==25,"First connected block starts Souls income and grants one discovery reward");
             double before=g.souls; Check(!g.TryPlace(first)&&g.souls==before,"An anchored tile cannot repeat its placement reward");
             for(int i=0;i<20;i++)p.StepMovement(Vector2.up,.02f);
@@ -83,9 +110,37 @@ namespace LightingBlocks.Editor
             Place(g,second,0,0,1); Check(g.PathRate>2,"Each consecutive block increases Souls generation");
             for(int i=2;i<7;i++)Place(g,g.Blocks.First(b=>b.id=="home-"+i),0,0,i);
             Check(g.Bridges[0] && g.CanStand(new Vector3(0,0,14)) && g.CanStand(new Vector3(0,0,22)),"Seven tiles form a connected walkable path to the second shore");
+            Check(g.Blocks.Where(b=>b.placed).All(b=>b.transform.Find("Step light")!=null) && SoulBridgeImmersion.StepColor(0,0)!=SoulBridgeImmersion.StepColor(1,SoulBridgeGame.Rows-1),"Every step of the path carries a light along a neon ramp");
             Check(g.soulLight.transform.IsChildOf(p.transform),"The lighting soul follows the player");
-            Check(UnityEngine.Object.FindObjectsByType<Light>().Where(l=>l.type==LightType.Directional).All(l=>l.intensity<.1f),"Ambient scene lighting stays dark enough for local illumination to matter");
+            Check(UnityEngine.Object.FindObjectsByType<Light>().Where(l=>l.type==LightType.Directional).All(l=>l.intensity<.2f),"Ambient scene lighting stays dark enough for local illumination to matter");
             Check(!g.CanStand(new Vector3(4,0,14)),"Empty cells beside the bridge remain unsafe");
+            var tile=g.BlockUnder(new Vector3(0,0,14));
+            Check(tile!=null && tile.placed && g.BlockUnder(new Vector3(4,0,14))==null,"BlockUnder names the tile holding a point up and nothing beside it");
+            var footlights=p.GetComponent<SoulBridgeFootlights>();
+            Check(footlights!=null,"Footlights ride along with the player");
+            // Walk far enough for a couple of strides but not off the far end of the bridge: the
+            // flare is meant to be handed back the moment a foot lands on plain ground again.
+            // The stride accumulator carries over from earlier movement in this run, so which tile
+            // the last step lands on is not predictable. Take the foot position from the event.
+            int strides=0; Vector3 lastFoot=Vector3.zero;
+            Action<Vector3> tally=foot=>{strides++;lastFoot=foot;}; p.Stepped+=tally;
+            Teleport(new Vector3(0,.025f,8.2f));
+            for(int i=0;i<40;i++)p.StepMovement(Vector2.up,.02f);
+            p.Stepped-=tally;
+            Check(strides>0,"Walking raises a footstep for every stride of real travel");
+            var landed=g.BlockUnder(lastFoot);
+            Check(landed!=null,"The last stride of the measured walk lands on a bridge tile");
+            var lamps=UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Include).Where(l=>l.name=="Footfall lamp").ToArray();
+            footlights.SendMessage("Update");
+            Check(lamps.Length>0 && lamps.Length<=8 && lamps.Any(l=>l.intensity>0 && l.transform.parent.gameObject.activeSelf),"Each step lights the ground from a fixed pool of footfalls");
+            var flare=landed.transform.Find("Step light").GetComponent<Light>();
+            var surged=UnityEngine.Object.FindObjectsByType<Light>(FindObjectsInactive.Include).Where(l=>l.name=="Step light"&&l.intensity>4.4f).ToArray();
+            Check(flare.intensity>4.4f && surged.Length==1,"Stepping on a bridge tile surges that tile's light and no other (landed="
+                +landed.id+", its light="+flare.intensity.ToString("0.00")+", surged="+surged.Length+")");
+            Teleport(new Vector3(0,.025f,-6));
+            for(int i=0;i<60;i++)p.StepMovement(Vector2.up,.02f);
+            footlights.SendMessage("Update");
+            Check(Math.Abs(flare.intensity-4.4f)<.001f,"Walking off a tile hands its light back unchanged");
             before=g.souls; hud.ShowPause(); g.Advance(100); Check(g.souls==before && Time.timeScale==0,"Pause freezes Souls generation"); hud.HandleEscape();
             WaitForCost(g,"speed"); float oldSpeed=p.pullSpeed; Check(g.Purchase("speed") && p.pullSpeed>oldSpeed,"Souls buy faster dragging");
             WaitForCost(g,"generator"); double oldRate=g.Rate; Check(g.Purchase("generator")&&Math.Abs(g.GeneratorRate-3)<.001&&g.Rate>oldRate,"Soul Well adds a separate income source");
@@ -167,8 +222,25 @@ namespace LightingBlocks.Editor
                 report.AppendLine("PASS: "+view+" UI fits the rendered screen");
                 foreach(var label in hud.GetComponentsInChildren<UnityEngine.UI.Text>()) if(label.name=="Power Requirements"&&label.preferredHeight>label.rectTransform.rect.height+.5f) {report.AppendLine("FAIL: clipped "+label.transform.parent.name);Finish();yield break;}
                 var image=ScreenCapture.CaptureScreenshotAsTexture();File.WriteAllBytes("Library/SoulBridge-"+view+".png",image.EncodeToPNG());UnityEngine.Object.Destroy(image);
+                if(view==SoulBridgeHUD.ScreenView.Playing) foreach(var pull in new[]{0f,60f,150f}) World("World"+pull,pull);
             }
             Finish();
+        }
+        // CaptureScreenshotAsTexture reads back an unresolved buffer on this pipeline - every
+        // screenshot comes out flat cyan, before and after any of these changes - so the world is
+        // also rendered straight into a RenderTexture, which resolves correctly.
+        static void World(string name,float pullBack)
+        {
+            var camera=WorldLabels.View(); if(camera==null) {report.AppendLine("FAIL: no camera for "+name);return;}
+            var t=camera.transform; var saved=t.position; t.position=saved-t.forward*pullBack;
+            var target=new RenderTexture(1600,900,24,RenderTextureFormat.ARGB32){antiAliasing=1};
+            var prior=camera.targetTexture; camera.targetTexture=target; camera.Render(); camera.targetTexture=prior;
+            var active=RenderTexture.active; RenderTexture.active=target;
+            var image=new Texture2D(target.width,target.height,TextureFormat.RGB24,false);
+            image.ReadPixels(new UnityEngine.Rect(0,0,target.width,target.height),0,0); image.Apply();
+            RenderTexture.active=active; t.position=saved;
+            File.WriteAllBytes("Library/SoulBridge-"+name+".png",image.EncodeToPNG());
+            UnityEngine.Object.Destroy(image); target.Release(); UnityEngine.Object.Destroy(target);
         }
     }
 }

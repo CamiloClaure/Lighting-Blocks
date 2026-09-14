@@ -49,7 +49,7 @@ namespace LightingBlocks
 #if UNITY_EDITOR
             if (File.Exists(Path.Combine(Application.dataPath, "../Library/SoulBridge.test-active"))) persistenceEnabled = false;
 #endif
-            audioSource = gameObject.AddComponent<AudioSource>(); audioSource.volume = .14f;
+            audioSource = gameObject.AddComponent<AudioSource>(); audioSource.volume = .18f;
             chime = AudioClip.Create("Placeholder soul connection", 11025, 1, 44100, false);
             float[] wave = new float[11025];
             for (int i = 0; i < wave.Length; i++) { float t = i / 44100f; wave[i] = Mathf.Sin(t * 880 * Mathf.PI * 2) * Mathf.Exp(-20 * t) * .4f; }
@@ -67,7 +67,8 @@ namespace LightingBlocks
             m.SetColor("_BaseColor", new Color(.32f, .22f, .08f)); ghostRenderer.material = m;
             if (string.IsNullOrEmpty(Notice)) Notify("BUILD A PATH THROUGH THE DARK\nHold left click near a block, drag it to the glowing edge, then release.", false);
             cameraRig.CenterOnPlayer();
-            GameAudio.PlayMusic("music_soul_bridge");
+            SoulBridgeImmersion.Build(this);
+            GameAudio.PlayMusic("IntroNoGusta");
         }
         void Update()
         {
@@ -246,9 +247,10 @@ namespace LightingBlocks
             foreach (var b in Blocks)
             {
                 var property = new MaterialPropertyBlock(); b.GetComponent<Renderer>().GetPropertyBlock(property);
-                property.SetColor("_EmissionColor", b.Connected ? new Color(.38f, .22f, .06f) : Color.black);
+                property.SetColor("_EmissionColor", b.Connected ? SoulBridgeImmersion.StepColor(b.gap, b.row) : Color.black);
                 b.GetComponent<Renderer>().SetPropertyBlock(property);
                 var art=b.GetComponent<SoulBridgeArt>(); if(art!=null)art.Refresh();
+                SoulBridgeImmersion.StepLight(b);
             }
             if (nextAreaGlow != null) nextAreaGlow.SetActive(Bridges[1]);
         }
@@ -261,9 +263,13 @@ namespace LightingBlocks
         public bool CanStand(Vector3 point)
         {
             // Only island ground and bridge tiles support the player. Loose blocks never bridge the void.
-            bool island = SoulBridgeLandscape.Supports(point);
-            if (island) return true;
-            return Blocks.Any(b => b.placed && b.Connected && Math.Abs(point.x - b.transform.position.x) <= .99f && Math.Abs(point.z - b.transform.position.z) <= 1.02f);
+            return SoulBridgeLandscape.Supports(point) || BlockUnder(point) != null;
+        }
+        // The connected bridge tile holding up this point, or null. Support and "what am I standing
+        // on" are the same question, so they share one box test rather than two copies of it.
+        public SoulBridgeBlock BlockUnder(Vector3 point)
+        {
+            return Blocks.FirstOrDefault(b => b.placed && b.Connected && Math.Abs(point.x - b.transform.position.x) <= .99f && Math.Abs(point.z - b.transform.position.z) <= 1.02f);
         }
         public bool CanDragAt(Vector3 point)
         {
@@ -326,11 +332,27 @@ namespace LightingBlocks
             cameraRig.CenterOnPlayer(); return true;
         }
         static bool Finite(double n) => !double.IsNaN(n) && !double.IsInfinity(n);
-        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 30 && p.y >= -5 && p.y <= 10 && p.z >= -30 && p.z <= 85;
+        // Bounds a saved position must fall inside. They follow the courts, which grew, so a stone
+        // dropped at the far edge is still restored instead of failing the whole save.
+        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 60 && p.y >= -5 && p.y <= 10 && p.z >= -70 && p.z <= 120;
         public bool Save()
         {
             if (!initialized || !persistenceEnabled) return false;
-            try { Directory.CreateDirectory(Path.GetDirectoryName(SavePath)); File.WriteAllText(SavePath + ".tmp", ExportSave()); if (File.Exists(SavePath)) File.Replace(SavePath + ".tmp", SavePath, SavePath + ".bak"); else File.Move(SavePath + ".tmp", SavePath); return true; }
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SavePath));
+                File.WriteAllText(SavePath + ".tmp", ExportSave());
+                if (!File.Exists(SavePath)) { File.Move(SavePath + ".tmp", SavePath); return true; }
+                try { File.Replace(SavePath + ".tmp", SavePath, SavePath + ".bak"); }
+                catch (Exception swap)
+                {
+                    // File.Replace is unsupported on some volumes. Keep the backup by hand instead of losing the save.
+                    Debug.LogWarning(swap.Message);
+                    File.Copy(SavePath, SavePath + ".bak", true);
+                    File.Delete(SavePath); File.Move(SavePath + ".tmp", SavePath);
+                }
+                return true;
+            }
             catch (Exception e) { Debug.LogWarning(e.Message); Notify("SAVE FAILED\nCheck the save folder and available disk space.", false); return false; }
         }
         public void Load()

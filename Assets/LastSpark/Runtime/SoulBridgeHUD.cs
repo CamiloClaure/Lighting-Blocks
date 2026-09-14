@@ -27,6 +27,9 @@ namespace LightingBlocks
         public Button SfxButton { get; private set; }
         public GameObject ControlsPanel => controlsPanel;
         public readonly Dictionary<string, Button> SkillButtons = new Dictionary<string, Button>();
+        // The immersion pass hangs crisp screen-space world labels off the gameplay HUD.
+        public Transform WorldLabelRoot { get; private set; }
+        public Font LabelFont => font;
         Font font;
         RectTransform canvas;
         GameObject playRoot, navigation, shade, titlePanel, pausePanel, controlsPanel, skillsPanel, memoriesPanel, confirmPanel, feedbackPanel;
@@ -34,6 +37,7 @@ namespace LightingBlocks
         Button startButton, newButton, resumeButton, controlsBack, skillsClose, memoriesClose;
         ScreenView controlsReturn = ScreenView.Title, confirmReturn = ScreenView.Title;
         readonly List<PurchaseBinding> purchases = new List<PurchaseBinding>();
+        SoulBridgeSkillTree skillTree;
         readonly List<RaycastResult> raycasts = new List<RaycastResult>();
         PointerEventData pointer;
         EventSystem eventSystem;
@@ -171,9 +175,13 @@ namespace LightingBlocks
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var root = new GameObject("Last Spark Canvas UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             root.transform.SetParent(transform, false); canvas = root.GetComponent<RectTransform>();
-            root.GetComponent<Canvas>().renderMode = RenderMode.ScreenSpaceOverlay; root.GetComponent<Canvas>().sortingOrder = 100;
+            var canvasComponent = root.GetComponent<Canvas>();
+            canvasComponent.renderMode = RenderMode.ScreenSpaceOverlay; canvasComponent.sortingOrder = 100;
+            // Fractional canvas scales resample every glyph. Whole-pixel quads plus a reference
+            // resolution close to the real window keep the text sharp instead of smeared.
+            canvasComponent.pixelPerfect = true;
             var scaler = root.GetComponent<CanvasScaler>(); scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(1600, 1000); scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
+            scaler.referenceResolution = new Vector2(1440, 900); scaler.screenMatchMode = CanvasScaler.ScreenMatchMode.Expand;
             eventSystem = FindAnyObjectByType<EventSystem>();
             if (eventSystem == null)
             {
@@ -183,6 +191,7 @@ namespace LightingBlocks
             }
             pointer = new PointerEventData(eventSystem);
             playRoot = FullRect("Gameplay HUD", canvas).gameObject;
+            WorldLabelRoot = FullRect("World Labels", playRoot.transform);
             var mission = Panel("Current Objective", playRoot.transform, 22, 0, 418, 158, Ink);
             Bottom(mission, 22, 24, false);
             Label("Objective Heading", mission, "YOUR NEXT DISCOVERY", 18, 14, 380, 26, 17, Mint);
@@ -190,10 +199,10 @@ namespace LightingBlocks
             var context = Panel("Interaction Hint", playRoot.transform, 0, 0, 540, 84, Ink);
             context.anchorMin = context.anchorMax = new Vector2(.5f, 0); context.pivot = new Vector2(.5f, 0); context.anchoredPosition = new Vector2(0, 24);
             contextText = Label("Interaction", context, "", 18, 12, 504, 60, 19, White, TextAnchor.MiddleCenter);
-            var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 335, 158, Ink); Bottom(calls, 22, 24, true);
-            Label("Call Heading", calls, "CALL BRIDGE STONES", 16, 12, 300, 24, 17, Mint);
-            AddPurchase("stone", calls, 14, 44, 307, 46, null, "");
-            AddPurchase("grave", calls, 14, 99, 307, 46, null, "");
+            var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 360, 170, Ink); Bottom(calls, 22, 24, true);
+            Label("Call Heading", calls, "CALL BRIDGE STONES", 16, 12, 328, 24, 17, Mint);
+            AddPurchase("stone", calls, 14, 42, 332, 54, null, "");
+            AddPurchase("grave", calls, 14, 102, 332, 54, null, "");
 
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
@@ -202,18 +211,16 @@ namespace LightingBlocks
             var wallet = Panel("Souls Counter", canvas, 22, 20, 350, 132, Ink);
             Label("Souls Label", wallet, "SOULS", 20, 12, 310, 23, 17, Mint);
             SoulsText = Label("Souls Amount", wallet, "0.0", 20, 37, 310, 52, 40, Mint);
-            SoulsText.resizeTextForBestFit = true; SoulsText.resizeTextMinSize = 22; SoulsText.resizeTextMaxSize = 40;
             incomeText = Label("Souls Income", wallet, "+0.0 / sec", 20, 94, 310, 26, 18, White);
-            navigation = Rect("Quick Menu", canvas, 0, 0, 440, 58).gameObject;
+            navigation = Rect("Quick Menu", canvas, 0, 0, 476, 58).gameObject;
             var nav = navigation.GetComponent<RectTransform>(); nav.anchorMin = nav.anchorMax = new Vector2(1, 1); nav.pivot = new Vector2(1, 1); nav.anchoredPosition = new Vector2(-22, -20);
             SkillsButton = Button("Skill Tree Shortcut", nav, "SKILL TREE  [TAB]", 0, 0, 202, 58, ToggleSkills);
-            Button("Memories Shortcut", nav, "MEMORIES", 212, 0, 116, 58, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories));
-            Button("Pause Shortcut", nav, "ESC", 338, 0, 102, 58, ShowPause);
+            Button("Memories Shortcut", nav, "MEMORIES", 212, 0, 152, 58, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories));
+            Button("Pause Shortcut", nav, "ESC", 374, 0, 102, 58, ShowPause);
             var feedback = Panel("Action Feedback", canvas, 0, 0, 620, 108, Ink);
             feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -18);
             feedback.GetComponent<Image>().raycastTarget = false; feedbackPanel = feedback.gameObject;
-            noticeText = Label("Action Feedback Text", feedback, "", 16, 10, 588, 88, 20, Mint, TextAnchor.MiddleCenter);
-            noticeText.resizeTextForBestFit = true; noticeText.resizeTextMinSize = 16; noticeText.resizeTextMaxSize = 20;
+            noticeText = Label("Action Feedback Text", feedback, "", 16, 10, 588, 88, 19, Mint, TextAnchor.MiddleCenter);
         }
         void BuildTitle()
         {
@@ -261,25 +268,10 @@ namespace LightingBlocks
         }
         void BuildSkills()
         {
-            var panel = CenterPanel("Skill Tree", 1120, 730); skillsPanel = panel.gameObject;
-            Label("Skill Heading", panel, "POWERS OF THE LIGHTING SOUL", 30, 25, 870, 45, 32, White);
-            skillsClose = Button("Skills Close", panel, "CLOSE [TAB]", 922, 26, 170, 44, () => SetView(ScreenView.Playing));
-            Label("Skill Help", panel, "Connected paths and Soul Wells keep generating while you choose your powers.", 30, 80, 1040, 33, 19, Muted);
-            SkillCard(panel, "speed", "SWIFT HAULING", "Move blocks faster across your paths.", 24, 142);
-            SkillCard(panel, "links", "SOUL LINKS", "Gather orbiting stones with a click. Press Q to drop or build.", 389, 142);
-            SkillCard(panel, "strength", "ASTRAL STRENGTH", "Haul stronger stones for the deeper rift.", 754, 142);
-            SkillCard(panel, "radiance", "LIGHTING SOUL", "Reveal more terrain around the player.", 24, 375);
-            SkillCard(panel, "generator", "SOUL WELL", "A second source of Souls, independent of bridge length.", 389, 375);
-            SkillCard(panel, "stone", "STONE SOURCE", "Call another ordinary bridge stone onto the first island.", 754, 375);
-            Label("Skill Route", panel, "BUILD A PATH  →  GROW YOUR SOULS  →  IMPROVE YOUR HAUL  →  REACH THE NEXT SHORE", 26, 620, 1068, 36, 16, Mint, TextAnchor.MiddleCenter);
-            AddPurchase("grave", panel, 349, 667, 422, 43, null, "");
-        }
-        void SkillCard(Transform parent, string id, string name, string description, float x, float y)
-        {
-            var card = Panel("Power - " + id, parent, x, y, 342, 224, Card);
-            Label("Power Name", card, name, 17, 16, 308, 31, 23, Mint);
-            var detail = Label("Power Requirements", card, "", 17, 54, 308, 107, 17, White);
-            var b = AddPurchase(id, card, 15, 169, 312, 43, detail, description); SkillButtons[id] = b;
+            var panel = CenterPanel("Skill Tree", 1180, 800); skillsPanel = panel.gameObject;
+            skillTree = SoulBridgeSkillTree.Build(panel, game, font, () => SetView(ScreenView.Playing), out skillsClose, out var powers);
+            SkillButtons.Clear();
+            foreach (var power in powers) SkillButtons[power.Key] = power.Value;
         }
         void BuildMemories()
         {
@@ -342,6 +334,7 @@ namespace LightingBlocks
                 + (game.Bridges[0] ? "II — Your first bridge did more than carry you. It gave the lost a path home." : "II — A memory waits across the first rift.") + "\n\n"
                 + (game.completed ? "III — The light you carried was never yours alone. Every soul you guided became part of the next dawn." : "III — Build through the darkness to reach the next dawn.");
             foreach (var binding in purchases) UpdatePurchase(binding);
+            if (skillTree != null) skillTree.Refresh();
         }
         void UpdatePurchase(PurchaseBinding b)
         {
@@ -352,10 +345,12 @@ namespace LightingBlocks
             double cost = game.Cost(b.id);
             b.button.interactable = !SimulationPaused;
             var colors = b.button.colors; colors.normalColor = !done && unlocked && game.souls >= cost ? Color.white : new Color(.61f, .56f, .47f); b.button.colors = colors;
-            var caption = b.button.GetComponentInChildren<Text>(); caption.resizeTextForBestFit = true; caption.resizeTextMinSize = 14; caption.resizeTextMaxSize = 18;
-            caption.text = done ? "FULLY AWAKENED" : (!unlocked ? "LOCKED · " : "") + title + " · " + SoulBridgeGame.Format(cost) + " Souls";
+            var caption = b.button.GetComponentInChildren<Text>();
+            caption.text = done ? "FULLY AWAKENED"
+                : title + "\n" + (unlocked ? "" : "LOCKED  ·  ") + SoulBridgeGame.Format(cost) + " Souls";
+            if (b.detail == null) return;
             string detail = b.id == "speed" ? "Level " + game.speed + "/6 · +0.65m/s per level." : b.id == "links" ? "Level " + game.links + "/3 · Orbit " + game.Capacity + " at once. Q drops.\nEach level adds one block." : b.id == "strength" ? "Level " + game.strength + "/3. Grave Stone: I.\nAncient Obsidian: III." : b.id == "radiance" ? "Level " + game.radiance + "/5 · Range " + (9 + game.radiance * 3) + "m.\nEach level adds 3 metres." : b.id == "generator" ? "Level " + game.generator + "/8 · +" + SoulBridgeGame.Format(game.GeneratorRate) + " Souls/sec.\nNext: +" + SoulBridgeGame.Format(3 * System.Math.Pow(1.6, game.generator)) + "/sec." : "Ordinary stones build the first bridge.\nGrave Stones build either bridge.";
-            if (b.detail != null) b.detail.text = b.description + "\n\n" + detail;
+            b.detail.text = b.description + "\n\n" + detail;
         }
 
         RectTransform Rect(string name, Transform parent, float x, float y, float width, float height)

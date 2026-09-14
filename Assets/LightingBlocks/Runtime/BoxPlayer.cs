@@ -21,6 +21,9 @@ namespace LightingBlocks
         public PullableBox NearbyBox { get; private set; }
         public float MovementSpeed { get; private set; }
         public bool Orbiting { get; private set; }
+        // Raised at the moment a stride completes, with the foot position. Anything that wants to
+        // react to walking hangs off this rather than re-deriving the cadence from MovementSpeed.
+        public event System.Action<Vector3> Stepped;
         readonly Dictionary<PullableBox, Vector3> pickupPositions = new Dictionary<PullableBox, Vector3>();
         float orbitAngle;
         CharacterController controller;
@@ -304,6 +307,8 @@ namespace LightingBlocks
 
         void PlayFootstep()
         {
+            // Fire before the audio guard: a missing clip must not also swallow the visual.
+            if (Stepped != null) Stepped(transform.position);
             var clips = GameAudio.Footsteps;
             if (sfx == null || clips == null || clips.Length == 0) return;
             sfx.pitch = GameAudio.StepPitch * Random.Range(.97f, 1.03f);
