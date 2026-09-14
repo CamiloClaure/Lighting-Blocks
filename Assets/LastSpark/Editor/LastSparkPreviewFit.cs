@@ -21,7 +21,7 @@ namespace LightingBlocks.Editor
 
         static void Update()
         {
-            if (!EditorApplication.isPlaying || LastSparkHUD.Current == null && SoulBridgeHUD.Current == null || EditorApplication.timeSinceStartup < nextCheck) return;
+            if (!EditorApplication.isPlaying || SoulBridgeHUD.Current == null || EditorApplication.timeSinceStartup < nextCheck) return;
             nextCheck = EditorApplication.timeSinceStartup + .25;
             foreach (var window in Resources.FindObjectsOfTypeAll<EditorWindow>())
             {

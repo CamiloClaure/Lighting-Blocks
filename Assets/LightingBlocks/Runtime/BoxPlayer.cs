@@ -47,7 +47,7 @@ namespace LightingBlocks
 
         void Update()
         {
-            if (!readInput || LastSparkHUD.GameplayBlocked) return;
+            if (!readInput || SoulBridgeHUD.GameplayBlocked) return;
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
             if (!Application.isFocused) { Release(); return; }
@@ -58,7 +58,7 @@ namespace LightingBlocks
             }
             else if (Orbiting) { /* Floating carry persists until Q, a menu or focus loss. */ }
             else if (mouse == null || !mouse.leftButton.isPressed) Release();
-            else if (mouse.leftButton.wasPressedThisFrame && !LastSparkHUD.PointerOverUI()) TryGrab(NearbyBox);
+            else if (mouse.leftButton.wasPressedThisFrame && !SoulBridgeHUD.PointerOverUI()) TryGrab(NearbyBox);
             Vector2 input = keyboard == null ? Vector2.zero : new Vector2(
                 (keyboard.dKey.isPressed ? 1 : 0) - (keyboard.aKey.isPressed ? 1 : 0),
                 (keyboard.wKey.isPressed ? 1 : 0) - (keyboard.sKey.isPressed ? 1 : 0));
@@ -99,18 +99,12 @@ namespace LightingBlocks
 
         public bool TryGrab(PullableBox box)
         {
-            if (LastSparkHUD.GameplayBlocked) return false;
+            if (SoulBridgeHUD.GameplayBlocked) return false;
             var soul = SoulBridgeGame.Instance;
             var stone = box != null ? box.GetComponent<SoulBridgeBlock>() : null;
             if (stone != null && !stone.CanLift)
             {
                 soul.Notify(stone.placed ? "BRIDGE BLOCK ANCHORED\nConnected blocks become the walkable bridge. Grab a loose block to extend it." : stone.Title.ToUpper() + " IS TOO HEAVY\nRequires Strength " + stone.RequiredStrength + "; yours is " + soul.strength + ". Upgrade in Skills [Tab].", false);
-                return false;
-            }
-            var fragment = box != null ? box.GetComponent<AstralFragment>() : null;
-            if (fragment != null && !fragment.CanLift)
-            {
-                LastSparkGame.Instance.Notify("This memory is too heavy. Awaken Astral Strength first.", false);
                 return false;
             }
             if (box == null || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
@@ -129,7 +123,6 @@ namespace LightingBlocks
             }
             if(soul!=null && soul.links>0) BeginOrbit();
             HeldBox.Highlight(true);
-            if (LastSparkGame.Instance != null) LastSparkGame.Instance.Recalculate();
             if (sfx != null && GameAudio.Grab != null)
             {
                 sfx.pitch = GameAudio.GrabPitch(box);
@@ -148,14 +141,13 @@ namespace LightingBlocks
             foreach (var box in released)
             {
                 box.Release();
-                var fragment = box.GetComponent<AstralFragment>(); if (fragment != null) fragment.Released();
                 var stone = box.GetComponent<SoulBridgeBlock>(); if (stone != null) stone.Released();
             }
         }
 
         public void StepMovement(Vector2 input, float deltaTime)
         {
-            if (LastSparkHUD.GameplayBlocked || deltaTime <= 0) return;
+            if (SoulBridgeHUD.GameplayBlocked || deltaTime <= 0) return;
             input = Vector2.ClampMagnitude(input, 1);
             Vector3 forward = viewCamera != null ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized : Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, forward);

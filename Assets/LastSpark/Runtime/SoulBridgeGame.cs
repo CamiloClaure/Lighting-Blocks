@@ -72,9 +72,9 @@ namespace LightingBlocks
         }
         void Update()
         {
-            if (!initialized || LastSparkHUD.SimulationPaused) return;
+            if (!initialized || SoulBridgeHUD.SimulationPaused) return;
             if (autoTick) Advance(Time.deltaTime);
-            if (!LastSparkHUD.GameplayBlocked && player.readInput && Application.isFocused && Keyboard.current != null)
+            if (!SoulBridgeHUD.GameplayBlocked && player.readInput && Application.isFocused && Keyboard.current != null)
             {
                 var k = Keyboard.current;
                 if (k.eKey.wasPressedThisFrame) Interact();
@@ -100,7 +100,7 @@ namespace LightingBlocks
         }
         public void Advance(float seconds)
         {
-            if (LastSparkHUD.SimulationPaused || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
+            if (SoulBridgeHUD.SimulationPaused || seconds <= 0 || float.IsNaN(seconds) || float.IsInfinity(seconds)) return;
             souls += Rate * seconds; saveTimer += seconds;
             if (saveTimer >= 10) { saveTimer = 0; Save(); }
         }
@@ -122,7 +122,7 @@ namespace LightingBlocks
         public int Cap(string id) => id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
         public bool Purchase(string id)
         {
-            if (LastSparkHUD.SimulationPaused) return false;
+            if (SoulBridgeHUD.SimulationPaused) return false;
             if (!(new[] { "speed", "links", "strength", "radiance", "generator", "stone", "grave" }).Contains(id)) return false;
             bool supply = id == "stone" || id == "grave";
             if (!supply && Level(id) >= Cap(id)) return Deny("FULLY AWAKENED\nThis power has reached its maximum level.");
@@ -285,7 +285,7 @@ namespace LightingBlocks
         }
         public void Interact()
         {
-            if (LastSparkHUD.GameplayBlocked) return;
+            if (SoulBridgeHUD.GameplayBlocked) return;
             if (completed) { Notify("THE NEXT DAWN IS OPEN\nContinue growing your paths and powers.", false); return; }
             if (Bridges[1] && Vector3.Distance(player.transform.position, exit.position) < 3)
             { completed = true; Notify("THE NEXT DAWN\nThe souls were never lost. They were waiting for a way home.\nChapter complete. Your bridges and Soul Well keep generating."); Save(); return; }

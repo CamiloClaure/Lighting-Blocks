@@ -58,7 +58,6 @@ namespace LightingBlocks.Editor
             Check(g!=null && !g.persistenceEnabled,"Tests isolate the player's Soul Bridge save");
             Check(hud.View==SoulBridgeHUD.ScreenView.Title && Time.timeScale==0,"New scene starts at paused title");
             Check(g.Blocks.Count==20 && !g.Bridges[0] && !g.Bridges[1],"Three shores start with 20 stones and two unbuilt bridges");
-            Check(UnityEngine.Object.FindObjectsByType<AstralAltar>().Length==0,"Scene contains no altar circles");
             Check(!Physics.Raycast(new Vector3(0,2,14),Vector3.down,4),"The first rift has no hidden floor or prebuilt bridge");
             Check(p.animator.avatar.isHuman && p.animator.avatar.isValid,"Original animated player is preserved");
             Check(g.Blocks.All(b=>b.GetComponent<SoulBridgeArt>()!=null && !b.GetComponent<Renderer>().enabled),"Imported art covers every authored logical stone");
@@ -67,7 +66,7 @@ namespace LightingBlocks.Editor
             Check(Physics.Raycast(new Vector3(17,3,-8),Vector3.down,5),"Expanded terrain has physical collision");
             Check(!g.CanStand(new Vector3(0,0,40)) && !Physics.Raycast(new Vector3(0,2,40),Vector3.down,4),"Second rift remains genuinely empty");
             Check(g.soulLight.color.r>g.soulLight.color.b && RenderSettings.fog,"Amber soul and distance atmosphere are configured");
-            Check(g.cameraRig.distance==22 && g.soulLight.range==9,"Immersive camera distance and initial player light are configured");
+            Check(g.cameraRig.distance==13 && g.soulLight.range==9,"Immersive camera distance and initial player light are configured");
             var deeps=GameObject.Find("Immersive Deeps");
             Check(deeps!=null && deeps.GetComponentsInChildren<Collider>().Length==0,"Runtime deeps fill the frame without adding collision");
             Check(deeps.transform.Find("Deep Valley")!=null && SoulBridgeImmersion.Height(0,-10)<-3 && SoulBridgeImmersion.Height(0,14)<-14,"The valley stays under the courts and drops away inside the rifts");

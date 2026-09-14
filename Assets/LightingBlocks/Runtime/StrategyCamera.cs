@@ -24,7 +24,7 @@ namespace LightingBlocks
         void Start() { CenterOnPlayer(); smoothedFocus = Focus; Apply(1f); }
         void LateUpdate()
         {
-            if (LastSparkHUD.GameplayBlocked) return;
+            if (SoulBridgeHUD.GameplayBlocked) return;
             if (readInput && Application.isFocused)
             {
                 var mouse = Mouse.current;
@@ -39,7 +39,7 @@ namespace LightingBlocks
                 if (mouse != null)
                 {
                     Vector2 position = mouse.position.ReadValue();
-                    bool inside = position.x >= 0 && position.x <= Screen.width && position.y >= 0 && position.y <= Screen.height && !LastSparkHUD.PointerOverUI();
+                    bool inside = position.x >= 0 && position.x <= Screen.width && position.y >= 0 && position.y <= Screen.height && !SoulBridgeHUD.PointerOverUI();
                     if (edgePan && inside && !mouse.middleButton.isPressed)
                     {
                         if (position.x < edgePixels) pan.x -= 1;
