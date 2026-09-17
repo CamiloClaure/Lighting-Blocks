@@ -204,7 +204,12 @@ namespace LightingBlocks.Editor
                 InputSystem.QueueStateEvent(mouse,new MouseState());InputSystem.Update();p.SendMessage("Update");Check(p.HeldBox==null,"Actual left mouse release ends hauling");
             }
             finally {p.readInput=false;InputSystem.RemoveDevice(mouse);}
-            hud.ToggleSkills();Check(hud.SkillButtons.Count==6&&GameHUD.GameplayBlocked&&!GameHUD.SimulationPaused,"Accessible skills expose five powers plus a stone source");hud.HandleEscape();hud.ShowPause();hud.ShowControls();Check(hud.ControlsPanel.activeInHierarchy&&!hud.MusicButton.interactable&&!hud.SfxButton.interactable,"Pause and Controls retain placeholder audio options");hud.HandleEscape();hud.HandleEscape();
+            hud.ToggleSkills();Check(hud.SkillButtons.Count==6&&GameHUD.GameplayBlocked&&!GameHUD.SimulationPaused,"Accessible skills expose five powers plus a stone source");hud.HandleEscape();hud.ShowPause();hud.ShowControls();Check(hud.ControlsPanel.activeInHierarchy,"Controls view opens from pause");hud.HandleEscape();
+            // The placeholder MUSIC/SFX buttons became real persistent sliders, so assert the volumes they drive.
+            {float restore=ForestSoundscape.Volume("Music");ForestSoundscape.SetVolume("Music",.42f);bool stored=Mathf.Abs(ForestSoundscape.Volume("Music")-.42f)<.001f;ForestSoundscape.SetVolume("Music",restore);
+             var sliders=hud.GetComponentsInChildren<UnityEngine.UI.Slider>(true);
+             Check(stored&&sliders.Length>=4,"Pause exposes persistent Master/Music/Ambience/Effects volumes (sliders="+sliders.Length+")");}
+            hud.HandleEscape();
             Place(g,first,0,0,0);Place(g,g.Blocks.First(b=>b.id=="home-1"),0,0,1);Place(g,g.Blocks.First(b=>b.id=="home-2"),0,0,2);
             Teleport(new Vector3(0,.025f,8));g.cameraRig.CenterOnPlayer();
             report.AppendLine("SUCCESS: Soul Bridge mechanics and persistence passed.");

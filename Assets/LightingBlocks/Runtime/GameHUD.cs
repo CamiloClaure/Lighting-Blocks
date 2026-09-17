@@ -24,8 +24,6 @@ namespace LightingBlocks
         public Text SoulsText { get; private set; }
         public Text FeedbackText => noticeText;
         public Button SkillsButton { get; private set; }
-        public Button MusicButton { get; private set; }
-        public Button SfxButton { get; private set; }
         public GameObject ControlsPanel => controlsPanel;
         public readonly Dictionary<string, Button> SkillButtons = new Dictionary<string, Button>();
         // The immersion pass hangs crisp screen-space world labels off the gameplay HUD.

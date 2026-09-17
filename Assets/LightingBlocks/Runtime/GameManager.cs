@@ -36,7 +36,6 @@ namespace LightingBlocks
         float saveTimer;
         bool initialized;
         Transform ghost;
-        Renderer ghostRenderer;
         Vector3 safePosition = new Vector3(0, .025f, 3);
         AudioSource audioSource;
         AudioClip chime;
@@ -63,10 +62,26 @@ namespace LightingBlocks
             ApplyUpgrades(); Recalculate(); initialized = true;
             var forest = ForestWorld.For(this); if (forest != null) forest.BeginSession();
             if (persistenceEnabled) Load();
-            var obj = GameObject.CreatePrimitive(PrimitiveType.Cube); obj.name = "Next bridge block preview";
-            Destroy(obj.GetComponent<Collider>()); ghost = obj.transform; ghost.localScale = new Vector3(1.92f, .025f, 1.92f);
-            ghostRenderer = obj.GetComponent<Renderer>(); var m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
-            m.SetColor("_BaseColor", new Color(.32f, .22f, .08f)); ghostRenderer.material = m;
+            // The preview is the authored placed crystal itself, one clone per tier, so each tier previews as it will land.
+            ghost = new GameObject("Next bridge block preview").transform;
+            var previewProperties = new MaterialPropertyBlock();
+            for (int tier = 0; tier < blockPrefabs.Length; tier++)
+            {
+                var art = blockPrefabs[tier] == null ? null : blockPrefabs[tier].GetComponent<BlockArt>();
+                var visual = art == null || art.placedVisual == null
+                    ? new GameObject("Tier " + tier)
+                    : Instantiate(art.placedVisual.gameObject);
+                visual.name = "Tier " + tier; visual.transform.SetParent(ghost, false);
+                // A placed tile renders at world scale 1; the preview has no logical root to cancel, and Update offsets by .205.
+                visual.transform.localScale = Vector3.one; visual.transform.localPosition = new Vector3(0, -.205f, 0);
+                foreach (var collider in visual.GetComponentsInChildren<Collider>()) Destroy(collider);
+                foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+                    renderer.GetPropertyBlock(previewProperties); previewProperties.SetFloat("_Highlight", 1); renderer.SetPropertyBlock(previewProperties);
+                }
+                visual.SetActive(tier == 0);
+            }
             if (string.IsNullOrEmpty(Notice)) Notify("THE WISDOM TREE\nCollect the bright particles. Press E beside the violet tree to charge it and release a bridge block.", false);
             cameraRig.CenterOnPlayer();
             WorldDressing.Build(this);
@@ -94,6 +109,9 @@ namespace LightingBlocks
             {
                 bool held = player.HeldBox != null;
                 var block = held ? player.HeldBox.GetComponent<BridgeBlock>() : null;
+                // Preview the tier that will actually land: the held crystal, or the starter tier when empty handed.
+                int previewTier = block == null ? 0 : Mathf.Clamp(block.tier, 0, ghost.childCount - 1);
+                for (int i = 0; i < ghost.childCount; i++) ghost.GetChild(i).gameObject.SetActive(i == previewTier);
                 if (player.Orbiting && FindOrbitPlacement(block,out var orbitCell)) ghost.position=orbitCell+Vector3.up*.205f;
                 else if (block != null && FindPlacement(block, out int g, out int x, out int z, out _))
                     ghost.position = Cell(g, x, z) + Vector3.up * .205f;
@@ -386,6 +404,6 @@ namespace LightingBlocks
         void OnApplicationFocus(bool focused) { if (!focused) Save(); }
         void OnApplicationPause(bool paused) { if (paused) Save(); }
         void OnApplicationQuit() { Save(); }
-        void OnDestroy() { if (Instance == this) Instance = null; if (chime != null) Destroy(chime); if (ghost != null) { Destroy(ghostRenderer.material); Destroy(ghost.gameObject); } }
+        void OnDestroy() { if (Instance == this) Instance = null; if (chime != null) Destroy(chime); if (ghost != null) Destroy(ghost.gameObject); }
     }
 }

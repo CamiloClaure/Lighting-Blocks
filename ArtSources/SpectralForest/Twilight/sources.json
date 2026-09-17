@@ -5,7 +5,9 @@
     "url": "https://opengameart.org/sites/default/files/bird_0.blend",
     "sha256": "ce694dea3a10b268f33217c665ff16e6b8e7222acbf9ceac178814cf5d7fb33a",
     "bytes": 1033280,
-    "license": "CC0"
+    "license": "CC0",
+    "local_file": "PublisherBird-reference.blend",
+    "use": "Evaluated reference only. Shipping Bird.fbx and Bird.blend are custom authored geometry and animation."
   },
   {
     "name": "birds",
@@ -13,6 +15,8 @@
     "url": "https://opengameart.org/sites/default/files/forest_birds.7z",
     "sha256": "bf657b75efb920136408860b110142748bd2f84bea009e778d916227bc032460",
     "bytes": 2720502,
-    "license": "CC0"
+    "license": "CC0",
+    "local_file": "birds.7z",
+    "use": "Source for cleaned forest bird call"
   }
 ]

@@ -29,7 +29,7 @@ namespace LightingBlocks
             folder=Path.Combine(Application.dataPath,"../"+run);Directory.CreateDirectory(folder);
             yield return null;game=GameManager.Instance;forest=ForestWorld.For(game);game.persistenceEnabled=false;game.player.readInput=false;game.cameraRig.readInput=false;GameHUD.Current.BeginJourney();
             forest.Restore(forest.NewState(1907));game.strength=3;game.ApplyUpgrades();
-            var camera=game.cameraRig.GetComponent<Camera>();camera.targetTexture=new RenderTexture(1920,1080,24,RenderTextureFormat.ARGB32);
+            var camera=game.cameraRig.GetComponent<Camera>();camera.targetTexture=new RenderTexture(1920,1080,24,RenderTextureFormat.ARGB32);camera.enabled=false;foreach(var canvas in FindObjectsByType<Canvas>()){canvas.renderMode=RenderMode.ScreenSpaceCamera;canvas.worldCamera=camera;canvas.planeDistance=1;}
             // Completed bridge fixture exercises the existing placement, lighting and income paths.
             for(int gap=0;gap<2;gap++)for(int row=0;row<7;row++)
             {if(!game.TrySpawnAtWisdomTree(forest.configuration.islands[gap].id,out var block))throw new Exception("Profile fixture spawn failed");block.transform.position=GameManager.Cell(gap,0,row)+Vector3.up*.54f;block.Box.Body.position=block.transform.position;Physics.SyncTransforms();if(!game.TryPlace(block))throw new Exception("Profile fixture placement failed");}

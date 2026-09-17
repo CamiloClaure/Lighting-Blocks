@@ -21,7 +21,7 @@ namespace LightingBlocks.Editor
         static Mesh ModelMesh(string name)
         {
             var source=Load<GameObject>(Art+"/Models/"+name+".fbx");var list=new List<CombineInstance>();foreach(var f in source.GetComponentsInChildren<MeshFilter>())for(int i=0;i<f.sharedMesh.subMeshCount;i++)list.Add(new CombineInstance{mesh=f.sharedMesh,subMeshIndex=i,transform=f.transform.localToWorldMatrix});
-            var m=new Mesh{name=name,indexFormat=IndexFormat.UInt32};m.CombineMeshes(list.ToArray(),true,true);m.RecalculateBounds();m.RecalculateTangents();return Save(m,Art+"/Meshes/"+name+".asset");
+            var m=new Mesh{name=name,indexFormat=IndexFormat.UInt32};m.CombineMeshes(list.ToArray(),true,true);var colors=m.colors;for(int i=0;i<colors.Length;i++)colors[i]=colors[i].linear;m.colors=colors;m.RecalculateBounds();m.RecalculateTangents();return Save(m,Art+"/Meshes/"+name+".asset");
         }
         static GameObject Creature(string name,Material material)
         {
@@ -62,7 +62,7 @@ namespace LightingBlocks.Editor
             HabitatTexture(c);
             var ground=Material("LushGround","LightingBlocks/Spectral Lit",Hex("#B7C8BC"),defaults);
             if(defaults){ground.SetFloat("_Terrain",1);ground.SetFloat("_NormalStrength",.35f);ground.SetFloat("_Smoothness",.22f);ground.SetTexture("_BaseMap",Load<Texture2D>(Root+"/Textures/forest_leaves_02_Color.png"));ground.SetTexture("_NormalMap",Load<Texture2D>(Root+"/Textures/forest_leaves_02_Normal.png"));ground.SetTexture("_MaskMap",Load<Texture2D>(Root+"/Textures/forest_leaves_02_Mask.png"));ground.SetTexture("_SoilMap",Load<Texture2D>(Root+"/Textures/forest_ground_04_Color.png"));ground.SetTexture("_SoilNormal",Load<Texture2D>(Root+"/Textures/forest_ground_04_Normal.png"));ground.SetTexture("_SoilMask",Load<Texture2D>(Root+"/Textures/forest_ground_04_Mask.png"));ground.SetTexture("_MossMap",Load<Texture2D>(Art+"/Textures/Moss.png"));ground.SetTexture("_GrassMap",Load<Texture2D>(Art+"/Textures/GrassGround.png"));}
-            ground.SetFloat("_SoftFill",.14f);ground.SetTexture("_HabitatMap",Load<Texture2D>(Art+"/Textures/Habitat.png"));c.ground=ground;
+            ground.SetFloat("_SoftFill",.14f);ground.SetTexture("_MossNormal",Load<Texture2D>(Art+"/Textures/MossNormal.png"));ground.SetTexture("_HabitatMap",Load<Texture2D>(Art+"/Textures/Habitat.png"));c.ground=ground;
             var cover=Material("LivingPlants","LightingBlocks/Spectral Lit",Color.white,defaults);cover.SetFloat("_VertexTint",1);cover.SetFloat("_Cull",0);cover.SetFloat("_Wind",.14f);cover.SetFloat("_Smoothness",.06f);cover.SetFloat("_SoftFill",.24f);
             var glow=Material("LuminousPlants","LightingBlocks/Spectral Lit",Color.white,defaults);glow.SetFloat("_VertexTint",1);glow.SetFloat("_Cull",0);glow.SetFloat("_Wind",.035f);if(defaults)glow.SetColor("_EmissionColor",new Color(.055f,.035f,.10f));
             c.coverMeshes=new[]{"GrassShort","GrassMedium","GrassTall","Fern1","Fern2","Mushroom1","Mushroom2","Flowers","Twigs"}.Select(ModelMesh).ToArray();c.coverMaterials=new[]{cover,cover,cover,cover,cover,glow,glow,glow,cover};

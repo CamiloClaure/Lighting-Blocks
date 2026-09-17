@@ -43,6 +43,10 @@ Material:
         m_Texture: {fileID: 2800000, guid: 8b59fed35cc699b47ae8431ff16ae21b, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _MossNormal:
+        m_Texture: {fileID: 2800000, guid: f0f9027cb12419f4eb920fbba1eb6456, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _NormalMap:
         m_Texture: {fileID: 2800000, guid: d654336e9ad9d3d43b17d75c400d6c44, type: 3}
         m_Scale: {x: 1, y: 1}
