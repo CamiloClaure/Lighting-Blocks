@@ -10,9 +10,14 @@ namespace LightingBlocks
     {
         public static readonly Vector2[][] Shores = {
             new[] { new Vector2(-18,-57),new Vector2(4,-58),new Vector2(24,-52),new Vector2(38,-41),new Vector2(45,-26),new Vector2(46,-10),new Vector2(33,2),new Vector2(14,7),new Vector2(-14,7),new Vector2(-30,3),new Vector2(-41,-6),new Vector2(-47,-20),new Vector2(-45,-36),new Vector2(-34,-49) },
-            new[] { new Vector2(-13,21),new Vector2(13,21),new Vector2(30,22),new Vector2(43,25),new Vector2(46,29),new Vector2(38,32),new Vector2(20,34),new Vector2(13,34),new Vector2(-13,34),new Vector2(-22,34),new Vector2(-38,33),new Vector2(-46,29),new Vector2(-44,25),new Vector2(-30,21) },
+            new[] { new Vector2(-13,21),new Vector2(13,21),new Vector2(30,22),new Vector2(43,25),new Vector2(46,29),new Vector2(46,66),new Vector2(38,78),new Vector2(14,86),new Vector2(-14,86),new Vector2(-34,80),new Vector2(-46,67),new Vector2(-46,29),new Vector2(-44,25),new Vector2(-30,21) },
             new[] { new Vector2(-13,48),new Vector2(13,48),new Vector2(31,50),new Vector2(43,57),new Vector2(48,70),new Vector2(45,86),new Vector2(34,99),new Vector2(16,106),new Vector2(-6,107),new Vector2(-26,101),new Vector2(-40,89),new Vector2(-47,73),new Vector2(-45,58),new Vector2(-32,50) }
         };
+        public const float Expansion = 52f;
+        public static float BridgeStart(int gap) => gap == 0 ? 8 : 35 + Expansion;
+        public static float Area(Vector2[] polygon){float area=0;for(int i=0,j=polygon.Length-1;i<polygon.Length;j=i++)area+=polygon[j].x*polygon[i].y-polygon[i].x*polygon[j].y;return Mathf.Abs(area)*.5f;}
+        static Landscape(){float scale=Area(Shores[0])/Area(Shores[1]);for(int i=0;i<Shores[1].Length;i++)Shores[1][i].x*=scale;for(int i=0;i<Shores[2].Length;i++)Shores[2][i].y+=Expansion;}
+        public static Vector3 UpgradePosition(Vector3 p){if(p.z>=34)p.z+=Expansion;return p;}
         public static bool Inside(Vector2 point, Vector2[] polygon)
         {
             bool inside = false;

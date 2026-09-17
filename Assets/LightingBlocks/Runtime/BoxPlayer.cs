@@ -11,8 +11,8 @@ namespace LightingBlocks
         public Transform visual;
         public Animator animator;
         public Camera viewCamera;
-        public float moveSpeed = 4.5f;
-        public float pullSpeed = 2.3f;
+        public float moveSpeed = 6f;
+        public float pullSpeed = 3.2f;
         [Tooltip("Distance from the player's center to the closest box surface.")]
         public float grabReach = 1.25f;
         public bool readInput = true;

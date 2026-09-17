@@ -36,7 +36,7 @@ namespace LightingBlocks
         }
         public bool Valid(ForestSave state,bool legacy=false)
         {
-            if(state==null||state.seed<0||(legacy?state.layoutVersion!=1:state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
+            if(state==null||state.seed<0||(legacy?(state.layoutVersion!=1&&state.layoutVersion!=2):state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
             if(!legacy && (state.suppressedTrees==null||state.suppressedTrees.Count>1000))return false;
             if(!legacy){var unique=new HashSet<string>();foreach(var suppression in state.suppressedTrees){if(string.IsNullOrEmpty(suppression)||!unique.Add(suppression))return false;int slash=suppression.LastIndexOf('/');if(slash<0||configuration.Find(suppression.Substring(0,slash))==null||!int.TryParse(suppression.Substring(slash+1),out int index)||index<0||index>1000)return false;}}
             var ids=new HashSet<string>();
@@ -53,11 +53,13 @@ namespace LightingBlocks
         }
         public ForestSave Migrate(ForestSave old,int version,List<GameManager.BlockSave> blocks,Vector3 player)
         {
-            if(version==3)return Valid(old)?old:null;
-            if(version==2&&!Valid(old,true))return null;
+            if(version==4)return Valid(old)?old:null;
+            if(version>=2&&!Valid(old,true))return null;
+            if(version==3){if(old.layoutVersion!=2)return null;foreach(var island in old.islands)foreach(var slot in island.slots)if(!slot.positioned||slot.generation<0||slot.generation==int.MaxValue||!float.IsFinite(slot.position.x)||!float.IsFinite(slot.position.y)||!float.IsFinite(slot.position.z)||Mathf.Abs(slot.position.y)>.01f||Mathf.Abs(slot.position.x)>60||slot.position.z<-70||slot.position.z>120)return null;}
             var next=NewState(version==1?1907:old.seed);
             foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,next.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);foreach(var t in layout.trees){bool blocked=(t.position-new Vector3(player.x,0,player.z)).sqrMagnitude<4;foreach(var b in blocks)if(!b.placed&&(t.position-new Vector3(b.position.x,0,b.position.z)).sqrMagnitude<4)blocked=true;if(blocked)next.suppressedTrees.Add(d.id+"/"+t.id);}}
-            if(version==2)foreach(var target in next.islands){var source=old.islands.Find(i=>i.id==target.id);target.inventory=source.inventory;foreach(var slot in target.slots)slot.remaining=source.slots.Find(p=>p.id==slot.id).remaining;}
+            if(version>=2)foreach(var target in next.islands){var source=old.islands.Find(i=>i.id==target.id);target.inventory=source.inventory;foreach(var slot in target.slots){var prior=source.slots.Find(p=>p.id==slot.id);slot.remaining=prior.remaining;if(version==3){slot.position=prior.position+(configuration.Find(target.id).polygonIndex==2?Vector3.forward*Landscape.Expansion:Vector3.zero);slot.generation=prior.generation;slot.pending=prior.pending;}}}
+            if(version==3)foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,next.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=next.islands.Find(i=>i.id==d.id);foreach(var tree in layout.trees)foreach(var slot in island.slots)if((tree.position-slot.position).sqrMagnitude<2.25f){string id=d.id+"/"+tree.id;if(!next.suppressedTrees.Contains(id))next.suppressedTrees.Add(id);break;}layout.trees.RemoveAll(t=>next.suppressedTrees.Contains(d.id+"/"+t.id));layout.navigation.BuildReachability(d.wisdomPosition+Vector3.right*2);foreach(var slot in island.slots)if(!layout.navigation.InReachableArea(slot.position)){int index=island.slots.IndexOf(slot);slot.position=layout.particles[index];}}
             return next;
         }
         public void Restore(ForestSave state)
@@ -112,7 +114,7 @@ namespace LightingBlocks
             {
                 float angle=(float)random.NextDouble()*Mathf.PI*2,radius=30+(float)random.NextDouble()*178;
                 float x=Mathf.Cos(angle)*radius,z=25+Mathf.Sin(angle)*radius;
-                if(WorldDressing.ShoreDistance(x,z)<12||Mathf.Abs(x)<WorldDressing.RiftHalfWidth&&(z>1&&z<27||z>28&&z<54))continue;
+                if(WorldDressing.ShoreDistance(x,z)<12||Mathf.Abs(x)<WorldDressing.RiftHalfWidth&&(z>1&&z<27||z>28+Landscape.Expansion&&z<54+Landscape.Expansion))continue;
                 var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,WorldDressing.Height(x,z),z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
             }
             var ambience=visualRoot.gameObject.AddComponent<ForestAmbience>();ambience.Initialize(configuration,this,game);

@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: Forest
   m_EditorClassIdentifier: Assembly-CSharp::LightingBlocks.ForestConfiguration
   artVersion: 2
+  worldRevision: 1
   islands:
   - id: island-1
     polygonIndex: 0
@@ -39,12 +40,12 @@ MonoBehaviour:
   - id: island-2
     polygonIndex: 1
     blockTier: 1
-    treeCount: 28
-    animalCount: 3
+    treeCount: 120
+    animalCount: 6
     particleCount: 24
-    rabbitCount: 2
-    birdCount: 3
-    wisdomPosition: {x: -12, y: 0, z: 27.5}
+    rabbitCount: 4
+    birdCount: 6
+    wisdomPosition: {x: -12, y: 0, z: 53.5}
     outputOffsets:
     - {x: 3.5, y: 0.26, z: -2}
     - {x: 3.5, y: 0.26, z: 0}
@@ -64,7 +65,7 @@ MonoBehaviour:
     particleCount: 24
     rabbitCount: 4
     birdCount: 6
-    wisdomPosition: {x: -12, y: 0, z: 59}
+    wisdomPosition: {x: -12, y: 0, z: 111}
     outputOffsets:
     - {x: 3.5, y: 0.26, z: -2}
     - {x: 3.5, y: 0.26, z: 0}
@@ -129,6 +130,8 @@ MonoBehaviour:
   - {fileID: 4300000, guid: 5a90d5a6357eb1044b29053eef3b009b, type: 2}
   - {fileID: 4300000, guid: 8bdfd3f672431dd458bf974ff5fa1bab, type: 2}
   - {fileID: 4300000, guid: 656645f86bcab4146a08efb9b4089a97, type: 2}
+  - {fileID: 4300000, guid: 3518d0c28cef79d43a18c9a2b9f2c08a, type: 2}
+  - {fileID: 4300000, guid: d7f848a7cfc341148bad66af5875e986, type: 2}
   coverMaterials:
   - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
   - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
@@ -138,6 +141,8 @@ MonoBehaviour:
   - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
   - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
   - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
   - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
   ground: {fileID: 2100000, guid: 8c34d7def4e129744bcf0d49ae1dedb0, type: 2}
   cliff: {fileID: 2100000, guid: 1d2e999e72753ed40af857df5d982888, type: 2}

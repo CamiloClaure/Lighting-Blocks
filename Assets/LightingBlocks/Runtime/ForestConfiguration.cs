@@ -20,8 +20,8 @@ namespace LightingBlocks
     [CreateAssetMenu(menuName="Lighting Blocks/Forest configuration")]
     public sealed class ForestConfiguration:ScriptableObject
     {
-        public const int LayoutVersion=2;
-        public int artVersion;public IslandForestDefinition[] islands;
+        public const int LayoutVersion=3;
+        public int artVersion,worldRevision;public IslandForestDefinition[] islands;
         public GameObject wisdomPrefab;public UnityEngine.Object wisdomSource;
         public GameObject[] trees,undergrowth,animals;public ForestSpecies[] species;
         public Mesh[] coverMeshes;public Material[] coverMaterials;
@@ -59,7 +59,7 @@ namespace LightingBlocks
         }
         public static float Green(Vector3 p,IslandForestDefinition d){float path=Mathf.SmoothStep(0,1,Mathf.Clamp01((PathDistance(p,d)-1.1f)/2.8f));return Mathf.Clamp01(.2f+path*(.5f+Mathf.PerlinNoise(p.x*.065f+31,p.z*.065f+17)*.3f));}
         public static bool MainPath(Vector3 p,IslandForestDefinition d)=>PathDistance(p,d)<3;
-        public static bool Landing(Vector3 p,IslandForestDefinition d){if(Mathf.Abs(p.x-(d.wisdomPosition.x+12))>6)return false;return d.polygonIndex==0?p.z>3&&p.z<9:d.polygonIndex==1?(p.z<25||p.z>30):p.z<52;}
+        public static bool Landing(Vector3 p,IslandForestDefinition d){if(Mathf.Abs(p.x-(d.wisdomPosition.x+12))>6)return false;return d.polygonIndex==0?p.z>3&&p.z<9:d.polygonIndex==1?(p.z<25||p.z>82):p.z<52+Landscape.Expansion;}
     }
     public static class ForestLayoutGenerator
     {
@@ -71,7 +71,7 @@ namespace LightingBlocks
             p.y=0;if(Vector2.Distance(new Vector2(p.x,p.z),new Vector2(d.wisdomPosition.x,d.wisdomPosition.z))<radius)return true;
             foreach(var offset in d.outputOffsets)if((p-(d.wisdomPosition+offset)).sqrMagnitude<6.25f)return true;
             if(d.polygonIndex==0&&(p-new Vector3(-6,0,-9)).sqrMagnitude<9)return true;
-            if(d.polygonIndex==2&&(p-new Vector3(0,0,55)).sqrMagnitude<9)return true;return false;
+            if(d.polygonIndex==2&&(p-new Vector3(0,0,55+Landscape.Expansion)).sqrMagnitude<9)return true;return false;
         }
         public static IslandForestLayout Generate(IslandForestDefinition d,int seed,Vector2[] polygon,int variants)
         {
@@ -117,6 +117,12 @@ namespace LightingBlocks
                 int v=rng.Next(100);v=v<42?0:v<68?1:v<80?2:v<85?3:v<90?4:v<93?5:v<96?6:v<98?7:8;
                 if(ForestHabitat.PathDistance(p,d)<3.2f)v=0;foreach(var habitat in layout.habitats)if((p-habitat).sqrMagnitude<2.25f){v=0;break;}
                 layout.cover.Add(new ForestPlacement{id=layout.cover.Count,position=p,yaw=rng.Next(360),scale=.8f+(float)rng.NextDouble()*.4f,variant=v});
+            }
+            // Small habitat compositions give the eye landmarks between the large trees.
+            // They share the cover renderer and never obstruct hauling or interaction space.
+            rng=new System.Random(Hash(seed,d.id+"/habitat-groves"));int groves=0;var centres=new List<Vector3>();
+            foreach(var centre in layout.candidates){if(groves>=18)break;if(ForestHabitat.PathDistance(centre,d)<5||Reserved(centre,d,7)||!Inside(centre,polygon,3))continue;bool spaced=true;foreach(var other in centres)if((centre-other).sqrMagnitude<49){spaced=false;break;}if(!spaced)continue;centres.Add(centre);int theme=groves++%3;
+                for(int n=0;n<25;n++){float angle=(float)rng.NextDouble()*Mathf.PI*2;float radius=n==0?0:Mathf.Sqrt((float)rng.NextDouble())*2.4f;var p=centre+new Vector3(Mathf.Cos(angle)*radius,0,Mathf.Sin(angle)*radius);if(!Inside(p,polygon,1)||Reserved(p,d,5)||ForestHabitat.PathDistance(p,d)<3.2f)continue;int variant=n==0?(theme==0?10:9):theme==0?(n%3==0?4:1):theme==1?(n%3==0?7:0):(n%3==0?5:n%3==1?6:3);layout.cover.Add(new ForestPlacement{id=layout.cover.Count,position=p,yaw=(float)rng.NextDouble()*360,scale=n==0?1: .85f+(float)rng.NextDouble()*.5f,variant=variant});}
             }
             if(layout.particles.Count!=d.particleCount)throw new InvalidOperationException("Cannot safely place all particles on "+d.id);
             if(layout.animals.Count!=total)throw new InvalidOperationException("Cannot safely place wildlife on "+d.id);return layout;

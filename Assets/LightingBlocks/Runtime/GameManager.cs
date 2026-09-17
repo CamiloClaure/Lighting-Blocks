@@ -40,7 +40,7 @@ namespace LightingBlocks
         AudioSource audioSource;
         AudioClip chime;
         public int CurrentGap => Bridges[0] ? 1 : 0;
-        public static Vector3 Cell(int gap, int column, int row) => new Vector3(column * 2, -.18f, 8 + gap * 27 + row * 2);
+        public static Vector3 Cell(int gap, int column, int row) => new Vector3(column * 2, -.18f, Landscape.BridgeStart(gap) + row * 2);
 
         void Awake()
         {
@@ -159,12 +159,12 @@ namespace LightingBlocks
                 case "radiance": radiance++; break; case "generator": generator++; break; default: summoned++; break;
             }
             ApplyUpgrades();
-            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nClick to gather up to " + Capacity + " floating stones. Q drops or builds them." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Dragging is faster." : "Strength level " + strength + ". Grave Stones need I; Obsidian needs III."));
+            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nClick to gather up to " + Capacity + " floating stones. Q drops or builds them." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Walking and hauling are faster." : "Strength level " + strength + ". Grave Stones need I; Obsidian needs III."));
             Save(); return true;
         }
         public void ApplyUpgrades()
         {
-            player.moveSpeed = 4.7f; player.pullSpeed = 2.4f + speed * .65f; player.grabReach = 1.4f;
+            player.moveSpeed = 6f + speed * .65f; player.pullSpeed = 3.2f + speed * .65f; player.grabReach = 1.4f;
             if (soulLight != null) { soulLight.range = 9 + radiance * 3; soulLight.intensity = 3.5f + radiance * .5f; }
             if (wellCore != null) wellCore.gameObject.SetActive(generator > 0);
         }
@@ -188,8 +188,8 @@ namespace LightingBlocks
         }
         public bool FindPlacement(BridgeBlock block, out int gap, out int column, out int row, out string reason)
         {
-            gap = block.transform.position.z > 28 ? 1 : 0;
-            row = Mathf.Clamp(Mathf.RoundToInt((block.transform.position.z - 8 - gap * 27) / 2), 0, Rows - 1);
+            gap = block.transform.position.z > (Landscape.BridgeStart(0)+Landscape.BridgeStart(1))*.5f ? 1 : 0;
+            row = Mathf.Clamp(Mathf.RoundToInt((block.transform.position.z - Landscape.BridgeStart(gap)) / 2), 0, Rows - 1);
             column = Mathf.Clamp(Mathf.RoundToInt(block.transform.position.x / 2), -2, 2);
             var cell = Cell(gap, column, row); var difference = cell - block.transform.position; difference.y = 0;
             reason = "Move the block to the glowing edge of the connected bridge, then release.";
@@ -330,7 +330,7 @@ namespace LightingBlocks
         [Serializable] public class BlockSave { public string id; public int tier, gap, column, row; public bool placed, rewarded; public Vector3 position; }
         [Serializable] public class SaveData
         {
-            public int version = 3; public ForestSave forest; public double souls, rate; public long utc;
+            public int version = 4; public ForestSave forest; public double souls, rate; public long utc;
             public int speed, links, strength, radiance, generator, summoned; public bool completed; public Vector3 player;
             public List<BlockSave> blocks = new List<BlockSave>();
         }
@@ -343,9 +343,10 @@ namespace LightingBlocks
         public bool ImportSave(string json, bool offline = false)
         {
             SaveData d; try { d = JsonUtility.FromJson<SaveData>(json); } catch { return false; }
-            if (d == null || (d.version != 1 && d.version != 2 && d.version != 3) || d.blocks == null || d.blocks.Count > 150 || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.summoned < 0 || !PositionValid(d.player)) return false;
+            if (d == null || (d.version != 1 && d.version != 2 && d.version != 3 && d.version != 4) || d.blocks == null || d.blocks.Count > 150 || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.summoned < 0 || !PositionValid(d.player)) return false;
             if (d.blocks.Any(b => b == null || string.IsNullOrEmpty(b.id) || b.tier < 0 || b.tier > 2 || !PositionValid(b.position) || b.placed && (b.gap < 0 || b.gap > 1 || Math.Abs(b.column) > 2 || b.row < 0 || b.row >= Rows || b.gap == 1 && b.tier == 0)) || d.blocks.Select(b => b.id).Distinct().Count() != d.blocks.Count) return false;
             if (d.blocks.Where(b => b.placed).GroupBy(b => b.gap + ":" + b.column + ":" + b.row).Any(g => g.Count() > 1)) return false;
+            if(d.version<4){d.player=Landscape.UpgradePosition(d.player);foreach(var block in d.blocks)block.position=block.placed?Cell(block.gap,block.column,block.row):Landscape.UpgradePosition(block.position);}
             var forest = ForestWorld.For(this);
             ForestSave incoming = null;
             if (forest != null) {
@@ -371,7 +372,7 @@ namespace LightingBlocks
         static bool Finite(double n) => !double.IsNaN(n) && !double.IsInfinity(n);
         // Bounds a saved position must fall inside. They follow the courts, which grew, so a stone
         // dropped at the far edge is still restored instead of failing the whole save.
-        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 60 && p.y >= -5 && p.y <= 10 && p.z >= -70 && p.z <= 120;
+        static bool PositionValid(Vector3 p) => Finite(p.x) && Finite(p.y) && Finite(p.z) && Math.Abs(p.x) <= 60 && p.y >= -5 && p.y <= 10 && p.z >= -70 && p.z <= 120 + Landscape.Expansion;
         public bool Save()
         {
             if (!initialized || !persistenceEnabled) return false;

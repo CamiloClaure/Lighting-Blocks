@@ -10,12 +10,14 @@ namespace LightingBlocks
         GameManager game;IslandForestLayout layout;ForestSpecies species;ForestNavigation nav;
         System.Random random;readonly List<Vector3> path=new List<Vector3>();int waypoint,lastClip;
         float timer,decision,flightT,flightDuration,flightHeight,flightDelay,cooldown;
-        Vector3 flightStart,flightEnd,holdOrigin;bool launching,holding;float holdTime,retry;int callCount;
+        float takeoffLength=1,landingLength=1.25f,hopLength=1,fleeLength=.667f;
+        readonly Dictionary<string,int> animationHashes=new Dictionary<string,int>();
+        Vector3 flightStart,flightEnd,holdOrigin;bool launching,holding,flightFromAir;float holdTime,retry;int callCount;
         public bool Airborne=>State==Mode.Takeoff||State==Mode.Flight||State==Mode.Landing;
         public void Initialize(GameManager g,IslandForestLayout l,ForestSpecies s,int seed)
-        {game=g;layout=l;species=s;nav=new ForestNavigation(Landscape.Shores[l.definition.polygonIndex],l,true,s.clearance);random=new System.Random(seed);timer=Range(2,6);decision=Range(0,.2f);lastClip=0;}
+        {game=g;layout=l;species=s;nav=new ForestNavigation(Landscape.Shores[l.definition.polygonIndex],l,true,s.clearance);random=new System.Random(seed);timer=Range(2,6);decision=Range(0,.2f);lastClip=0;if(animator!=null){animator.cullingMode=AnimatorCullingMode.AlwaysAnimate;foreach(var clip in animator.runtimeAnimatorController.animationClips){if(clip.name.EndsWith("Takeoff"))takeoffLength=clip.length;if(clip.name.EndsWith("Landing"))landingLength=clip.length;if(clip.name.EndsWith("Hop"))hopLength=clip.length;if(clip.name.EndsWith("Flee"))fleeLength=clip.length;}}}
         float Range(float min,float max)=>Mathf.Lerp(min,max,(float)random.NextDouble());
-        void Animate(string name){int hash=Animator.StringToHash(name);if(animator!=null&&lastClip!=hash){animator.CrossFadeInFixedTime(hash,.16f);lastClip=hash;}}
+        void Animate(string name){if(animator==null)return;if(!animationHashes.TryGetValue(name,out int hash)){hash=Animator.StringToHash("Base Layer."+name);animationHashes.Add(name,hash);}animator.speed=name==species.move?hopLength*(species.flying?1.8f:1.6f):name==species.flee&&!species.flying?fleeLength*2.7f:1;if(lastClip!=hash){if(lastClip==0)animator.Play(hash,0,0);else animator.CrossFadeInFixedTime(hash,.1f,0,0);lastClip=hash;}}
         bool ClearGround(Vector3 p,float playerDistance)
         {
             if(!nav.Walkable(p))return false;var delta=game.player.transform.position-p;delta.y=0;if(delta.sqrMagnitude<playerDistance*playerDistance)return false;
@@ -43,16 +45,17 @@ namespace LightingBlocks
                 else if(sameIsland&&distance<species.alertRadius*species.alertRadius&&(State==Mode.Idle||State==Mode.Forage)){State=Mode.Alert;timer=2;}
                 if(State==Mode.Flee&&(distance>81||timer<=0)){State=Mode.Recover;timer=Range(2,4);cooldown=2;path.Clear();}
                 if(State==Mode.Alert){var toward=game.player.transform.position-transform.position;toward.y=0;if(toward.sqrMagnitude>.01f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(toward),.25f);}
-                if(!Airborne&&State!=Mode.Flee&&timer<=0){if(random.NextDouble()<.55){State=Mode.Forage;timer=Range(2,5);}else{State=Mode.Hop;timer=Range(3,6);Pick(false);}}
+                if(!Airborne&&State!=Mode.Flee&&State!=Mode.Hop&&timer<=0){if(random.NextDouble()<.55){State=Mode.Forage;timer=Range(2,5);}else{State=Mode.Hop;timer=Range(3,6);Pick(false);}}
                 if(species.flying&&++callCount%100==0&&State==Mode.Forage)ForestSoundscape.Play("bird",transform.position,.035f);
             }
             Animate(State==Mode.Flee?species.flee:State==Mode.Hop?species.move:State==Mode.Alert?"Alert":State==Mode.Forage?species.forage:species.idle);
             if((State!=Mode.Hop&&State!=Mode.Flee)||waypoint>=path.Count)return;
-            var next=Vector3.MoveTowards(transform.position,path[waypoint],(State==Mode.Flee?species.fleeSpeed:species.walkSpeed)*dt);
+            float gait=1;if(animator!=null&&animator.isActiveAndEnabled){float phase=Mathf.Repeat(animator.GetCurrentAnimatorStateInfo(0).normalizedTime,1);gait=Mathf.Max(.08f,Mathf.Sin(phase*Mathf.PI*2)*3.05f);}
+            var next=Vector3.MoveTowards(transform.position,path[waypoint],(State==Mode.Flee?species.fleeSpeed:species.walkSpeed)*gait*dt);
             if(!ClearGround(next,0)||!nav.Segment(transform.position,next)){State=Mode.Recover;timer=1;path.Clear();return;}
             var direction=next-transform.position;if(direction.sqrMagnitude>.00001f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(direction),dt*6);
             transform.position=next;if((next-path[waypoint]).sqrMagnitude<.01f)waypoint++;
-            if(waypoint>=path.Count&&State==Mode.Hop){State=Mode.Idle;timer=Range(2,5);}
+            if(waypoint>=path.Count){State=State==Mode.Flee?Mode.Recover:Mode.Idle;timer=Range(2,5);cooldown=2;Animate(species.idle);}
         }
         void Pick(bool fleeing)
         {
@@ -70,10 +73,10 @@ namespace LightingBlocks
                 if(dist<7||dist>30||!ClearGround(p,8))continue;
                 bool safe=true;float height=3.5f;
                 for(int k=0;k<=24;k++){float t=k/24f;var sample=Vector3.Lerp(transform.position,p,t);if(!ForestLayoutGenerator.Inside(sample,polygon,.6f)){safe=false;break;}
-                    foreach(var tree in layout.trees)if((sample-tree.position).sqrMagnitude<9*tree.scale*tree.scale){if(t<.16f||t>.84f){safe=false;break;}height=Mathf.Max(height,(7.5f*tree.scale)/Mathf.Sin(Mathf.PI*t));}
+                    foreach(var tree in layout.trees)if((new Vector3(sample.x,0,sample.z)-tree.position).sqrMagnitude<9*tree.scale*tree.scale){if(t<.16f||t>.84f){safe=false;break;}height=Mathf.Max(height,(7.5f*tree.scale)/Mathf.Sin(Mathf.PI*t));}
                     if((sample-layout.definition.wisdomPosition).sqrMagnitude<25){safe=false;break;}
                     if(!safe)break;}
-                if(!safe||height>18)continue;holding=false;flightStart=transform.position;flightEnd=p;flightHeight=height;flightT=0;flightDuration=Mathf.Max(3,dist/4);State=Mode.Takeoff;Animate("Takeoff");ForestSoundscape.Play("wing",transform.position,.06f);return true;
+                if(!safe||height>18)continue;bool alreadyFlying=Airborne;flightFromAir=alreadyFlying;holding=false;flightStart=transform.position;flightEnd=p;flightHeight=height;flightT=0;flightDuration=Mathf.Max(takeoffLength+landingLength+1,dist/4+takeoffLength+landingLength);State=alreadyFlying?Mode.Flight:Mode.Takeoff;Animate(alreadyFlying?"Flight":"Takeoff");ForestSoundscape.Play("wing",transform.position,.06f);return true;
             }return false;
         }
         void Fly(float dt)
@@ -86,9 +89,9 @@ namespace LightingBlocks
             }
             flightT=Mathf.Min(1,flightT+dt/flightDuration);float t=Mathf.SmoothStep(0,1,flightT);
             var next=Vector3.Lerp(flightStart,flightEnd,t)+Vector3.up*(Mathf.Sin(Mathf.PI*t)*flightHeight);
-            var direction=next-transform.position;if(direction.sqrMagnitude>.00001f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(direction),dt*5);
+            var direction=next-transform.position;if(direction.sqrMagnitude>.00001f){var horizontal=new Vector3(direction.x,0,direction.z);if(horizontal.sqrMagnitude>.000001f){float pitch=-Mathf.Clamp(Mathf.Atan2(direction.y,horizontal.magnitude)*Mathf.Rad2Deg,-18,18);var rotation=Quaternion.LookRotation(horizontal)*Quaternion.Euler(pitch,0,0);transform.rotation=Quaternion.Slerp(transform.rotation,rotation,dt*5);}}
             transform.position=next;
-            State=flightT<.18f?Mode.Takeoff:flightT>.83f?Mode.Landing:Mode.Flight;Animate(State==Mode.Takeoff?"Takeoff":State==Mode.Landing?"Landing":"Flight");
+            State=!flightFromAir&&flightT*flightDuration<takeoffLength?Mode.Takeoff:(1-flightT)*flightDuration<landingLength?Mode.Landing:Mode.Flight;Animate(State==Mode.Takeoff?"Takeoff":State==Mode.Landing?"Landing":"Flight");
             if(flightT>=1){transform.position=flightEnd;transform.rotation=Quaternion.Euler(0,transform.eulerAngles.y,0);State=Mode.Recover;timer=Range(3,6);cooldown=3;Animate(species.idle);}
         }
         void Update(){if(game==null||!game.autoTick)return;long before=ForestPerformanceProbe.Measuring?System.GC.GetAllocatedBytesForCurrentThread():0;Simulate(Time.deltaTime);if(ForestPerformanceProbe.Measuring)ForestPerformanceProbe.WildlifeBytes+=System.GC.GetAllocatedBytesForCurrentThread()-before;}

@@ -20,7 +20,7 @@ namespace LightingBlocks
         // Both rifts are carved past the full width of the courts: a gap has to read as a chasm
         // splitting the world, not as a notch you could walk around. Full depth to 58, gone by 74.
         public const float RiftHalfWidth = 74f;
-        static readonly Vector2 Centre = new Vector2(0, 25);
+        static readonly Vector2 Centre = new Vector2(0, 51);
         // Shared with the editor bake so a baked scene and a runtime rebuild light the same way.
         // public static readonly Color PavingEmission = new Color(1.7f, 1.7f, 1.85f);
         static Texture2D halo;
@@ -139,7 +139,7 @@ namespace LightingBlocks
         }
         static float Chasm(float x, float z)
         {
-            float rift = Mathf.Max(Band(z, 7, 21), Band(z, 34, 48));
+            float rift = Mathf.Max(Band(z, 7, 21), Band(z, 34 + Landscape.Expansion, 48 + Landscape.Expansion));
             return rift * Mathf.Clamp01((RiftHalfWidth - Mathf.Abs(x)) / 16f) * 14f;
         }
         // Distance from a point to the nearest playable shore, zero when standing over one.

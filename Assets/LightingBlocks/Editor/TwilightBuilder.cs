@@ -39,11 +39,11 @@ namespace LightingBlocks.Editor
             File.AppendAllText("Library/Twilight-animations.txt",name+": "+string.Join(", ",clips.Select(c=>c.name))+"\n");
             var prefab=PrefabUtility.SaveAsPrefabAsset(root,Art+"/Prefabs/"+name+".prefab");UnityEngine.Object.DestroyImmediate(root);return prefab;
         }
-        static void HabitatTexture(ForestConfiguration config)
+        public static void HabitatTexture(ForestConfiguration config)
         {
-            const int w=512,h=768;var tex=new Texture2D(w,h,TextureFormat.RGBA32,false,true);var colors=new Color32[w*h];
+            const int w=512,h=1024;var tex=new Texture2D(w,h,TextureFormat.RGBA32,false,true);var colors=new Color32[w*h];
             for(int y=0;y<h;y++)for(int x=0;x<w;x++){
-                var p=new Vector3(x/(float)(w-1)*128-64,0,y/(float)(h-1)*192-64);IslandForestDefinition island=null;
+                var p=new Vector3(x/(float)(w-1)*128-64,0,y/(float)(h-1)*256-64);IslandForestDefinition island=null;
                 foreach(var d in config.islands)if(Landscape.Inside(new Vector2(p.x,p.z),Landscape.Shores[d.polygonIndex])){island=d;break;}
                 float green=island==null?.65f:ForestHabitat.Green(p,island);if(island!=null&&ForestLayoutGenerator.Reserved(p,island,2.5f))green*=.55f;
                 float moss=green*(.55f+Mathf.PerlinNoise(p.x*.15f+3,p.z*.15f)*.2f),grass=green-moss,soil=(1-green)*.65f;colors[y*w+x]=new Color(moss,grass,soil,1-green-soil);

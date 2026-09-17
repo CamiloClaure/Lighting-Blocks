@@ -42,7 +42,7 @@ Shader "LightingBlocks/Spectral Lit"
  UNITY_SETUP_INSTANCE_ID(i);float2 uv=_Terrain>.5?i.positionWS.xz/3:i.uv;half3 n=normalize(i.normalWS);
  half4 color=SAMPLE_TEXTURE2D(_BaseMap,sampler_BaseMap,uv),mask=SAMPLE_TEXTURE2D(_MaskMap,sampler_MaskMap,uv);
  half3 normal=UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap,sampler_NormalMap,uv),_NormalStrength);
- if(_Terrain>.5){float4 weights=SAMPLE_TEXTURE2D(_HabitatMap,sampler_HabitatMap,(i.positionWS.xz+float2(64,64))/float2(128,192));
+ if(_Terrain>.5){float4 weights=SAMPLE_TEXTURE2D(_HabitatMap,sampler_HabitatMap,(i.positionWS.xz+float2(64,64))/float2(128,256));
  half4 soil=SAMPLE_TEXTURE2D(_SoilMap,sampler_SoilMap,uv),moss=SAMPLE_TEXTURE2D(_MossMap,sampler_MossMap,uv*.8),grass=SAMPLE_TEXTURE2D(_GrassMap,sampler_GrassMap,uv);
  color=color*weights.a+soil*weights.b+moss*weights.r+grass*weights.g;
  mask=mask*weights.a+SAMPLE_TEXTURE2D(_SoilMask,sampler_SoilMask,uv)*weights.b+half4(1,.85,0,.18)*(weights.r+weights.g);normal=normalize(normal*weights.a+UnpackNormalScale(SAMPLE_TEXTURE2D(_SoilNormal,sampler_SoilNormal,uv),_NormalStrength)*weights.b+UnpackNormalScale(SAMPLE_TEXTURE2D(_MossNormal,sampler_MossNormal,uv),_NormalStrength)*(weights.r+weights.g));}

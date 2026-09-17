@@ -60,7 +60,7 @@ namespace LightingBlocks.Editor
             Check(!G.persistenceEnabled,"Tests isolate the actual player save");GameHUD.Current.BeginJourney();
             Check(G.Blocks.Count==0,"New game has no free scattered starter blocks");
             Check(F.WisdomTrees.Count==F.configuration.islands.Length&&UnityEngine.Object.FindObjectsByType<WisdomTree>().Length==3,"Exactly one Wisdom Tree per island");
-            Check(UnityEngine.Object.FindObjectsByType<SpectralAnimal>().Length==15,"Fifteen reactive spectral animals instantiated");
+            Check(UnityEngine.Object.FindObjectsByType<SpectralAnimal>().Length==18,"Eighteen reactive spectral animals instantiated");
             Check(!UnityEngine.Object.FindObjectsByType<Transform>().Any(t=>t.name.StartsWith("ENV_BrokenColumn")||t.name.StartsWith("ENV_PartialArch")||t.name.StartsWith("Court ruin")||t.name.StartsWith("Deep ruin")),"Ruined architecture removed");
             Check(!G.CanStand(new Vector3(0,0,14))&&!Physics.Raycast(new Vector3(0,2,14),Vector3.down,4),"Bridge gap has no hidden floor");
             Check(G.cameraRig.GetComponent<Camera>().GetUniversalAdditionalCameraData().renderPostProcessing,"Post-processing enabled on gameplay camera");
@@ -98,7 +98,7 @@ namespace LightingBlocks.Editor
             Check(G.Purchase("strength")&&G.strength==1,"Existing Strength upgrade still costs Souls");
             for(int row=0;row<7;row++){CollectThree(1);Place(Charge(1),1,row);}
             Check(G.Bridges[1]&&G.ConnectedCount==14,"Second bridge completes with existing Grave blocks");
-            Teleport(new Vector3(0,0,55));G.Interact();Check(G.completed,"Exit beacon completes the current chapter");CollectThree(0);Charge(0);Check(G.completed,"Wisdom Trees still charge after chapter completion");
+            Teleport(G.exit.position);G.Interact();Check(G.completed,"Exit beacon completes the current chapter");CollectThree(0);Charge(0);Check(G.completed,"Wisdom Trees still charge after chapter completion");
             saved=G.ExportSave();Check(G.ImportSave(saved)&&G.ConnectedCount==14&&G.generator==1&&G.strength==1,"Version 3 restores bridges, skills and forest state");
             var legacy=JsonUtility.FromJson<GameManager.SaveData>(saved);legacy.version=1;legacy.forest=null;var oldSouls=legacy.souls;Check(G.ImportSave(JsonUtility.ToJson(legacy))&&G.ConnectedCount==14&&G.souls==oldSouls&&F.State.seed==1907&&F.State.islands.All(i=>i.inventory==0),"Version 1 migration preserves economy and blocks");
             G.savePathOverride=Path.GetFullPath("Library/Forest-test-save.json");G.persistenceEnabled=true;
@@ -112,13 +112,13 @@ namespace LightingBlocks.Editor
         }
         static void TwilightRegression(string pristine)
         {
-            Check(UnityEngine.Object.FindObjectsByType<ForestCreature>().Length==25,"Ten spectral rabbits and fifteen ground birds augment existing wildlife");
+            Check(UnityEngine.Object.FindObjectsByType<ForestCreature>().Length==30,"Twelve spectral rabbits and eighteen ground birds augment existing wildlife");
             Check(UnityEngine.Object.FindObjectsByType<ForestCoverRenderer>().Sum(c=>c.InstanceCount)>2500,"Instanced ground cover spans the islands");
             var inv=F.Inventory("island-1");var slot=inv.slots[0];var old=slot.position;slot.remaining=.1f;Teleport(new Vector3(0,0,3));F.Tick(.2f,false);F.Tick(.6f,false);
             Check(slot.remaining==0&&!slot.pending&&slot.generation==1&&(slot.position-old).sqrMagnitude>=4,"Renewed collectible moves to a safe new position");
             var save=G.ExportSave();var pos=slot.position;Check(G.ImportSave(save)&&F.Inventory("island-1").slots[0].position==pos&&F.Inventory("island-1").slots[0].generation==1,"Randomized position and generation persist on reload");
             var v2=JsonUtility.FromJson<GameManager.SaveData>(save);v2.version=2;v2.forest.layoutVersion=1;v2.forest.islands[0].inventory=7;v2.forest.islands[0].slots[1].remaining=18;
-            Check(G.ImportSave(JsonUtility.ToJson(v2))&&F.State.layoutVersion==2&&F.Inventory("island-1").inventory==7&&F.Inventory("island-1").slots[1].remaining==18,"V2 migration preserves inventory and cooldowns");
+            Check(G.ImportSave(JsonUtility.ToJson(v2))&&F.State.layoutVersion==3&&F.Inventory("island-1").inventory==7&&F.Inventory("island-1").slots[1].remaining==18,"V2 migration preserves inventory and cooldowns");
             // Two slots renewing inside one tick must both relocate, and must not land on top of each other.
             var twin=F.Inventory("island-1");var first=twin.slots[2];var second=twin.slots[3];
             var firstOld=first.position;var secondOld=second.position;
@@ -191,14 +191,23 @@ namespace LightingBlocks.Editor
             {float restore=ForestSoundscape.Volume("Music");ForestSoundscape.SetVolume("Music",.42f);bool stored=Mathf.Abs(ForestSoundscape.Volume("Music")-.42f)<.001f;ForestSoundscape.SetVolume("Music",restore);
              var sliders=GameHUD.Current.GetComponentsInChildren<UnityEngine.UI.Slider>(true);
              Check(stored&&sliders.Length>=4,"Pause exposes persistent Master/Music/Ambience/Effects volumes (sliders="+sliders.Length+")");}
+            Check(G.ImportSave(pristine),"Reset before expanded world checks");
+            Check(Mathf.Abs(Landscape.Area(Landscape.Shores[0])-Landscape.Area(Landscape.Shores[1]))<.1f,"Second island has the first island's exact surface area");
+            Check(!G.CanStand(new Vector3(0,0,93))&&G.CanStand(new Vector3(0,0,80)),"Expanded middle island retains a real second bridge gap");
+            G.speed=0;G.ApplyUpgrades();float walking=G.player.moveSpeed,carrying=G.player.pullSpeed;G.souls=500;Check(G.Purchase("speed")&&G.player.moveSpeed>walking&&G.player.pullSpeed>carrying&&walking>=6,"Swift Stride speeds up both unladen movement and hauling");
+            var expanded=JsonUtility.FromJson<GameManager.SaveData>(G.ExportSave());expanded.version=3;expanded.forest.layoutVersion=2;expanded.player=new Vector3(0,.025f,59);foreach(var island in expanded.forest.islands)if(island.id=="island-3")foreach(var previousSlot in island.slots)previousSlot.position.z-=Landscape.Expansion;
+            expanded.forest.islands[2].inventory=13;expanded.forest.islands[2].slots[0].remaining=17;var oldPickup=expanded.forest.islands[2].slots[0].position;
+            Check(G.ImportSave(JsonUtility.ToJson(expanded))&&Mathf.Abs(G.player.transform.position.z-111)<.1f&&F.Inventory("island-3").inventory==13&&F.Inventory("island-3").slots[0].remaining==17,"V3 expansion migration preserves player location, island inventory and cooldown");
+            Check(Vector3.Distance(F.Inventory("island-3").slots[0].position,oldPickup+Vector3.forward*Landscape.Expansion)<.01f&&G.ImportSave(G.ExportSave()),"Migrated collectible location stays stable through V4 reload");
+            foreach(var layout in F.Layouts)Check(layout.cover.Count(c=>c.variant>=9)>=12,"Distinct habitat landmarks populate "+layout.definition.id);
             Check(G.ImportSave(pristine),"Reset after twilight tests");
         }
         static void Regression(string pristine)
         {
             var inv=F.Inventory("island-1");inv.inventory=30;Teleport(F.Layouts[0].particles[0]);Check(!F.TryCollect(0)&&inv.slots[0].remaining==0,"Full inventory leaves pickup available");inv.inventory=0;
             Check(F.TryCollect(0),"Pickup becomes collectable after inventory has space");var clock=inv.slots[0].remaining;F.Tick(5,false);Check(inv.slots[0].remaining==clock-5,"Particle renewal uses simulation time");
-            string inventory=G.ExportSave();F.Build();Check(G.ExportSave().Contains("island-1")&&F.Inventory("island-1").inventory==1&&F.Inventory("island-1").slots[0].remaining==25&&UnityEngine.Object.FindObjectsByType<WisdomTree>().Length==3&&UnityEngine.Object.FindObjectsByType<SpectralAnimal>().Length==15,"Visual rebuild preserves state without duplicate live systems");
-            var invalid=JsonUtility.FromJson<GameManager.SaveData>(inventory);invalid.version=4;Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Future save versions rejected");invalid.version=2;invalid.forest.islands[0].id="unknown";Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Unknown island save IDs rejected");invalid=JsonUtility.FromJson<GameManager.SaveData>(inventory);invalid.forest.islands[0].slots[0].remaining=-1;Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Negative cooldown rejected");
+            string inventory=G.ExportSave();F.Build();Check(G.ExportSave().Contains("island-1")&&F.Inventory("island-1").inventory==1&&F.Inventory("island-1").slots[0].remaining==25&&UnityEngine.Object.FindObjectsByType<WisdomTree>().Length==3&&UnityEngine.Object.FindObjectsByType<SpectralAnimal>().Length==18,"Visual rebuild preserves state without duplicate live systems");
+            var invalid=JsonUtility.FromJson<GameManager.SaveData>(inventory);invalid.version=5;Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Future save versions rejected");invalid.version=2;invalid.forest.islands[0].id="unknown";Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Unknown island save IDs rejected");invalid=JsonUtility.FromJson<GameManager.SaveData>(inventory);invalid.forest.islands[0].slots[0].remaining=-1;Check(!G.ImportSave(JsonUtility.ToJson(invalid)),"Negative cooldown rejected");
             var fixture=JsonUtility.FromJson<GameManager.SaveData>(pristine);fixture.souls=5000;fixture.version=1;fixture.forest=null;
             fixture.blocks.Add(new GameManager.BlockSave{id="fixture-a",tier=0,position=new Vector3(-3,.26f,1)});fixture.blocks.Add(new GameManager.BlockSave{id="fixture-b",tier=0,position=new Vector3(-1.4f,.26f,1)});fixture.blocks.Add(new GameManager.BlockSave{id="fixture-heavy",tier=1,position=new Vector3(-3,.26f,-3)});fixture.blocks.Add(new GameManager.BlockSave{id="fixture-obsidian",tier=2,position=new Vector3(-7,.26f,-3)});
             Check(G.ImportSave(JsonUtility.ToJson(fixture)),"Version 1 loose-block regression fixture imports without relocation");
