@@ -16,7 +16,10 @@ Shader "LightingBlocks/Twilight Crystal"
  V vert(A i){V o;VertexPositionInputs v=GetVertexPositionInputs(i.p.xyz);o.p=v.positionCS;o.w=v.positionWS;o.n=TransformObjectToWorldNormal(i.n);o.uv=i.uv;o.fog=ComputeFogFactor(o.p.z);return o;}
  half4 frag(V i):SV_Target{float3 n=normalize(i.n);float3 view=GetWorldSpaceNormalizeViewDir(i.w);float rim=pow(1-saturate(dot(n,view)),3);float cloud=.5+.25*sin(i.w.x*13+i.w.z*7+sin(i.w.z*19))+.25*sin(i.w.z*22+i.w.x*9);
  float2 screen=GetNormalizedScreenSpaceUV(i.p);float3 behind=SampleSceneColor(saturate(screen+n.xz*_Refraction*(cloud-.5)));
- float3 tint=_BaseColor.rgb;float opacity=saturate(_Opacity+rim*.18);float3 body=lerp(behind*tint, tint*(.35+cloud*.2),.6);body+=tint*(rim*(.8+_Connected*.4)+_Highlight*.3);body=MixFog(body,i.fog);return half4(body*opacity,opacity);}
+ float3 tint=_BaseColor.rgb;float opacity=saturate(_Opacity+rim*.18);
+ // Weight the crystal's own colour over the refracted scene: the scene term washes the hue out, and with an HDR tint the
+ // bloom core clips toward white. More internal colour keeps the glow reading as cyan/lavender/amber rather than white.
+ float3 body=lerp(behind*tint, tint*(.5+cloud*.3),.78);body+=tint*(rim*(.8+_Connected*.4)+_Highlight*.3);body=MixFog(body,i.fog);return half4(body*opacity,opacity);}
  ENDHLSL}
  }
 }
