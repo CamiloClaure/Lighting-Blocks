@@ -1,0 +1,64 @@
+{
+  "GrassShort": {
+    "triangles": 176,
+    "actions": []
+  },
+  "GrassMedium": {
+    "triangles": 176,
+    "actions": []
+  },
+  "GrassTall": {
+    "triangles": 176,
+    "actions": []
+  },
+  "Fern1": {
+    "triangles": 252,
+    "actions": []
+  },
+  "Fern2": {
+    "triangles": 324,
+    "actions": []
+  },
+  "Mushroom1": {
+    "triangles": 2304,
+    "actions": []
+  },
+  "Mushroom2": {
+    "triangles": 2304,
+    "actions": []
+  },
+  "Flowers": {
+    "triangles": 3136,
+    "actions": []
+  },
+  "Twigs": {
+    "triangles": 192,
+    "actions": []
+  },
+  "Rabbit": {
+    "triangles": 6048,
+    "actions": [
+      "Alert",
+      "Flee",
+      "Hop",
+      "Idle",
+      "Sniff"
+    ]
+  },
+  "Bird": {
+    "triangles": 2334,
+    "actions": [
+      "Alert",
+      "Flight",
+      "GroundIdle",
+      "Hop",
+      "Landing",
+      "Peck",
+      "Takeoff"
+    ]
+  },
+  "WisdomCanopy": {
+    "triangles": 2800,
+    "actions": []
+  }
+}

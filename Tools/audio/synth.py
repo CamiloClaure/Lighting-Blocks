@@ -3,8 +3,7 @@
 Pure numpy + stdlib. No scipy, no ffmpeg, no audio libraries.
 
 Everything is float64 in [-1, 1] internally and written as 44100 Hz / 16-bit PCM,
-matching the two chimes already synthesized in C# (LastSparkGame.cs:52-56 and
-SoulBridgeGame.cs:52-56).
+matching the chime already synthesized in C# (GameManager.Awake).
 """
 
 import wave
