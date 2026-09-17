@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.LowLevel;
 using UnityEngine.Rendering;
 using UnityEngine.Rendering.Universal;
 namespace LightingBlocks.Editor
@@ -118,13 +120,65 @@ namespace LightingBlocks.Editor
             var v2=JsonUtility.FromJson<GameManager.SaveData>(save);v2.version=2;v2.forest.layoutVersion=1;v2.forest.islands[0].inventory=7;v2.forest.islands[0].slots[1].remaining=18;
             Check(G.ImportSave(JsonUtility.ToJson(v2))&&F.State.layoutVersion==2&&F.Inventory("island-1").inventory==7&&F.Inventory("island-1").slots[1].remaining==18,"V2 migration preserves inventory and cooldowns");
             Check(G.ImportSave(pristine),"Reset for wildlife movement checks");
-            var animals=UnityEngine.Object.FindObjectsByType<ForestCreature>();var bird=animals.First(a=>a.name.Contains("Bird"));var start=bird.transform.position;Teleport(start+Vector3.back*2);
+            // FindObjectsByType order is not guaranteed, so pick creatures deterministically.
+            var animals=UnityEngine.Object.FindObjectsByType<ForestCreature>().OrderBy(a=>a.name).ThenBy(a=>a.transform.position.x).ThenBy(a=>a.transform.position.z).ToArray();
+            // Fleeing requires the PLAYER to stand inside the same island polygon. A blind Vector3.back puts the approach
+            // point off-island for an edge-adjacent creature, which never triggers a flee: approach from the interior instead.
+            Vector3 Approach(ForestCreature c){var d=F.IslandAt(c.transform.position);var toward=d==null?Vector3.back:d.wisdomPosition-c.transform.position;toward.y=0;return toward.sqrMagnitude>.01f?toward.normalized:Vector3.back;}
+            // Pick a creature standing well inside its island. Fleeing is gated on the PLAYER being on the same polygon, so
+            // a shore-adjacent creature makes the approach point fall off-island and nothing ever triggers. Keeping the
+            // retreat on Vector3.back also preserves the bird's canopy-clear landing room, which an interior redirect ate.
+            ForestCreature Interior(string kind)
+            {
+                var candidates=animals.Where(a=>a.name.Contains(kind)).ToArray();
+                // Wide islands first. StartFlight needs a habitat point 7-30m away with the whole path inside the polygon,
+                // which the narrow middle strip (polygonIndex 1, about 13m deep) cannot offer, so a bird there never launches.
+                foreach(var wideOnly in new[]{true,false})
+                    foreach(var inset in new[]{8f,5f,3f})
+                    {
+                        var found=candidates.FirstOrDefault(a=>{var d=F.IslandAt(a.transform.position);return d!=null&&(!wideOnly||d.polygonIndex!=1)&&ForestLayoutGenerator.Inside(a.transform.position,Landscape.Shores[d.polygonIndex],inset);});
+                        if(found!=null)return found;
+                    }
+                return candidates.First();
+            }
+            var bird=Interior("Bird");var start=bird.transform.position;Teleport(start+Vector3.back*2);
             bool tookOff=false,landed=false;for(int i=0;i<1000;i++){bird.Simulate(.05f);if(bird.Airborne)tookOff=true;if(tookOff){Teleport(start+Vector3.back*10);if(!bird.Airborne){landed=true;break;}}}
-            Check(tookOff&&landed,"Ground bird takes off and returns to a safe landing");
-            var rabbit=animals.First(a=>a.name.Contains("Rabbit"));start=rabbit.transform.position;Teleport(start+Vector3.back*2);for(int i=0;i<30;i++)rabbit.Simulate(.05f);Check((rabbit.transform.position-start).sqrMagnitude>.1f,"Rabbit flees an approaching player");
+            Check(tookOff&&landed,"Ground bird takes off and returns to a safe landing ("+bird.name+" at "+start+" tookOff="+tookOff+" landed="+landed+" playerIsland="+(F.IslandAt(G.player.transform.position)?.id??"off-island")+")");
+            var rabbit=animals.First(a=>a.name.Contains("Rabbit"));start=rabbit.transform.position;Teleport(start+Approach(rabbit)*2);for(int i=0;i<30;i++)rabbit.Simulate(.05f);
+            Check((rabbit.transform.position-start).sqrMagnitude>.1f,"Rabbit flees an approaching player ("+rabbit.name+" at "+start+", state "+rabbit.State+")");
             GameHUD.Current.ShowPause();var frozen=rabbit.transform.position;for(int i=0;i<20;i++)rabbit.Simulate(.1f);Check(rabbit.transform.position==frozen,"Rabbit simulation respects pause");GameHUD.Current.HandleEscape();
             var mixer=Resources.Load<UnityEngine.Audio.AudioMixer>("Forest/ForestMix");Check(mixer!=null&&mixer.FindMatchingGroups("Footsteps").Length==1&&mixer.FindMatchingGroups("Ambience").Length==1,"Forest audio mixer groups imported");
             Check(Resources.Load<AudioClip>("Audio/Forest/step_0_5")!=null&&Resources.Load<AudioClip>("Audio/Forest/step_1_5")!=null&&Resources.Load<AudioClip>("Audio/Forest/step_2_5")!=null,"Six variations exist for all footstep surfaces");
+            // Ported from the retired GameVerification suite: real InputSystem events, not synthesised calls.
+            Check(G.TrySpawnAtWisdomTree("island-1",out var grabTarget),"Spawn a loose crystal for the input checks");
+            Teleport(grabTarget.transform.position+Vector3.back*1.1f);
+            // Place the crystal right in front of the player: grabReach is 1.25m, so a fixed offset alone would depend on facing.
+            grabTarget.transform.position=G.player.transform.position+G.player.transform.forward*.7f+Vector3.up*.26f;
+            grabTarget.Box.Body.position=grabTarget.transform.position;Physics.SyncTransforms();
+            // BoxPlayer.Update returns at its Application.isFocused gate BEFORE UpdateNearby runs, so NearbyBox stays null
+            // and real mouse input cannot be exercised without a focused Game view. The retired suite opened and focused
+            // one; batch mode has none. Run these in the GUI harness (Tools > Lighting Blocks > Run Spectral Forest Checks).
+            if(!Application.isFocused)report.AppendLine("SKIP: real mouse input needs a focused Game view (batch mode)");
+            else
+            {
+                var mouse=InputSystem.AddDevice<Mouse>("ForestMouseTest");
+                try
+                {
+                    G.player.readInput=true;Canvas.ForceUpdateCanvases();G.player.SendMessage("Update");
+                    InputSystem.QueueStateEvent(mouse,new MouseState{position=new Vector2(50,Screen.height-50)}.WithButton(MouseButton.Left));InputSystem.Update();G.player.SendMessage("Update");
+                    Check(G.player.HeldBox==null,"HUD click does not grab a world block");
+                    InputSystem.QueueStateEvent(mouse,new MouseState());InputSystem.Update();G.player.SendMessage("Update");
+                    InputSystem.QueueStateEvent(mouse,new MouseState{position=new Vector2(Screen.width/2,Screen.height/2)}.WithButton(MouseButton.Left));InputSystem.Update();G.player.SendMessage("Update");
+                    Check(G.player.HeldBox!=null,"Actual left mouse input grabs a nearby crystal (nearby="+(G.player.NearbyBox==null?"none":G.player.NearbyBox.name)+", menu="+GameHUD.Current.View+")");
+                    InputSystem.QueueStateEvent(mouse,new MouseState());InputSystem.Update();G.player.SendMessage("Update");
+                    Check(G.player.HeldBox==null,"Actual left mouse release ends hauling");
+                }
+                finally{G.player.readInput=false;InputSystem.RemoveDevice(mouse);}
+            }
+            // The pause menu's placeholder MUSIC/SFX buttons became persistent sliders, so assert the volumes they drive.
+            {float restore=ForestSoundscape.Volume("Music");ForestSoundscape.SetVolume("Music",.42f);bool stored=Mathf.Abs(ForestSoundscape.Volume("Music")-.42f)<.001f;ForestSoundscape.SetVolume("Music",restore);
+             var sliders=GameHUD.Current.GetComponentsInChildren<UnityEngine.UI.Slider>(true);
+             Check(stored&&sliders.Length>=4,"Pause exposes persistent Master/Music/Ambience/Effects volumes (sliders="+sliders.Length+")");}
             Check(G.ImportSave(pristine),"Reset after twilight tests");
         }
         static void Regression(string pristine)
@@ -160,6 +214,24 @@ namespace LightingBlocks.Editor
             }
             Teleport(new Vector3(-10,.025f,-5));G.cameraRig.distance=14;G.cameraRig.CenterOnPlayer();for(int i=0;i<15;i++){G.cameraRig.SendMessage("LateUpdate");yield return null;}
             ScreenCapture.CaptureScreenshot(folder+"/gameplay.png");yield return null;
+            // Ported from the retired GameVerification suite: every HUD view must fit the rendered screen.
+            // Reported rather than Check()ed: a throw inside this coroutine would skip Finish and hang the batch run.
+            if(Screen.width>200&&Screen.height>200)
+            {
+                var hud=GameHUD.Current;var corners=new Vector3[4];
+                foreach(var view in new[]{GameHUD.ScreenView.Playing,GameHUD.ScreenView.Skills,GameHUD.ScreenView.Title,GameHUD.ScreenView.Controls})
+                {
+                    // WaitForEndOfFrame never resumes in -batchmode (no rendering loop), which hung this coroutine and made
+                    // every run end on the 240s timeout instead of Finish(). Plain frame waits are enough here.
+                    hud.SetView(view);yield return null;Canvas.ForceUpdateCanvases();yield return null;
+                    bool inside=true;
+                    foreach(var rect in hud.GetComponentsInChildren<RectTransform>()){rect.GetWorldCorners(corners);foreach(var c in corners)if(c.x<-.5f||c.y<-.5f||c.x>Screen.width+.5f||c.y>Screen.height+.5f)inside=false;}
+                    if(!inside){report.AppendLine("FAIL: HUD bounds in "+view);Finish();yield break;}
+                    report.AppendLine("PASS: "+view+" UI fits the rendered screen");
+                }
+                hud.SetView(GameHUD.ScreenView.Playing);
+            }
+            else report.AppendLine("SKIP: HUD bounds need a real game view (Screen "+Screen.width+"x"+Screen.height+")");
             report.AppendLine("CAPTURES: "+folder);Finish();
         }
         public static void CaptureCamera(Camera camera,string path)
