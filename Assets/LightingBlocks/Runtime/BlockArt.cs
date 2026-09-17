@@ -29,7 +29,8 @@ namespace LightingBlocks
             {
                 if(body==null)continue;
                 body.GetPropertyBlock(properties);
-                properties.SetColor("_BaseColor",held?new Color(1,.83f,.52f):nearby?new Color(1,.94f,.76f):Color.white);
+                properties.SetFloat("_Highlight",held?1:nearby?.5f:0);
+                properties.SetFloat("_Connected",block.Connected?1:0);
                 body.SetPropertyBlock(properties);
             }
         }

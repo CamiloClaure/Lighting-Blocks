@@ -46,6 +46,7 @@ namespace LightingBlocks
         void Awake()
         {
             Instance = this;
+            if(ForestPerformanceProbe.Requested||TwilightEvidence.Requested)persistenceEnabled=false;
 #if UNITY_EDITOR
             if (File.Exists(Path.Combine(Application.dataPath, "../Library/LightingBlocks.test-active"))) persistenceEnabled = false;
 #endif
@@ -60,15 +61,17 @@ namespace LightingBlocks
             Blocks.Clear(); Blocks.AddRange(blocksRoot.GetComponentsInChildren<BridgeBlock>(true));
             foreach(var b in Blocks) ConfigureBlock(b);
             ApplyUpgrades(); Recalculate(); initialized = true;
+            var forest = ForestWorld.For(this); if (forest != null) forest.BeginSession();
             if (persistenceEnabled) Load();
             var obj = GameObject.CreatePrimitive(PrimitiveType.Cube); obj.name = "Next bridge block preview";
             Destroy(obj.GetComponent<Collider>()); ghost = obj.transform; ghost.localScale = new Vector3(1.92f, .025f, 1.92f);
             ghostRenderer = obj.GetComponent<Renderer>(); var m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
             m.SetColor("_BaseColor", new Color(.32f, .22f, .08f)); ghostRenderer.material = m;
-            if (string.IsNullOrEmpty(Notice)) Notify("BUILD A PATH THROUGH THE DARK\nHold left click near a block, drag it to the glowing edge, then release.", false);
+            if (string.IsNullOrEmpty(Notice)) Notify("THE WISDOM TREE\nCollect the bright particles. Press E beside the violet tree to charge it and release a bridge block.", false);
             cameraRig.CenterOnPlayer();
             WorldDressing.Build(this);
-            GameAudio.PlayMusic("IntroNoGusta");
+            if (forest != null) { forest.Build(); Save(); }
+            GameAudio.PlayMusic("music_soul_bridge");
         }
         void Update()
         {
@@ -123,6 +126,7 @@ namespace LightingBlocks
         public bool Purchase(string id)
         {
             if (GameHUD.SimulationPaused) return false;
+            if (id == "stone" || id == "grave") return Deny("WISDOM TREES PROVIDE BLOCKS\nCollect particles and press E beside a Wisdom Tree.");
             if (!(new[] { "speed", "links", "strength", "radiance", "generator", "stone", "grave" }).Contains(id)) return false;
             bool supply = id == "stone" || id == "grave";
             if (!supply && Level(id) >= Cap(id)) return Deny("FULLY AWAKENED\nThis power has reached its maximum level.");
@@ -146,18 +150,23 @@ namespace LightingBlocks
             if (soulLight != null) { soulLight.range = 9 + radiance * 3; soulLight.intensity = 3.5f + radiance * .5f; }
             if (wellCore != null) wellCore.gameObject.SetActive(generator > 0);
         }
-        public bool Spawn(int tier, int island)
+        public bool Spawn(int tier, int island) => false; // Legacy paid supply is retired.
+        public bool TrySpawnAtWisdomTree(string islandId, out BridgeBlock block)
         {
-            if (Blocks.Count(b => !b.placed) >= 35) return false;
-            float zBase = island == 0 ? -4 : 24;
-            for (int i = 0; i < 20; i++)
-            {
-                var p = new Vector3(-6 + i % 4 * 2.2f, .26f, zBase + i / 4 * 1.8f);
-                if (Physics.OverlapBox(p, new Vector3(.44f, .23f, .44f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore).Length != 0) continue;
-                var block = Instantiate(blockPrefabs[tier], p, Quaternion.identity, blocksRoot);
-                block.id = "summoned-" + Guid.NewGuid().ToString("N"); Blocks.Add(block); ConfigureBlock(block); Physics.SyncTransforms(); return true;
+            block = null;
+            var forest = ForestWorld.For(this);
+            if (forest == null) return false;
+            var definition = forest.configuration.Find(islandId);
+            if (definition == null || !forest.FindOutput(definition, out var point)) return false;
+            BridgeBlock created = null;
+            try {
+                created = Instantiate(blockPrefabs[definition.blockTier], point, Quaternion.identity, blocksRoot);
+                created.id = "wisdom-" + Guid.NewGuid().ToString("N");
+                ConfigureBlock(created); Blocks.Add(created); Physics.SyncTransforms(); block = created; return true;
+            } catch (Exception e) {
+                if (created != null) { Blocks.Remove(created); created.gameObject.SetActive(false); Destroy(created.gameObject); }
+                Debug.LogException(e); return false;
             }
-            return false;
         }
         public bool FindPlacement(BridgeBlock block, out int gap, out int column, out int row, out string reason)
         {
@@ -204,6 +213,7 @@ namespace LightingBlocks
                 return false;
             }
             double before = Rate;
+            ForestSoundscape.Play("crystal",block.transform.position,.12f);
             block.placed = true; block.gap = gap; block.column = x; block.row = z;
             ConfigureBlock(block);
             if (!block.rewarded) { souls += ConnectedCount == 0 ? 25 : 5; block.rewarded = true; }
@@ -286,12 +296,14 @@ namespace LightingBlocks
         public void Interact()
         {
             if (GameHUD.GameplayBlocked) return;
+            var wisdom = ForestWorld.For(this)?.Nearby(player.transform.position);
+            if (wisdom != null) { wisdom.BeginCharge(); return; }
             if (completed) { Notify("THE NEXT DAWN IS OPEN\nContinue growing your paths and powers.", false); return; }
             if (Bridges[1] && Vector3.Distance(player.transform.position, exit.position) < 3)
             { completed = true; Notify("THE NEXT DAWN\nThe souls were never lost. They were waiting for a way home.\nChapter complete. Your bridges and Soul Well keep generating."); Save(); return; }
             Notify(Bridges[1] ? "NEXT AREA READY\nCross the second bridge and press E beside the distant beacon." : "BUILD THE SOUL PATH\n" + Objective + "\nHold left mouse to drag. Release at the glowing edge.", false);
         }
-        public string Objective => !Bridges[0] ? "Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with 7 forward tiles."
+        public string Objective => !Bridges[0] ? "Collect particles; E at the Wisdom Tree makes blocks. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with 7 forward tiles."
             : !Bridges[1] ? "Cross the first bridge. Learn Strength I and use Grave Stones to bridge the second rift." : !completed ? "Cross the second bridge. Reach the beacon and press E to enter the next area." : "The next dawn is open. Improve your paths, Soul Well and lighting soul.";
         public void Notify(string message, bool sound = true) { Notice = message; NoticeUntil = Time.unscaledTime + 8; if (sound && audioSource != null) audioSource.PlayOneShot(chime); }
         bool Deny(string message) { Notify(message, false); return false; }
@@ -300,22 +312,28 @@ namespace LightingBlocks
         [Serializable] public class BlockSave { public string id; public int tier, gap, column, row; public bool placed, rewarded; public Vector3 position; }
         [Serializable] public class SaveData
         {
-            public int version = 1; public double souls, rate; public long utc;
+            public int version = 3; public ForestSave forest; public double souls, rate; public long utc;
             public int speed, links, strength, radiance, generator, summoned; public bool completed; public Vector3 player;
             public List<BlockSave> blocks = new List<BlockSave>();
         }
         public string ExportSave()
         {
-            var data = new SaveData { souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
+            var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
             foreach (var b in Blocks) data.blocks.Add(new BlockSave { id = b.id, tier = b.tier, placed = b.placed, rewarded = b.rewarded, gap = b.gap, column = b.column, row = b.row, position = player.SavedBlockPosition(b) });
             return JsonUtility.ToJson(data, true);
         }
         public bool ImportSave(string json, bool offline = false)
         {
             SaveData d; try { d = JsonUtility.FromJson<SaveData>(json); } catch { return false; }
-            if (d == null || d.version != 1 || d.blocks == null || d.blocks.Count > 150 || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.summoned < 0 || !PositionValid(d.player)) return false;
+            if (d == null || (d.version != 1 && d.version != 2 && d.version != 3) || d.blocks == null || d.blocks.Count > 150 || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.summoned < 0 || !PositionValid(d.player)) return false;
             if (d.blocks.Any(b => b == null || string.IsNullOrEmpty(b.id) || b.tier < 0 || b.tier > 2 || !PositionValid(b.position) || b.placed && (b.gap < 0 || b.gap > 1 || Math.Abs(b.column) > 2 || b.row < 0 || b.row >= Rows || b.gap == 1 && b.tier == 0)) || d.blocks.Select(b => b.id).Distinct().Count() != d.blocks.Count) return false;
             if (d.blocks.Where(b => b.placed).GroupBy(b => b.gap + ":" + b.column + ":" + b.row).Any(g => g.Count() > 1)) return false;
+            var forest = ForestWorld.For(this);
+            ForestSave incoming = null;
+            if (forest != null) {
+                incoming = forest.Migrate(d.forest,d.version,d.blocks,d.player);
+                if (incoming == null) return false;
+            }
             player.Release();
             var keep = new HashSet<string>(d.blocks.Select(b => b.id));
             foreach (var b in Blocks.Where(b => !keep.Contains(b.id)).ToArray()) { Blocks.Remove(b); b.gameObject.SetActive(false); Destroy(b.gameObject); }
@@ -329,6 +347,7 @@ namespace LightingBlocks
             ApplyUpgrades(); Recalculate(); completed &= Bridges[1];
             var cc = player.GetComponent<CharacterController>(); cc.enabled = false; player.transform.position = CanStand(d.player) ? d.player : new Vector3(0, .025f, 3); cc.enabled = true; safePosition = player.transform.position;
             if (offline) { double seconds = Math.Min(3600, Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - d.utc)); double gain = Math.Min(Rate, d.rate) * seconds * .25; souls += gain; if (gain >= 1) Notify("YOUR SOULS KEPT FLOWING\n+" + Format(gain) + " Souls while away.", false); }
+            if (forest != null) forest.Restore(incoming);
             cameraRig.CenterOnPlayer(); return true;
         }
         static bool Finite(double n) => !double.IsNaN(n) && !double.IsInfinity(n);

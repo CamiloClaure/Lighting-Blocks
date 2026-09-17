@@ -42,7 +42,7 @@ namespace LightingBlocks
         {
             controller = GetComponent<CharacterController>();
             sfx = gameObject.AddComponent<AudioSource>();
-            sfx.spatialBlend = .8f; sfx.playOnAwake = false; sfx.volume = GameAudio.SfxVolume;
+            ForestSoundscape.Route(sfx,"Footsteps"); sfx.spatialBlend = .8f; sfx.playOnAwake = false; sfx.volume = GameAudio.SfxVolume;
         }
 
         void Update()
@@ -301,10 +301,9 @@ namespace LightingBlocks
         {
             // Fire before the audio guard: a missing clip must not also swallow the visual.
             if (Stepped != null) Stepped(transform.position);
-            var clips = GameAudio.Footsteps;
-            if (sfx == null || clips == null || clips.Length == 0) return;
-            sfx.pitch = GameAudio.StepPitch * Random.Range(.97f, 1.03f);
-            sfx.PlayOneShot(clips[Random.Range(0, clips.Length)]);
+            var clip = ForestSoundscape.Footstep(transform.position);
+            if (sfx == null || clip == null) return;
+            sfx.pitch = 1; sfx.PlayOneShot(clip);
         }
 
         void Limit(RaycastHit hit, ref float allowed)

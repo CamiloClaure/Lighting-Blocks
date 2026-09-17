@@ -12,7 +12,8 @@ namespace LightingBlocks.Editor
     {
         const string Root = "Assets/LightingBlocks/Art";
         [MenuItem("Tools/Lighting Blocks/Build Scene")]
-        public static void Build()
+        public static void Build() { ForestBuilder.Apply(); }
+        static void BuildLegacyDisabled()
         {
             if (EditorApplication.isPlaying) throw new Exception("Stop Play before rebuilding.");
             var scene = SceneManager.GetActiveScene();

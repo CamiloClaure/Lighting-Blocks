@@ -35,7 +35,8 @@ namespace LightingBlocks.Editor
             return obj;
         }
         [MenuItem("Tools/Lighting Blocks/Apply Art and Expanded Shores")]
-        public static void Apply()
+        public static void Apply() { ForestBuilder.Apply(); }
+        static void ApplyLegacyDisabled()
         {
             if(EditorApplication.isPlaying)throw new Exception("Stop Play before applying art.");
             var scene=EditorSceneManager.GetActiveScene();

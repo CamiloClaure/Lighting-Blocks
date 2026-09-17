@@ -1,0 +1,8 @@
+Publisher: Poly Haven
+Assets: Forest Leaves 02; Forest Ground 04
+Asset pages: https://polyhaven.com/a/forest_leaves_02 and https://polyhaven.com/a/forest_ground_04
+License: CC0, https://polyhaven.com/license
+Acquired: 2026-09-15 from the publisher's texture download endpoints.
+Maps: 2K diffuse, OpenGL normal, roughness and ambient occlusion.
+Downloaded original file hashes are listed in AssetManifest.json.
+Modifications: AO in packed green channel, inverse roughness in packed alpha; original source texture colors retained, spectral tint applied in the shader.

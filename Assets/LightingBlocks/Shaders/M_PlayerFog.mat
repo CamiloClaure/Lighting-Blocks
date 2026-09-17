@@ -8,7 +8,7 @@ Material:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_Name: M_PlayerFog
-  m_Shader: {fileID: -6465566751694194690, guid: 6d90a9c94e41e97408b2b4d353bd91b6, type: 3}
+  m_Shader: {fileID: 4800000, guid: d8b4794d6cc31f8489ffa39f4be4fd20, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
   m_ValidKeywords: []
@@ -39,6 +39,8 @@ Material:
     m_Floats:
     - _FogFade: 6
     - _FogRadius: 9
-    m_Colors: []
+    - _FogStrength: 0.35
+    m_Colors:
+    - _FogColor: {r: 0.049999982, g: 0.06999998, b: 0.12999997, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

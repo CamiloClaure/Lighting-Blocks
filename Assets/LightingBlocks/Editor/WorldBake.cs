@@ -9,12 +9,12 @@ namespace LightingBlocks.Editor
 {
     // WorldDressing rebuilds the courts every time the game starts, which keeps the scene
     // honest at runtime but leaves the Scene view showing whatever was last baked. This writes the
-    // same meshes and the same neon paving to disk so the editor shows the world you actually play.
+    // same meshes and the same forest floor to disk so the editor shows the world you actually play.
     [InitializeOnLoad]
     public static class WorldBake
     {
         const string Art = "Assets/LightingBlocks/Art/Integrated";
-        const string Pack = "Assets/LightingBlocks/Art/Pack/Materials/M_ENV_Paving.mat";
+        const string Pack = "Assets/LightingBlocks/Art/SpectralForest/Materials/ForestGround.mat";
         const string Request = "Library/LightingBlocks.bake-request";
 
         // Same trigger the verification harness uses: writing the request file makes an already
@@ -52,7 +52,7 @@ namespace LightingBlocks.Editor
             EditorSceneManager.SaveScene(scene);
             var bounds = WorldDressing.CourtBounds();
             File.WriteAllText("Library/LightingBlocks.bake-result.txt",
-                "SUCCESS: baked " + shores + " courts spanning " + bounds.size.x.ToString("0") + " x " + bounds.size.z.ToString("0") + " metres, neon paving and cliffs, into SampleScene.");
+                "SUCCESS: baked " + shores + " courts spanning " + bounds.size.x.ToString("0") + " x " + bounds.size.z.ToString("0") + " metres, forest floor and cliffs, into SampleScene.");
         }
 
         // Overwrite the existing mesh asset in place rather than creating a new one: every

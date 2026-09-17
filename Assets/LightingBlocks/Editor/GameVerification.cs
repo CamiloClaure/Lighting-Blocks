@@ -29,7 +29,7 @@ namespace LightingBlocks.Editor
             };
         }
         [MenuItem("Tools/Lighting Blocks/Run Gameplay Checks")]
-        public static void Request() { File.WriteAllText("Library/LightingBlocks.test-request", "run"); }
+        public static void Request() { ForestVerification.Request(); }
         static void Tick()
         {
             if (!running)

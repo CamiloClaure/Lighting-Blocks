@@ -1,0 +1,2212 @@
+[
+  {
+    "view": 0,
+    "pixel": [
+      295,
+      103
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 215
+  },
+  {
+    "view": 0,
+    "pixel": [
+      330,
+      114
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 181
+  },
+  {
+    "view": 0,
+    "pixel": [
+      369,
+      161
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 230
+  },
+  {
+    "view": 0,
+    "pixel": [
+      438,
+      70
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 181
+  },
+  {
+    "view": 0,
+    "pixel": [
+      444,
+      93
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 362
+  },
+  {
+    "view": 0,
+    "pixel": [
+      322,
+      194
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 213
+  },
+  {
+    "view": 0,
+    "pixel": [
+      374,
+      201
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 120
+  },
+  {
+    "view": 0,
+    "pixel": [
+      622,
+      178
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 139
+  },
+  {
+    "view": 0,
+    "pixel": [
+      246,
+      246
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 113
+  },
+  {
+    "view": 0,
+    "pixel": [
+      289,
+      277
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 120
+  },
+  {
+    "view": 0,
+    "pixel": [
+      362,
+      320
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 76
+  },
+  {
+    "view": 0,
+    "pixel": [
+      685,
+      319
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 287
+  },
+  {
+    "view": 0,
+    "pixel": [
+      752,
+      340
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 160
+  },
+  {
+    "view": 0,
+    "pixel": [
+      613,
+      314
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 143
+  },
+  {
+    "view": 0,
+    "pixel": [
+      535,
+      538
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 300
+  },
+  {
+    "view": 0,
+    "pixel": [
+      457,
+      463
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 109
+  },
+  {
+    "view": 1,
+    "pixel": [
+      397,
+      91
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 298
+  },
+  {
+    "view": 1,
+    "pixel": [
+      338,
+      126
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 221
+  },
+  {
+    "view": 1,
+    "pixel": [
+      674,
+      107
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 196
+  },
+  {
+    "view": 1,
+    "pixel": [
+      624,
+      108
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 138
+  },
+  {
+    "view": 1,
+    "pixel": [
+      565,
+      165
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 282
+  },
+  {
+    "view": 1,
+    "pixel": [
+      364,
+      284
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 325
+  },
+  {
+    "view": 1,
+    "pixel": [
+      617,
+      285
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 108
+  },
+  {
+    "view": 1,
+    "pixel": [
+      518,
+      386
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 210
+  },
+  {
+    "view": 1,
+    "pixel": [
+      329,
+      377
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 169
+  },
+  {
+    "view": 1,
+    "pixel": [
+      306,
+      380
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 216
+  },
+  {
+    "view": 1,
+    "pixel": [
+      310,
+      435
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 195
+  },
+  {
+    "view": 1,
+    "pixel": [
+      181,
+      569
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 207
+  },
+  {
+    "view": 1,
+    "pixel": [
+      559,
+      498
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 199
+  },
+  {
+    "view": 1,
+    "pixel": [
+      594,
+      502
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 274
+  },
+  {
+    "view": 1,
+    "pixel": [
+      536,
+      464
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 235
+  },
+  {
+    "view": 2,
+    "pixel": [
+      562,
+      109
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 226
+  },
+  {
+    "view": 2,
+    "pixel": [
+      188,
+      317
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 142
+  },
+  {
+    "view": 2,
+    "pixel": [
+      351,
+      386
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 283
+  },
+  {
+    "view": 2,
+    "pixel": [
+      538,
+      428
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 231
+  },
+  {
+    "view": 2,
+    "pixel": [
+      393,
+      589
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 68
+  },
+  {
+    "view": 2,
+    "pixel": [
+      440,
+      478
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 325
+  },
+  {
+    "view": 3,
+    "pixel": [
+      171,
+      108
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 192
+  },
+  {
+    "view": 3,
+    "pixel": [
+      306,
+      132
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 210
+  },
+  {
+    "view": 3,
+    "pixel": [
+      438,
+      82
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 284
+  },
+  {
+    "view": 3,
+    "pixel": [
+      518,
+      137
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 355
+  },
+  {
+    "view": 3,
+    "pixel": [
+      362,
+      291
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 236
+  },
+  {
+    "view": 3,
+    "pixel": [
+      487,
+      288
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 294
+  },
+  {
+    "view": 3,
+    "pixel": [
+      353,
+      396
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 218
+  },
+  {
+    "view": 3,
+    "pixel": [
+      356,
+      377
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 141
+  },
+  {
+    "view": 3,
+    "pixel": [
+      525,
+      436
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 223
+  },
+  {
+    "view": 3,
+    "pixel": [
+      283,
+      500
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 196
+  },
+  {
+    "view": 3,
+    "pixel": [
+      512,
+      563
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 97
+  },
+  {
+    "view": 3,
+    "pixel": [
+      640,
+      505
+    ],
+    "radii": [
+      15,
+      16
+    ],
+    "tag": 1,
+    "vertices": 159
+  },
+  {
+    "view": 0,
+    "pixel": [
+      343,
+      151
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 338
+  },
+  {
+    "view": 0,
+    "pixel": [
+      387,
+      158
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 294
+  },
+  {
+    "view": 0,
+    "pixel": [
+      274,
+      221
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 208
+  },
+  {
+    "view": 0,
+    "pixel": [
+      285,
+      202
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 195
+  },
+  {
+    "view": 0,
+    "pixel": [
+      405,
+      264
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 242
+  },
+  {
+    "view": 0,
+    "pixel": [
+      594,
+      156
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 235
+  },
+  {
+    "view": 0,
+    "pixel": [
+      607,
+      156
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 261
+  },
+  {
+    "view": 0,
+    "pixel": [
+      513,
+      283
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 335
+  },
+  {
+    "view": 0,
+    "pixel": [
+      310,
+      322
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 224
+  },
+  {
+    "view": 0,
+    "pixel": [
+      124,
+      342
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 232
+  },
+  {
+    "view": 0,
+    "pixel": [
+      771,
+      373
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 223
+  },
+  {
+    "view": 0,
+    "pixel": [
+      138,
+      442
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 180
+  },
+  {
+    "view": 0,
+    "pixel": [
+      177,
+      428
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 52
+  },
+  {
+    "view": 0,
+    "pixel": [
+      196,
+      447
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 208
+  },
+  {
+    "view": 0,
+    "pixel": [
+      298,
+      431
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 229
+  },
+  {
+    "view": 0,
+    "pixel": [
+      301,
+      466
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 217
+  },
+  {
+    "view": 0,
+    "pixel": [
+      374,
+      502
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 184
+  },
+  {
+    "view": 0,
+    "pixel": [
+      230,
+      505
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 193
+  },
+  {
+    "view": 0,
+    "pixel": [
+      206,
+      564
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 192
+  },
+  {
+    "view": 0,
+    "pixel": [
+      290,
+      551
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 159
+  },
+  {
+    "view": 0,
+    "pixel": [
+      432,
+      537
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 171
+  },
+  {
+    "view": 0,
+    "pixel": [
+      339,
+      615
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 164
+  },
+  {
+    "view": 0,
+    "pixel": [
+      422,
+      614
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 152
+  },
+  {
+    "view": 0,
+    "pixel": [
+      498,
+      412
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 184
+  },
+  {
+    "view": 0,
+    "pixel": [
+      511,
+      412
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 192
+  },
+  {
+    "view": 0,
+    "pixel": [
+      535,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 188
+  },
+  {
+    "view": 0,
+    "pixel": [
+      577,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 204
+  },
+  {
+    "view": 0,
+    "pixel": [
+      535,
+      565
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 180
+  },
+  {
+    "view": 0,
+    "pixel": [
+      588,
+      612
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 0,
+    "pixel": [
+      671,
+      568
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 237
+  },
+  {
+    "view": 0,
+    "pixel": [
+      682,
+      559
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 428
+  },
+  {
+    "view": 0,
+    "pixel": [
+      455,
+      940
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 174
+  },
+  {
+    "view": 1,
+    "pixel": [
+      327,
+      159
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 248
+  },
+  {
+    "view": 1,
+    "pixel": [
+      308,
+      201
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 188
+  },
+  {
+    "view": 1,
+    "pixel": [
+      405,
+      267
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 307
+  },
+  {
+    "view": 1,
+    "pixel": [
+      541,
+      158
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 359
+  },
+  {
+    "view": 1,
+    "pixel": [
+      610,
+      149
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 235
+  },
+  {
+    "view": 1,
+    "pixel": [
+      621,
+      221
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 210
+  },
+  {
+    "view": 1,
+    "pixel": [
+      345,
+      321
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 199
+  },
+  {
+    "view": 1,
+    "pixel": [
+      345,
+      341
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 218
+  },
+  {
+    "view": 1,
+    "pixel": [
+      533,
+      344
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 257
+  },
+  {
+    "view": 1,
+    "pixel": [
+      233,
+      408
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 204
+  },
+  {
+    "view": 1,
+    "pixel": [
+      285,
+      412
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 173
+  },
+  {
+    "view": 1,
+    "pixel": [
+      296,
+      463
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 213
+  },
+  {
+    "view": 1,
+    "pixel": [
+      343,
+      503
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 176
+  },
+  {
+    "view": 1,
+    "pixel": [
+      338,
+      613
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 1,
+    "pixel": [
+      455,
+      573
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 248
+  },
+  {
+    "view": 1,
+    "pixel": [
+      463,
+      616
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 148
+  },
+  {
+    "view": 1,
+    "pixel": [
+      559,
+      615
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 169
+  },
+  {
+    "view": 1,
+    "pixel": [
+      602,
+      566
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 1,
+    "pixel": [
+      623,
+      552
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 160
+  },
+  {
+    "view": 1,
+    "pixel": [
+      592,
+      438
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 209
+  },
+  {
+    "view": 1,
+    "pixel": [
+      561,
+      429
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 188
+  },
+  {
+    "view": 1,
+    "pixel": [
+      500,
+      434
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 222
+  },
+  {
+    "view": 1,
+    "pixel": [
+      471,
+      412
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 204
+  },
+  {
+    "view": 1,
+    "pixel": [
+      449,
+      412
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 201
+  },
+  {
+    "view": 1,
+    "pixel": [
+      488,
+      378
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 224
+  },
+  {
+    "view": 1,
+    "pixel": [
+      448,
+      440
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 295
+  },
+  {
+    "view": 1,
+    "pixel": [
+      415,
+      940
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 174
+  },
+  {
+    "view": 2,
+    "pixel": [
+      242,
+      156
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 261
+  },
+  {
+    "view": 2,
+    "pixel": [
+      254,
+      159
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 254
+  },
+  {
+    "view": 2,
+    "pixel": [
+      461,
+      156
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 301
+  },
+  {
+    "view": 2,
+    "pixel": [
+      506,
+      153
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 261
+  },
+  {
+    "view": 2,
+    "pixel": [
+      563,
+      199
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 198
+  },
+  {
+    "view": 2,
+    "pixel": [
+      574,
+      220
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 223
+  },
+  {
+    "view": 2,
+    "pixel": [
+      443,
+      266
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 232
+  },
+  {
+    "view": 2,
+    "pixel": [
+      332,
+      285
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 228
+  },
+  {
+    "view": 2,
+    "pixel": [
+      459,
+      340
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 375
+  },
+  {
+    "view": 2,
+    "pixel": [
+      539,
+      321
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 193
+  },
+  {
+    "view": 2,
+    "pixel": [
+      724,
+      340
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 233
+  },
+  {
+    "view": 2,
+    "pixel": [
+      76,
+      373
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 221
+  },
+  {
+    "view": 2,
+    "pixel": [
+      273,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 204
+  },
+  {
+    "view": 2,
+    "pixel": [
+      312,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 179
+  },
+  {
+    "view": 2,
+    "pixel": [
+      335,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 132
+  },
+  {
+    "view": 2,
+    "pixel": [
+      261,
+      610
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 2,
+    "pixel": [
+      427,
+      615
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 152
+  },
+  {
+    "view": 2,
+    "pixel": [
+      473,
+      503
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 175
+  },
+  {
+    "view": 2,
+    "pixel": [
+      562,
+      554
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 163
+  },
+  {
+    "view": 2,
+    "pixel": [
+      620,
+      503
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 2,
+    "pixel": [
+      643,
+      567
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 196
+  },
+  {
+    "view": 2,
+    "pixel": [
+      672,
+      429
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 188
+  },
+  {
+    "view": 2,
+    "pixel": [
+      708,
+      438
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 259
+  },
+  {
+    "view": 2,
+    "pixel": [
+      651,
+      446
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 208
+  },
+  {
+    "view": 2,
+    "pixel": [
+      550,
+      435
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 223
+  },
+  {
+    "view": 2,
+    "pixel": [
+      551,
+      405
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 203
+  },
+  {
+    "view": 2,
+    "pixel": [
+      176,
+      566
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 158
+  },
+  {
+    "view": 2,
+    "pixel": [
+      165,
+      558
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 302
+  },
+  {
+    "view": 2,
+    "pixel": [
+      314,
+      555
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 219
+  },
+  {
+    "view": 2,
+    "pixel": [
+      394,
+      940
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 215
+  },
+  {
+    "view": 3,
+    "pixel": [
+      239,
+      151
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 232
+  },
+  {
+    "view": 3,
+    "pixel": [
+      308,
+      155
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 360
+  },
+  {
+    "view": 3,
+    "pixel": [
+      522,
+      156
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 333
+  },
+  {
+    "view": 3,
+    "pixel": [
+      541,
+      203
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 191
+  },
+  {
+    "view": 3,
+    "pixel": [
+      445,
+      266
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 238
+  },
+  {
+    "view": 3,
+    "pixel": [
+      227,
+      225
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 210
+  },
+  {
+    "view": 3,
+    "pixel": [
+      355,
+      322
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 182
+  },
+  {
+    "view": 3,
+    "pixel": [
+      320,
+      345
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 296
+  },
+  {
+    "view": 3,
+    "pixel": [
+      361,
+      370
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 222
+  },
+  {
+    "view": 3,
+    "pixel": [
+      502,
+      344
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 230
+  },
+  {
+    "view": 3,
+    "pixel": [
+      502,
+      324
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 212
+  },
+  {
+    "view": 3,
+    "pixel": [
+      563,
+      410
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 181
+  },
+  {
+    "view": 3,
+    "pixel": [
+      617,
+      407
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 183
+  },
+  {
+    "view": 3,
+    "pixel": [
+      550,
+      468
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 221
+  },
+  {
+    "view": 3,
+    "pixel": [
+      508,
+      503
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 182
+  },
+  {
+    "view": 3,
+    "pixel": [
+      562,
+      508
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 187
+  },
+  {
+    "view": 3,
+    "pixel": [
+      511,
+      609
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 186
+  },
+  {
+    "view": 3,
+    "pixel": [
+      398,
+      442
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 201
+  },
+  {
+    "view": 3,
+    "pixel": [
+      360,
+      446
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 247
+  },
+  {
+    "view": 3,
+    "pixel": [
+      349,
+      437
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 222
+  },
+  {
+    "view": 3,
+    "pixel": [
+      287,
+      433
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 190
+  },
+  {
+    "view": 3,
+    "pixel": [
+      257,
+      444
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 213
+  },
+  {
+    "view": 3,
+    "pixel": [
+      256,
+      539
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 183
+  },
+  {
+    "view": 3,
+    "pixel": [
+      226,
+      557
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 157
+  },
+  {
+    "view": 3,
+    "pixel": [
+      249,
+      568
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 192
+  },
+  {
+    "view": 3,
+    "pixel": [
+      289,
+      615
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 172
+  },
+  {
+    "view": 3,
+    "pixel": [
+      360,
+      565
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 315
+  },
+  {
+    "view": 3,
+    "pixel": [
+      374,
+      539
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 166
+  },
+  {
+    "view": 3,
+    "pixel": [
+      386,
+      615
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 150
+  },
+  {
+    "view": 3,
+    "pixel": [
+      396,
+      568
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 220
+  },
+  {
+    "view": 3,
+    "pixel": [
+      664,
+      560
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 231
+  },
+  {
+    "view": 3,
+    "pixel": [
+      435,
+      940
+    ],
+    "radii": [
+      13,
+      19
+    ],
+    "tag": 2,
+    "vertices": 174
+  }
+]

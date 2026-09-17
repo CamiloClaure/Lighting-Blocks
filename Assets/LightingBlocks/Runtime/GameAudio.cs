@@ -25,10 +25,23 @@ namespace LightingBlocks
                     if (clip != null) list.Add(clip);
                 }
                 footsteps = list.ToArray();
-                footsteps = Resources.LoadAll<AudioClip>("Audio/SFX/PasosNotas").OrderBy(c => c.name).ToArray();
+                
                 return footsteps;
             }
         }
+
+        static AudioClip Trim(AudioClip src, float seconds)
+{
+    if (src == null) return null;
+    int frames = Mathf.Min(src.samples, (int)(seconds * src.frequency));
+    var data = new float[frames * src.channels];
+    src.GetData(data, 0);
+    int fade = Mathf.Min(frames, src.frequency / 100) * src.channels; // 10 ms
+    for (int i = 0; i < fade; i++) data[data.Length - 1 - i] *= (float)i / fade;
+    var clip = AudioClip.Create(src.name + "_trim", frames, src.channels, src.frequency, false);
+    clip.SetData(data, 0);
+    return clip;
+}
 
         public static AudioClip Grab => grab != null ? grab : grab = Resources.Load<AudioClip>("Audio/SFX/Bloques");
 
@@ -46,7 +59,7 @@ namespace LightingBlocks
                 var host = new GameObject("Music");
                 host.transform.SetParent(null);
                 music = host.AddComponent<AudioSource>();
-                music.spatialBlend = 0; music.loop = true; music.volume = MusicVolume;
+                ForestSoundscape.Route(music,"Music"); music.spatialBlend = 0; music.loop = true; music.volume = MusicVolume;
                 music.playOnAwake = false; music.priority = 0;
             }
             if (music.clip == clip && music.isPlaying) return;

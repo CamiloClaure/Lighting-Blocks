@@ -18,6 +18,7 @@ namespace LightingBlocks
         public GameManager game;
         public ScreenView View { get; private set; } = ScreenView.Title;
         public static GameHUD Current { get; private set; }
+        Text particleText;
         public static bool GameplayBlocked => Current != null && Current.View != ScreenView.Playing;
         public static bool SimulationPaused => Current != null && Current.View != ScreenView.Playing && Current.View != ScreenView.Skills && Current.View != ScreenView.Memories;
         public Text SoulsText { get; private set; }
@@ -115,7 +116,7 @@ namespace LightingBlocks
         public void BeginJourney()
         {
             SetView(ScreenView.Playing);
-            if (!(game.ConnectedCount > 0)) game.Notify("Drag a loose stone to the glowing shore edge and release to build your first bridge tile.", false);
+            if (!(game.ConnectedCount > 0)) game.Notify("Collect 3 particles, then press E beside the Wisdom Tree. Haul its block to the glowing bridge edge.", false);
         }
         public void ShowPause() { if (View != ScreenView.Title) { game.Save(); SetView(ScreenView.Pause); } }
         public void ShowTitle() { game.Save(); SetView(ScreenView.Title); }
@@ -200,9 +201,9 @@ namespace LightingBlocks
             context.anchorMin = context.anchorMax = new Vector2(.5f, 0); context.pivot = new Vector2(.5f, 0); context.anchoredPosition = new Vector2(0, 24);
             contextText = Label("Interaction", context, "", 18, 12, 504, 60, 19, White, TextAnchor.MiddleCenter);
             var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 360, 170, Ink); Bottom(calls, 22, 24, true);
-            Label("Call Heading", calls, "CALL BRIDGE STONES", 16, 12, 328, 24, 17, Mint);
-            AddPurchase("stone", calls, 14, 42, 332, 54, null, "");
-            AddPurchase("grave", calls, 14, 102, 332, 54, null, "");
+            Label("Call Heading", calls, "WISDOM TREE ENERGY", 16, 12, 328, 24, 17, Mint);
+            particleText = Label("Particle Inventory", calls, "", 16, 45, 328, 32, 19, White);
+            Label("Particle Help", calls, "Walk over particles to collect.\nE near a tree: 3 particles = 1 block.\nSouls still unlock your skills.", 16, 82, 328, 76, 16, White);
 
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
@@ -236,14 +237,22 @@ namespace LightingBlocks
         }
         void BuildPause()
         {
-            var panel = CenterPanel("Pause Menu", 540, 540); pausePanel = panel.gameObject;
+            var panel = CenterPanel("Pause Menu", 540, 620); pausePanel = panel.gameObject;
             Label("Pause Title", panel, "PAUSED", 30, 28, 480, 48, 38, White, TextAnchor.MiddleCenter);
             Label("Pause Description", panel, "Your soul paths are resting.", 30, 84, 480, 32, 20, Muted, TextAnchor.MiddleCenter);
             resumeButton = Button("Resume", panel, "RESUME  [ESC]", 40, 137, 460, 56, () => SetView(ScreenView.Playing));
             Button("Pause Controls", panel, "CONTROLS", 40, 205, 460, 56, ShowControls);
-            MusicButton = Button("Music Placeholder", panel, "MUSIC  —  COMING SOON", 40, 273, 460, 56, null); MusicButton.interactable = false;
-            SfxButton = Button("SFX Placeholder", panel, "SFX  —  COMING SOON", 40, 341, 460, 56, null); SfxButton.interactable = false;
-            Button("Return To Title", panel, "SAVE & RETURN TO TITLE", 40, 422, 460, 56, ShowTitle);
+            AudioSlider(panel,"Master",272);AudioSlider(panel,"Music",326);AudioSlider(panel,"Ambience",380);AudioSlider(panel,"Effects",434);
+            Button("Return To Title", panel, "SAVE & RETURN TO TITLE", 40, 522, 460, 56, ShowTitle);
+        }
+        void AudioSlider(RectTransform panel,string group,float y)
+        {
+            Label(group+" Label",panel,group.ToUpperInvariant(),40,y,130,32,17,White,TextAnchor.MiddleLeft);
+            var host=new GameObject(group+" Volume",typeof(RectTransform),typeof(Slider));host.transform.SetParent(panel,false);
+            var rect=host.GetComponent<RectTransform>();rect.anchorMin=rect.anchorMax=new Vector2(0,1);rect.pivot=new Vector2(0,1);rect.anchoredPosition=new Vector2(190,-y);rect.sizeDelta=new Vector2(310,32);
+            var track=new GameObject("Track",typeof(RectTransform),typeof(Image));track.transform.SetParent(rect,false);var tr=track.GetComponent<RectTransform>();tr.anchorMin=new Vector2(0,.4f);tr.anchorMax=new Vector2(1,.6f);tr.offsetMin=tr.offsetMax=Vector2.zero;track.GetComponent<Image>().color=Card;
+            var handle=new GameObject("Handle",typeof(RectTransform),typeof(Image));handle.transform.SetParent(rect,false);var hr=handle.GetComponent<RectTransform>();hr.sizeDelta=new Vector2(18,28);handle.GetComponent<Image>().color=Mint;
+            var slider=host.GetComponent<Slider>();slider.handleRect=hr;slider.targetGraphic=handle.GetComponent<Image>();slider.minValue=0;slider.maxValue=1;slider.value=ForestSoundscape.Volume(group);slider.onValueChanged.AddListener(v=>ForestSoundscape.SetVolume(group,v));
         }
         void BuildControls()
         {
@@ -311,6 +320,8 @@ namespace LightingBlocks
             SoulsText.text = game.souls.ToString("N1", CultureInfo.InvariantCulture);
             incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
             objectiveText.text = game.Objective;
+            var forest = ForestWorld.For(game);
+            if (particleText != null && forest != null && forest.State != null) particleText.text = forest.InventoryLabel;
             bool journey = game.ConnectedCount > 0 || game.souls > 0 || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
@@ -329,6 +340,8 @@ namespace LightingBlocks
                 var b = game.player.NearbyBox.GetComponent<BridgeBlock>();
                 if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
             }
+            var wisdom = forest?.Nearby(game.player.transform.position);
+            if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles";
             contextText.text = hint;
             journalText.text = "I — They called it the end of the universe. But souls still wander between its broken shores.\n\n"
                 + (game.Bridges[0] ? "II — Your first bridge did more than carry you. It gave the lost a path home." : "II — A memory waits across the first rift.") + "\n\n"

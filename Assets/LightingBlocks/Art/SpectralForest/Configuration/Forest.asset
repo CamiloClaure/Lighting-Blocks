@@ -1,0 +1,155 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9235008f388acf74ba0b7d7554d33e0e, type: 3}
+  m_Name: Forest
+  m_EditorClassIdentifier: Assembly-CSharp::LightingBlocks.ForestConfiguration
+  artVersion: 2
+  islands:
+  - id: island-1
+    polygonIndex: 0
+    blockTier: 0
+    treeCount: 120
+    animalCount: 6
+    particleCount: 24
+    rabbitCount: 4
+    birdCount: 6
+    wisdomPosition: {x: -12, y: 0, z: -3}
+    outputOffsets:
+    - {x: 3.5, y: 0.26, z: -2}
+    - {x: 3.5, y: 0.26, z: 0}
+    - {x: 3.5, y: 0.26, z: 2}
+    - {x: 5.5, y: 0.26, z: -2}
+    - {x: 5.5, y: 0.26, z: 0}
+    - {x: 5.5, y: 0.26, z: 2}
+    - {x: 7.5, y: 0.26, z: -2}
+    - {x: 7.5, y: 0.26, z: 0}
+    - {x: 7.5, y: 0.26, z: 2}
+    pathPoints:
+    - {x: 0, y: 0, z: -9}
+    - {x: -6, y: 0, z: -9}
+  - id: island-2
+    polygonIndex: 1
+    blockTier: 1
+    treeCount: 28
+    animalCount: 3
+    particleCount: 24
+    rabbitCount: 2
+    birdCount: 3
+    wisdomPosition: {x: -12, y: 0, z: 27.5}
+    outputOffsets:
+    - {x: 3.5, y: 0.26, z: -2}
+    - {x: 3.5, y: 0.26, z: 0}
+    - {x: 3.5, y: 0.26, z: 2}
+    - {x: 5.5, y: 0.26, z: -2}
+    - {x: 5.5, y: 0.26, z: 0}
+    - {x: 5.5, y: 0.26, z: 2}
+    - {x: 7.5, y: 0.26, z: -2}
+    - {x: 7.5, y: 0.26, z: 0}
+    - {x: 7.5, y: 0.26, z: 2}
+    pathPoints: []
+  - id: island-3
+    polygonIndex: 2
+    blockTier: 2
+    treeCount: 130
+    animalCount: 6
+    particleCount: 24
+    rabbitCount: 4
+    birdCount: 6
+    wisdomPosition: {x: -12, y: 0, z: 59}
+    outputOffsets:
+    - {x: 3.5, y: 0.26, z: -2}
+    - {x: 3.5, y: 0.26, z: 0}
+    - {x: 3.5, y: 0.26, z: 2}
+    - {x: 5.5, y: 0.26, z: -2}
+    - {x: 5.5, y: 0.26, z: 0}
+    - {x: 5.5, y: 0.26, z: 2}
+    - {x: 7.5, y: 0.26, z: -2}
+    - {x: 7.5, y: 0.26, z: 0}
+    - {x: 7.5, y: 0.26, z: 2}
+    pathPoints: []
+  wisdomPrefab: {fileID: 888735593964198791, guid: defc36808d39db444b3d9930f747f186, type: 3}
+  wisdomSource: {fileID: 919132149155446097, guid: 64185d11e8bc174419bdbbc74336d874, type: 3}
+  trees:
+  - {fileID: 4362957875304821759, guid: b220a2d2030a82f40bf4087ae074e790, type: 3}
+  - {fileID: 4394916827075118711, guid: 7e39439813f0e9f47aae34e4c0dc9252, type: 3}
+  - {fileID: 7102618878476299139, guid: a8f6d97fb34ce7a4c8344013f8ddac14, type: 3}
+  - {fileID: 2806168157249246353, guid: 245df57da4f9e90468b2960753419488, type: 3}
+  - {fileID: 7944655130147772786, guid: 40e68f37da9d57e408369bd6ee79c5ae, type: 3}
+  - {fileID: 1315205516795219002, guid: 0ba8e2d4ca575f845b440665b9e329ff, type: 3}
+  undergrowth:
+  - {fileID: 7115193704242094759, guid: 90d3eb23006d9874bb7050bf991eff5a, type: 3}
+  - {fileID: 413773590762640818, guid: ea4b998aaa2ca3949be71439622f3ddf, type: 3}
+  - {fileID: 3244974535737373766, guid: 0d98b711ab88874498d4edf5d0eb7d6b, type: 3}
+  animals:
+  - {fileID: 5835196627747171686, guid: c9786d1e24190c843b9d59612b33f7aa, type: 3}
+  - {fileID: 4176628126246370091, guid: 8818528fcfec4b24882120fc4b235dfa, type: 3}
+  - {fileID: 7992020453979452781, guid: cb2cc3cdf032ced42882aa4517f778fd, type: 3}
+  - {fileID: 1719055896841727512, guid: beec28d8ff1052b4eb2fc2426fdc1921, type: 3}
+  species:
+  - id: Rabbit
+    prefab: {fileID: 5502700526245495186, guid: 7f5db84def098e8489939ed9d7d7a8ba, type: 3}
+    walkSpeed: 0.8
+    fleeSpeed: 3.5
+    alertRadius: 5
+    fleeRadius: 3.5
+    clearance: 0.35
+    flying: 0
+    idle: Idle
+    forage: Sniff
+    move: Hop
+    flee: Flee
+  - id: Bird
+    prefab: {fileID: 421444677395205270, guid: 6d714ec103aecd648a69f450474c9ca0, type: 3}
+    walkSpeed: 0.45
+    fleeSpeed: 3.5
+    alertRadius: 5
+    fleeRadius: 3.5
+    clearance: 0.35
+    flying: 1
+    idle: GroundIdle
+    forage: Peck
+    move: Hop
+    flee: Flight
+  coverMeshes:
+  - {fileID: 4300000, guid: e0869e3db7b3aa24e8874fdc160d3f76, type: 2}
+  - {fileID: 4300000, guid: 9f88a0f8443ea2f4990abf8c75523f42, type: 2}
+  - {fileID: 4300000, guid: a2931b994bd01a943b9337da635f2472, type: 2}
+  - {fileID: 4300000, guid: 1c6e70efdba50374caa590f480487c29, type: 2}
+  - {fileID: 4300000, guid: fa8c3bfaa82b6b0468fb69b096fefa5a, type: 2}
+  - {fileID: 4300000, guid: 382a9aa1bd9c13f4395e5ee20ec13c55, type: 2}
+  - {fileID: 4300000, guid: 5a90d5a6357eb1044b29053eef3b009b, type: 2}
+  - {fileID: 4300000, guid: 8bdfd3f672431dd458bf974ff5fa1bab, type: 2}
+  - {fileID: 4300000, guid: 656645f86bcab4146a08efb9b4089a97, type: 2}
+  coverMaterials:
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
+  - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
+  - {fileID: 2100000, guid: 957a937b74fddd84ba23e3159ad96d4b, type: 2}
+  - {fileID: 2100000, guid: 5b06856030860b24dbf5c894808b5abd, type: 2}
+  ground: {fileID: 2100000, guid: 8c34d7def4e129744bcf0d49ae1dedb0, type: 2}
+  cliff: {fileID: 2100000, guid: 1d2e999e72753ed40af857df5d982888, type: 2}
+  particleMaterial: {fileID: 2100000, guid: 4c7da47ffa739a941aea990420b77a6c, type: 2}
+  particleMesh: {fileID: 4300000, guid: d2a72ff54248cb148a19416b008799af, type: 2}
+  ambientBudget: 600
+  wind: {x: 0.16, y: 0, z: 0.09}
+  moonIntensity: 0.42
+  moonColor: {r: 0.62, g: 0.74, b: 0.92, a: 1}
+  ambientSky: {r: 0.22, g: 0.27, b: 0.35, a: 1}
+  ambientEquator: {r: 0.12, g: 0.19, b: 0.2, a: 1}
+  ambientGround: {r: 0.075, g: 0.105, b: 0.125, a: 1}
+  haze: {r: 0.08235294, g: 0.11764706, b: 0.21568628, a: 1}
+  fogStart: 48
+  fogEnd: 150

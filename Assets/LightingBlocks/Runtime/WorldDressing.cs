@@ -31,12 +31,12 @@ namespace LightingBlocks
             if (game == null || game.blocksRoot == null) return;
             var world = game.blocksRoot.parent;
             var existing = world.Find("Immersive Deeps");
-            if (existing != null) Object.Destroy(existing.gameObject);
+            if (existing != null) ForestWorld.Remove(existing.gameObject);
             var root = new GameObject("Immersive Deeps").transform;
             root.SetParent(world, false);
             Reshape(world);
             BuildValley(root, world);
-            Dress(root, world);
+            // ForestWorld owns all vegetation and wildlife.
             Atmosphere(game);
             WorldLabels.Adopt();
             Footlights.Attach(game.player);
@@ -207,83 +207,25 @@ namespace LightingBlocks
                 ? renderer.sharedMaterial
                 : new Material(Shader.Find("Universal Render Pipeline/Lit"));
         }
-        static void Dress(Transform root, Transform world)
-        {
-            var templates = new List<GameObject>();
-            foreach (string name in new[] { "ENV_BrokenColumn", "ENV_PartialArch", "ENV_CliffChunk", "ENV_RubbleCluster", "ENV_LowWall" })
-            {
-                var found = Find(world, name);
-                if (found != null) templates.Add(found);
-            }
-            if (templates.Count == 0) return;
-            var random = new System.Random(1907);
-            int placed = 0;
-            for (int attempt = 0; attempt < 1400 && placed < 150; attempt++)
-            {
-                float angle = (float)random.NextDouble() * Mathf.PI * 2;
-                float radius = 30 + (float)random.NextDouble() * 178;
-                float x = Centre.x + Mathf.Cos(angle) * radius, z = Centre.y + Mathf.Sin(angle) * radius;
-                if (!Clear(x, z)) continue;
-                var clone = Plant(templates[random.Next(templates.Count)], root, random, x, Height(x, z) - .5f, z);
-                clone.name = "Deep ruin " + placed++;
-                // Distance sets the size, so nothing near a court grows tall enough to hide it.
-                float reach = Mathf.Lerp(1.1f, 4.6f, Mathf.InverseLerp(9, 45, ShoreDistance(x, z)));
-                clone.transform.localScale = Vector3.one * reach * (.85f + (float)random.NextDouble() * .4f);
-            }
-            CourtRuins(root, random, templates);
-        }
-        // The courts are now wide enough to be empty, so they get their own dressing. It stays
-        // out of the middle so the walk from the stone source to a rift is never obstructed.
-        static void CourtRuins(Transform root, System.Random random, List<GameObject> templates)
-        {
-            var bounds = CourtBounds();
-            int placed = 0;
-            for (int attempt = 0; attempt < 2600 && placed < 130; attempt++)
-            {
-                float x = Mathf.Lerp(bounds.min.x, bounds.max.x, (float)random.NextDouble());
-                float z = Mathf.Lerp(bounds.min.z, bounds.max.z, (float)random.NextDouble());
-                if (Mathf.Abs(x) < 17) continue;
-                if (ShoreDistance(x, z) > 0 || EdgeGap(x, z) < 5) continue;
-                var clone = Plant(templates[random.Next(templates.Count)], root, random, x, 0, z);
-                clone.name = "Court ruin " + placed++;
-                clone.transform.localScale = Vector3.one * (.7f + (float)random.NextDouble() * 1.1f);
-            }
-        }
-        // ponytail: court ruins are decoration, not obstacles - colliders are stripped like the
-        // deeps so nothing here can ever pocket the player. Keep them if navigation ever matters.
-        static GameObject Plant(GameObject template, Transform root, System.Random random, float x, float y, float z)
-        {
-            var clone = Object.Instantiate(template, new Vector3(x, y, z),
-                Quaternion.Euler(0, (float)random.NextDouble() * 360, 0), root);
-            foreach (var collider in clone.GetComponentsInChildren<Collider>()) Object.Destroy(collider);
-            foreach (var light in clone.GetComponentsInChildren<Light>()) Object.Destroy(light);
-            clone.SetActive(true);
-            return clone;
-        }
-        // Scenery stands five metres below the courts, so anything under a shore would spear through
-        // its floor, and anything in a rift would read as a crossing. Both are kept clear.
-        static bool Clear(float x, float z)
-        {
-            if (Mathf.Abs(x) < RiftHalfWidth && (z > 4 && z < 24 || z > 31 && z < 51)) return false;
-            return ShoreDistance(x, z) > 9;
-        }
         static void Atmosphere(GameManager game)
         {
             var haze = new Color(.062f, .072f, .098f);
             RenderSettings.fog = true; RenderSettings.fogMode = FogMode.Linear;
-            RenderSettings.fogColor = haze; RenderSettings.fogStartDistance = 10; RenderSettings.fogEndDistance = 20;
-            RenderSettings.ambientMode = AmbientMode.Flat; RenderSettings.ambientLight = new Color(.15f, .18f, .25f);
+            var config = ForestWorld.For(game)?.configuration;
+            RenderSettings.fogColor = config != null ? config.haze : haze; RenderSettings.fogStartDistance = config != null ? config.fogStart : 45; RenderSettings.fogEndDistance = config != null ? config.fogEnd : 145;
+            RenderSettings.ambientMode = AmbientMode.Trilight;
+            RenderSettings.ambientSkyColor=config!=null?config.ambientSky:new Color(.22f,.27f,.35f);RenderSettings.ambientEquatorColor=config!=null?config.ambientEquator:new Color(.12f,.19f,.2f);RenderSettings.ambientGroundColor=config!=null?config.ambientGround:new Color(.075f,.105f,.125f);
             foreach (var light in Object.FindObjectsByType<Light>())
-                if (light.type == LightType.Directional) { light.intensity = .14f; light.color = new Color(.56f, .66f, .86f); }
+                if (light.type == LightType.Directional) { light.intensity = config!=null?config.moonIntensity:.42f; light.color = config!=null?config.moonColor:new Color(.62f,.74f,.92f); }
             if (game.cameraRig == null) return;
-            game.cameraRig.distance = 13f;
+            game.cameraRig.distance = 20f;
             // Let the camera be dragged to every edge of the enlarged courts, and no further.
             var bounds = CourtBounds();
             game.cameraRig.minimumFocus = new Vector2(bounds.min.x + 2, bounds.min.z + 2);
             game.cameraRig.bounds = new Vector2(bounds.max.x - 2, bounds.max.z - 2);
             var camera = game.cameraRig.GetComponent<Camera>();
             if (camera == null) return;
-            camera.backgroundColor = haze; camera.farClipPlane = 420;
+            camera.backgroundColor = config!=null?config.haze:haze; camera.farClipPlane = 420;
         }
         static GameObject Find(Transform world, string name)
         {

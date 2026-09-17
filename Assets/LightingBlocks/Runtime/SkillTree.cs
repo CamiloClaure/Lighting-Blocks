@@ -75,11 +75,8 @@ namespace LightingBlocks
             Add("speed", "SWIFT HAULING", "Move stones faster across your paths.", new Vector2(295, 550), 104);
             Add("generator", "SOUL WELL", "A second source of Souls, independent of the bridge.", new Vector2(560, 550), 104);
             Add("root", "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
-            Add("stone", "STONE SOURCE", "Call an ordinary bridge stone to the first shore.", new Vector2(150, 676), 84, true);
-            Add("grave", "GRAVE SOURCE", "Call a Grave Stone, the only stone the second rift accepts.", new Vector2(710, 676), 84, true);
 
             Connect("root", "speed"); Connect("root", "generator");
-            Connect("root", "stone"); Connect("root", "grave");
             Connect("speed", "links"); Connect("generator", "radiance");
             Connect("links", "strength"); Connect("radiance", "strength");
 
