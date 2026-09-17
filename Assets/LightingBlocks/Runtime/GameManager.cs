@@ -86,7 +86,7 @@ namespace LightingBlocks
             cameraRig.CenterOnPlayer();
             WorldDressing.Build(this);
             if (forest != null) { forest.Build(); Save(); }
-            GameAudio.PlayMusic("music_soul_bridge");
+            GameAudio.PlayMusic("IntroGusta");
         }
         void Update()
         {
