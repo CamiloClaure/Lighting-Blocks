@@ -105,7 +105,12 @@ namespace LightingBlocks.Editor
         static void CrystalPrefab(BridgeBlock prefab,int tier,bool defaults)
         {
             string path=AssetDatabase.GetAssetPath(prefab);var root=PrefabUtility.LoadPrefabContents(path);foreach(Transform child in root.transform.Cast<Transform>().ToArray())UnityEngine.Object.DestroyImmediate(child.gameObject);
-            var body=Material("Crystal"+tier,"LightingBlocks/Twilight Crystal",tier==0?Hex("#4AC7F5"):tier==1?Hex("#BE78E7"):Hex("#FFC66F"),defaults);
+            var tint=tier==0?Hex("#4AC7F5"):tier==1?Hex("#BE78E7"):Hex("#FFC66F");
+            var body=Material("Crystal"+tier,"LightingBlocks/Twilight Crystal",tint,defaults);
+            // The crystal shader's face-on output is about 0.39 x tint, and Bloom's threshold is 1.1, so an LDR tint can
+            // never glow. _BaseColor is [HDR]: author it above 1. Set unconditionally, because defaults is false once
+            // artVersion reaches 2 and anything inside that guard is silently skipped on a rebuilt project.
+            body.SetColor("_BaseColor",new Color(tint.r*3.2f,tint.g*3.2f,tint.b*3.2f,1));
             var edge=Material("CrystalEdge"+tier,"LightingBlocks/Spectral Lit",Color.white,defaults);if(defaults){edge.SetColor("_EmissionColor",(tier==0?new Color(.25f,.75f,1):tier==1?new Color(.8f,.3f,1):new Color(1,.65f,.22f))*2);edge.SetFloat("_Cull",0);}
             var art=root.GetComponent<BlockArt>()??root.AddComponent<BlockArt>();var bodies=new List<Renderer>();
             for(int state=0;state<2;state++){bool placed=state==1;var visual=new GameObject(placed?"Placed crystal":"Loose crystal");visual.transform.SetParent(root.transform,false);float width=placed?1.96f:1.4f,height=placed?.36f:.7f;

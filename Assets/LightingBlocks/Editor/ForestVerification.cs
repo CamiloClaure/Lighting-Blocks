@@ -213,7 +213,9 @@ namespace LightingBlocks.Editor
                 }
             }
             Teleport(new Vector3(-10,.025f,-5));G.cameraRig.distance=14;G.cameraRig.CenterOnPlayer();for(int i=0;i<15;i++){G.cameraRig.SendMessage("LateUpdate");yield return null;}
-            ScreenCapture.CaptureScreenshot(folder+"/gameplay.png");yield return null;
+            // ScreenCapture.CaptureScreenshot writes nothing in batch mode, which left a stale gameplay.png as evidence.
+            // Render through the camera like the island shots do.
+            CaptureCamera(G.cameraRig.GetComponent<Camera>(),folder+"/gameplay.png");yield return null;
             // Ported from the retired GameVerification suite: every HUD view must fit the rendered screen.
             // Reported rather than Check()ed: a throw inside this coroutine would skip Finish and hang the batch run.
             if(Screen.width>200&&Screen.height>200)

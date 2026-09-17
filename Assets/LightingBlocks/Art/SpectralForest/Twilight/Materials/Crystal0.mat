@@ -30,6 +30,6 @@ Material:
     - _Opacity: 0.7
     - _Refraction: 0.003
     m_Colors:
-    - _BaseColor: {r: 0.2901961, g: 0.78039217, b: 0.9607843, a: 1}
+    - _BaseColor: {r: 0.9286275, g: 2.497255, b: 3.0745099, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
