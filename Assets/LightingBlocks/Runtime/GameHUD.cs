@@ -29,7 +29,7 @@ namespace LightingBlocks
         // The immersion pass hangs crisp screen-space world labels off the gameplay HUD.
         public Transform WorldLabelRoot { get; private set; }
         public Font LabelFont => font;
-        Font font;
+        Font font, titleFont;
         RectTransform canvas;
         GameObject playRoot, navigation, shade, titlePanel, pausePanel, controlsPanel, skillsPanel, memoriesPanel, confirmPanel, feedbackPanel;
         Text incomeText, objectiveText, contextText, noticeText, journalText, journeyLabel;
@@ -55,6 +55,7 @@ namespace LightingBlocks
         static readonly Color Muted = new Color(.604f, .576f, .659f);
         static readonly Color Mint = new Color(.894f, .749f, .478f);
         static Sprite fillSprite, edgeSprite;
+        static readonly Dictionary<string, Sprite> iconSprites = new Dictionary<string, Sprite>();
         // Screen-space chip that follows the placement ghost, plus what it needs to project.
         RectTransform placeChip;
         Canvas surface;
@@ -181,7 +182,11 @@ namespace LightingBlocks
 
         void BuildUI()
         {
-            font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            // Authored OFL faces live in Resources so no importer settings are needed; before their first
+            // editor import the loads return null, so both fall back to the built-in face.
+            var builtin = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            var body = Resources.Load<Font>("UI/Fonts/Body"); font = body != null ? body : builtin;
+            var display = Resources.Load<Font>("UI/Fonts/Title"); titleFont = display != null ? display : font;
             var root = new GameObject("Last Spark Canvas UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             root.transform.SetParent(transform, false); canvas = root.GetComponent<RectTransform>();
             var canvasComponent = surface = root.GetComponent<Canvas>();
@@ -202,7 +207,7 @@ namespace LightingBlocks
             playRoot = FullRect("Gameplay HUD", canvas).gameObject;
             WorldLabelRoot = FullRect("World Labels", playRoot.transform);
             diamond = Glyph('\u2726', '\u25c6', '*');
-            var location = Label("Location Title", playRoot.transform, diamond + "  " + Spaced("THE SPIRIT PATH") + "  " + diamond,
+            var location = Heading("Location Title", playRoot.transform, diamond + "  " + Spaced("THE SPIRIT PATH") + "  " + diamond,
                 0, 0, 760, 34, 21, Mint, TextAnchor.MiddleCenter).rectTransform;
             location.anchorMin = location.anchorMax = new Vector2(.5f, 1); location.pivot = new Vector2(.5f, 1); location.anchoredPosition = new Vector2(0, -14);
             // Resources sit under the Souls wallet so the whole top-left column reads as one stack.
@@ -239,9 +244,10 @@ namespace LightingBlocks
             // Equal rounded squares, the way the diorama concept stacks its icon buttons.
             navigation = Rect("Quick Menu", canvas, 0, 0, 218, 66).gameObject;
             var nav = navigation.GetComponent<RectTransform>(); nav.anchorMin = nav.anchorMax = new Vector2(1, 1); nav.pivot = new Vector2(1, 1); nav.anchoredPosition = new Vector2(-22, -20);
-            SkillsButton = Button("Skill Tree Shortcut", nav, "SKILLS\n[TAB]", 0, 0, 66, 66, ToggleSkills, 11);
-            Button("Memories Shortcut", nav, "MEMORY", 76, 0, 66, 66, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories), 11);
-            Button("Pause Shortcut", nav, "PAUSE\n[ESC]", 152, 0, 66, 66, ShowPause, 11);
+            SkillsButton = Button("Skill Tree Shortcut", nav, "SKILLS\n[TAB]", 0, 0, 66, 66, ToggleSkills, 9);
+            Iconify(SkillsButton, "map");
+            Iconify(Button("Memories Shortcut", nav, "MEMORY", 76, 0, 66, 66, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories), 9), "bag");
+            Iconify(Button("Pause Shortcut", nav, "PAUSE\n[ESC]", 152, 0, 66, 66, ShowPause, 9), "settings");
             var feedback = Panel("Action Feedback", canvas, 0, 0, 620, 84, Ink);
             feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -58);
             feedback.GetComponent<Image>().raycastTarget = false; feedbackPanel = feedback.gameObject;
@@ -251,7 +257,7 @@ namespace LightingBlocks
         {
             var panel = CenterPanel("Title Menu", 600, 610); titlePanel = panel.gameObject;
             Label("Title Eyebrow", panel, "AT THE END OF THE UNIVERSE", 40, 35, 520, 26, 17, Mint, TextAnchor.MiddleCenter);
-            Label("Game Title", panel, "THE LAST\nSPARK", 30, 79, 540, 146, 64, White, TextAnchor.MiddleCenter);
+            Heading("Game Title", panel, "THE LAST\nSPARK", 30, 79, 540, 146, 64, White, TextAnchor.MiddleCenter);
             Label("Game Lore", panel, "Build a path for the souls lost in the dark.\nCarry the light toward the next dawn.", 55, 244, 490, 65, 20, Muted, TextAnchor.MiddleCenter);
             startButton = Button("Begin Journey", panel, "BEGIN JOURNEY", 70, 332, 460, 58, BeginJourney);
             journeyLabel = startButton.GetComponentInChildren<Text>();
@@ -262,7 +268,7 @@ namespace LightingBlocks
         void BuildPause()
         {
             var panel = CenterPanel("Pause Menu", 540, 620); pausePanel = panel.gameObject;
-            Label("Pause Title", panel, "PAUSED", 30, 28, 480, 48, 38, White, TextAnchor.MiddleCenter);
+            Heading("Pause Title", panel, "PAUSED", 30, 28, 480, 48, 38, White, TextAnchor.MiddleCenter);
             Label("Pause Description", panel, "Your soul paths are resting.", 30, 84, 480, 32, 20, Muted, TextAnchor.MiddleCenter);
             resumeButton = Button("Resume", panel, "RESUME  [ESC]", 40, 137, 460, 56, () => SetView(ScreenView.Playing));
             Button("Pause Controls", panel, "CONTROLS", 40, 205, 460, 56, ShowControls);
@@ -281,7 +287,7 @@ namespace LightingBlocks
         void BuildControls()
         {
             var panel = CenterPanel("Controls View", 850, 730); controlsPanel = panel.gameObject;
-            Label("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
+            Heading("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
             Label("Controls Subtitle", panel, "Keyboard and mouse", 32, 82, 786, 26, 18, Muted, TextAnchor.MiddleCenter);
             string[,] rows = {
                 {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
@@ -309,7 +315,7 @@ namespace LightingBlocks
         void BuildMemories()
         {
             var panel = CenterPanel("Memories", 680, 620); memoriesPanel = panel.gameObject;
-            Label("Memories Title", panel, "MEMORIES OF THE END", 34, 28, 612, 50, 32, White, TextAnchor.MiddleCenter);
+            Heading("Memories Title", panel, "MEMORIES OF THE END", 34, 28, 612, 50, 32, White, TextAnchor.MiddleCenter);
             journalText = Label("Journal Entries", panel, "", 45, 105, 590, 358, 23, White);
             memoriesClose = Button("Memories Close", panel, "RETURN  [ESC]", 45, 488, 285, 55, () => SetView(ScreenView.Playing));
             Button("Restart From Memories", panel, "NEW JOURNEY", 350, 488, 285, 55, () => ConfirmNew(ScreenView.Memories));
@@ -317,7 +323,7 @@ namespace LightingBlocks
         void BuildConfirmation()
         {
             var panel = CenterPanel("Confirm New Journey", 600, 345); confirmPanel = panel.gameObject;
-            Label("Confirmation Heading", panel, "START AGAIN?", 32, 28, 536, 52, 34, White, TextAnchor.MiddleCenter);
+            Heading("Confirmation Heading", panel, "START AGAIN?", 32, 28, 536, 52, 34, White, TextAnchor.MiddleCenter);
             Label("Confirmation Text", panel, "This restarts your bridges and clears their progress.\nThe previous save will be kept as a backup.", 45, 110, 510, 90, 22, White, TextAnchor.MiddleCenter);
             Button("Cancel New Journey", panel, "KEEP MY JOURNEY", 32, 241, 258, 58, () => SetView(confirmReturn));
             Button("Confirm Restart", panel, "RESTART", 310, 241, 258, 58, game != null ? (UnityAction)game.NewJourney : null);
@@ -462,6 +468,58 @@ namespace LightingBlocks
             texture.SetPixels(pixels); texture.Apply();
             return Sprite.Create(texture, new UnityEngine.Rect(0, 0, size, size), new Vector2(.5f, .5f), 100, 0, SpriteMeshType.FullRect, new Vector4(10, 10, 10, 10));
         }
+        // Quick Menu buttons read as a glyph first, with the caption and its key hint tucked underneath.
+        void Iconify(Button button, string icon)
+        {
+            var art = Rect("Icon", button.transform, 19, 6, 28, 28).gameObject.AddComponent<Image>();
+            art.sprite = IconSprite(icon); art.color = Mint; art.raycastTarget = false; art.preserveAspect = true;
+            var caption = button.GetComponentInChildren<Text>().rectTransform;
+            caption.anchoredPosition = new Vector2(6, -38); caption.sizeDelta = new Vector2(54, 26);
+        }
+        static Sprite IconSprite(string name)
+        {
+            if (iconSprites.TryGetValue(name, out var cached) && cached != null) return cached;
+            var authored = Resources.Load<Sprite>("UI/Icons/" + name);
+            return iconSprites[name] = authored != null ? authored : DrawIcon(name);
+        }
+        // ponytail: 48x48 hard-edged glyphs drawn in code so the HUD needs no art import.
+        // Drop map.png / settings.png / bag.png into Resources/UI/Icons to override them with real art.
+        static Sprite DrawIcon(string name)
+        {
+            const int size = 48;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, name = "HUD icon " + name };
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float px = x + .5f - size * .5f, py = y + .5f - size * .5f;
+                    bool on;
+                    if (name == "settings")
+                    {
+                        // Gear: an annulus body with eight teeth cut by the angle.
+                        float d = Mathf.Sqrt(px * px + py * py), a = Mathf.Atan2(py, px);
+                        on = (d > 6 && d < 14) || (d >= 14 && d < 20 && Mathf.Cos(a * 8) > .45f);
+                    }
+                    else if (name == "bag")
+                    {
+                        // Rounded rect body with a strap arc springing from its top edge.
+                        float bx = Mathf.Abs(px) - 11, by = Mathf.Abs(py + 4) - 9;
+                        float body = Mathf.Sqrt(Mathf.Max(bx, 0) * Mathf.Max(bx, 0) + Mathf.Max(by, 0) * Mathf.Max(by, 0)) + Mathf.Min(Mathf.Max(bx, by), 0);
+                        float strap = Mathf.Sqrt(px * px + (py - 9) * (py - 9));
+                        on = body < 4 || (py > 9 && strap > 6 && strap < 9);
+                    }
+                    else
+                    {
+                        // Map: a rectangle outline plus two vertical fold creases.
+                        bool inside = Mathf.Abs(px) < 18 && Mathf.Abs(py) < 14;
+                        on = inside && (Mathf.Abs(px) > 15 || Mathf.Abs(py) > 11 || Mathf.Abs(Mathf.Abs(px) - 6) < 1.4f);
+                    }
+                    pixels[y * size + x] = new Color(1, 1, 1, on ? 1 : 0);
+                }
+            texture.SetPixels(pixels); texture.Apply();
+            return Sprite.Create(texture, new UnityEngine.Rect(0, 0, size, size), new Vector2(.5f, .5f), 100, 0, SpriteMeshType.FullRect);
+        }
         // Legacy Text has no tracking, so caps are spaced by hand; the ornament degrades to what the font owns.
         static string Spaced(string value) => string.Join(" ", value.ToCharArray());
         string Glyph(params char[] options)
@@ -475,6 +533,9 @@ namespace LightingBlocks
         }
         static void Bottom(RectTransform r, float x, float y, bool right)
         { r.anchorMin = r.anchorMax = new Vector2(right ? 1 : 0, 0); r.pivot = new Vector2(right ? 1 : 0, 0); r.anchoredPosition = new Vector2(right ? -x : x, y); }
+        // Screen and panel titles carry the display face; everything else stays on the body face.
+        Text Heading(string name, Transform parent, string value, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.UpperLeft)
+        { var text = Label(name, parent, value, x, y, width, height, size, color, alignment); text.font = titleFont; return text; }
         Text Label(string name, Transform parent, string value, float x, float y, float width, float height, int size, Color color, TextAnchor alignment = TextAnchor.UpperLeft)
         {
             var text = Rect(name, parent, x, y, width, height).gameObject.AddComponent<Text>(); text.font = font; text.text = value; text.fontSize = size;

@@ -8,6 +8,8 @@ Shader "LightingBlocks/Night Sky"
  _StarBrightness("Star brightness",Float)=2.5
  _StarTint("Star tint",Color)=(0.85,0.9,1,1)
  _StarCells("Star cells",Float)=220
+ _StarSize("Star size",Float)=2.5
+ _Nebula("Nebula",Color)=(0.416,0.353,0.659,1)
  }
  SubShader{
  Tags{"RenderType"="Background" "Queue"="Background" "PreviewType"="Skybox" "RenderPipeline"="UniversalPipeline"}
@@ -19,7 +21,7 @@ Shader "LightingBlocks/Night Sky"
  #pragma target 3.5
  #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
  CBUFFER_START(UnityPerMaterial)
- float4 _SkyTop,_SkyHorizon,_SkyBottom,_StarTint;float _StarDensity,_StarBrightness,_StarCells;
+ float4 _SkyTop,_SkyHorizon,_SkyBottom,_StarTint,_Nebula;float _StarDensity,_StarBrightness,_StarCells,_StarSize;
  CBUFFER_END
  struct Attributes{float4 positionOS:POSITION;};
  struct Varyings{float4 positionCS:SV_POSITION;float3 dir:TEXCOORD0;};
@@ -28,6 +30,8 @@ Shader "LightingBlocks/Night Sky"
  half4 Frag(Varyings i):SV_Target{
  float3 d=normalize(i.dir);
  float3 col=d.y>=0?lerp(_SkyHorizon.rgb,_SkyTop.rgb,smoothstep(0,0.6,d.y)):lerp(_SkyHorizon.rgb,_SkyBottom.rgb,smoothstep(0,0.5,-d.y));
+ // ponytail: one smooth band (two smoothsteps), no noise octaves; add shape noise if a flat band reads too uniform.
+ float nebula=smoothstep(-0.6,-0.4,d.y)*(1-smoothstep(-0.4,-0.2,d.y));col+=_Nebula.rgb*nebula*0.12;
  float3 cell=floor(d*_StarCells);float3 f=frac(d*_StarCells);
  float r0=Hash3(cell,float3(12.9898,78.233,37.719));
  float r1=Hash3(cell,float3(39.346,11.135,83.155));
@@ -38,7 +42,10 @@ Shader "LightingBlocks/Night Sky"
  if(r0<_StarDensity*0.08){
  float3 c=float3(r1,r2,hash4);
  float dist=length(f-c);
- float s=smoothstep(0.12+0.1*r3,0.0,dist);
+ // ponytail: _StarSize is a pure multiplier on the old 0.12+0.1*r3 radius (2.5 reproduces the pre-existing look);
+ // split into separate base/variance properties later if per-tier size authoring is needed.
+ float radius=(0.048+0.04*r3)*_StarSize;
+ float s=smoothstep(radius,0.0,dist);
  float3 tint=lerp(_StarTint.rgb,float3(1,0.9,0.8),hash5*0.3);
  col+=s*_StarBrightness*lerp(0.35,1.0,r3)*tint;
  }

@@ -34,6 +34,22 @@ islets with trees (`WorldDressing.BuildBackgroundIslands`, rendering layer 2) gi
 The reason: the long 26 degree lens plus fog and depth of field make empty background the
 composition, so the original "fill the frame with land" rationale no longer applies.
 
+**2026-09-18, Spirit Path Tiers 3-5:** the void read as depth, but everything in it was still
+lit flat. `SpiritPathLook.Apply` (`Editor/SpiritPathLook.cs`) now retints the moon and switches
+ambient to `AmbientMode.Trilight` from `Forest.asset`'s sky/equator/ground colours, and lifts
+the additional-light shadowmap to 4096 px with SSAO at 0.5 intensity
+(`Editor/SpiritPathLook.cs:43`, `:49`). The keels and every forest tree material pick up a rim
+colour and a little self-fill, so a silhouette against the void reads as rock or foliage
+instead of a black cutout (`SpiritPathLook.cs:71-89`), and the three Wisdom Trees' bark and
+leaves go emissive (`SpiritPathLook.cs:78`). On the object side, `WorldDressing.RimRocks` and
+`WorldDressing.Lanterns` (`WorldDressing.cs:273`, `:356`) line every shore with faceted rock
+clones and warm ember lanterns cloned from the scene's own soul-well fixture, luminous plants
+get their own emission tint (`SpiritPathLook.cs:80`), and `ForestConfiguration`'s cover pass
+adds a dense "hero" ring of undergrowth within 10 m of every Wisdom Tree on top of the existing
+scatter (`ForestConfiguration.cs:121-131`). Volumetric fog was the planned Tier 5 and was
+dropped on purpose: `M_PlayerFog` carries the void-mist colour, top, depth and strength instead,
+written by the same apply pass (`SpiritPathLook.cs:91-100`).
+
 ## 2. The skill tree was a card grid
 
 `SkillTree` (new) draws a real tree from procedural circle sprites (no new assets):
@@ -65,10 +81,32 @@ In order of damage:
 - `resizeTextForBestFit` removed everywhere, the captions that overlapped in the screenshot
   are two-line labels now, and the nav buttons were widened so MEMORIES stops wrapping.
 
+**2026-09-18, Spirit Path Tier 6:** the HUD's own palette was still the old warm amber-on-brown
+scheme against a now navy, gold-accented world. `GameHUD` moves to a deep navy glass with a
+single gold accent (`GameHUD.cs:52-56`), and every panel and button now renders through a
+shared rounded-rect sprite with a thin gold edge ring instead of a flat-coloured `Image`
+(`GameHUD.cs:432-464`). The gameplay HUD gained a "THE SPIRIT PATH" title banner, moved the
+resource readout under the Souls wallet, added a compact WASD/E key-hint bar, and condensed the
+skills/memory/pause shortcuts into three equal icon buttons (`GameHUD.cs:203-229`, `:240-244`).
+A new place-prompt chip tracks the "Next bridge block preview" ghost on screen and shows
+"[E] Place block" whenever it is in frame (`GameHUD.RefreshPlacePrompt`, `GameHUD.cs:379-405`).
+The pixel-perfect canvas and 1440x900 reference resolution from the original fix above did not
+need to change (`GameHUD.cs:191`, `:193`).
+
 ## Also
 
 `Save` fell over on `File.Replace` (the SAVE FAILED banner). It now falls back to copy + move
 before reporting failure.
+
+## Polish
+
+Tiers 1-6 shipped as one commit and reapply from one place: `Tools/Lighting Blocks/Apply Spirit
+Path Look`, or by creating `Library/SpiritPath.apply-request` (any content, the poll only checks
+that the file exists) and reading the result back from `Library/SpiritPath.apply-result.txt`
+(`Editor/SpiritPathLook.cs:14`, `:37`). Baseline, Tier 1, Tier 2 and Tier 3-6 screenshots and
+test logs are archived under `docs/art-direction/` for side-by-side comparison. The gameplay
+checks named in the "Verified" note below (dated to the original pass) have since grown
+alongside the art pass: `Library/SpectralForest.tests.txt` currently reports 198 PASS, 0 FAIL.
 
 ## Verified
 

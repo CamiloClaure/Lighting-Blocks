@@ -41,6 +41,9 @@ namespace LightingBlocks
         AudioClip chime;
         public int CurrentGap => Bridges[0] ? 1 : 0;
         public static Vector3 Cell(int gap, int column, int row) => new Vector3(column * 2, -.18f, Landscape.BridgeStart(gap) + row * 2);
+        // One open 16-point walk over the 12 cube edges; three edges are retraced because every corner has odd degree.
+        // Corner index bits are x, y, z, so bit 0 picks max.x, bit 1 max.y, bit 2 max.z.
+        static readonly int[] GhostEdgeWalk = { 0, 1, 5, 1, 3, 2, 3, 7, 6, 4, 6, 2, 0, 4, 5, 7 };
 
         void Awake()
         {
@@ -65,6 +68,19 @@ namespace LightingBlocks
             // The preview is the authored placed crystal itself, one clone per tier, so each tier previews as it will land.
             ghost = new GameObject("Next bridge block preview").transform;
             var previewProperties = new MaterialPropertyBlock();
+            // The ghost reads as a dashed wireframe: 8 lit texels then 8 clear, tiled along every edge.
+            var dashes = new Texture2D(16, 1, TextureFormat.RGBA32, false) { name = "Ghost dash", filterMode = FilterMode.Point, wrapMode = TextureWrapMode.Repeat };
+            for (int d = 0; d < 16; d++) dashes.SetPixel(d, 0, new Color(1, 1, 1, d < 8 ? 1 : 0));
+            dashes.Apply();
+            var edgeShader = Shader.Find("LightingBlocks/Ghost Edges"); var ghostEdgeShader = edgeShader != null ? edgeShader : Shader.Find("Universal Render Pipeline/Unlit");
+            Material ghostEdgeInk = null;
+            if (ghostEdgeShader != null)
+            {
+                // ponytail: both property spellings, so the URP Unlit fallback still tints before GhostEdges.shader imports. The fallback draws the line solid, not dashed.
+                ghostEdgeInk = new Material(ghostEdgeShader) { name = "Ghost edges" };
+                ghostEdgeInk.SetTexture("_MainTex", dashes); ghostEdgeInk.SetTexture("_BaseMap", dashes);
+                ghostEdgeInk.SetColor("_Color", new Color(.55f, .7f, 1.6f)); ghostEdgeInk.SetColor("_BaseColor", new Color(.55f, .7f, 1.6f));
+            }
             for (int tier = 0; tier < blockPrefabs.Length; tier++)
             {
                 var art = blockPrefabs[tier] == null ? null : blockPrefabs[tier].GetComponent<BlockArt>();
@@ -75,11 +91,20 @@ namespace LightingBlocks
                 // A placed tile renders at world scale 1; the preview has no logical root to cancel, and Update offsets by .205.
                 visual.transform.localScale = Vector3.one; visual.transform.localPosition = new Vector3(0, -.205f, 0);
                 foreach (var collider in visual.GetComponentsInChildren<Collider>()) Destroy(collider);
+                // ponytail: a placed-tile sized stand-in when a tier has no art, so the wireframe still frames a cell instead of collapsing to a point.
+                var box = new Bounds(visual.transform.position, new Vector3(2, .36f, 2)); bool framed = false;
                 foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
                 {
                     renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    renderer.GetPropertyBlock(previewProperties); previewProperties.SetFloat("_Highlight", 1); previewProperties.SetFloat("_Opacity", .25f); renderer.SetPropertyBlock(previewProperties);
+                    renderer.GetPropertyBlock(previewProperties); previewProperties.SetFloat("_Highlight", 1); previewProperties.SetFloat("_Opacity", .10f); renderer.SetPropertyBlock(previewProperties);
+                    if (framed) box.Encapsulate(renderer.bounds); else { box = renderer.bounds; framed = true; }
                 }
+                // Parented to the tier child, so Update's existing +.205 offset carries the edges with the body.
+                var edges = new GameObject("Ghost edges", typeof(LineRenderer)); edges.transform.SetParent(visual.transform, false);
+                var line = edges.GetComponent<LineRenderer>();
+                line.useWorldSpace = false; line.loop = false; line.positionCount = GhostEdgeWalk.Length; line.widthMultiplier = .035f; line.textureMode = LineTextureMode.Tile;
+                line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off; line.receiveShadows = false; line.sharedMaterial = ghostEdgeInk;
+                for (int p = 0; p < GhostEdgeWalk.Length; p++) { int c = GhostEdgeWalk[p]; line.SetPosition(p, visual.transform.InverseTransformPoint(new Vector3((c & 1) == 0 ? box.min.x : box.max.x, (c & 2) == 0 ? box.min.y : box.max.y, (c & 4) == 0 ? box.min.z : box.max.z))); }
                 visual.SetActive(tier == 0);
             }
             if (string.IsNullOrEmpty(Notice)) Notify("THE WISDOM TREE\nCollect the bright particles. Press E beside the violet tree to charge it and release a bridge block.", false);

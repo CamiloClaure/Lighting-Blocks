@@ -19,6 +19,7 @@ namespace LightingBlocks
         // public static readonly Color PavingEmission = new Color(1.7f, 1.7f, 1.85f);
         static Texture2D halo;
         static Material seamNeon, additive;
+        static Mesh box, shaft;
 
         public static void Build(GameManager game)
         {
@@ -31,6 +32,11 @@ namespace LightingBlocks
             Reshape(world);
             BuildBackgroundIslands(root, world);
             RimRocks(root, world);
+            var configuration = ForestWorld.For(game)?.configuration;
+            SpiritPaving(root, world, configuration);
+            RimSteps(root, world);
+            SpiritRuins(root, world, configuration);
+            VoidShafts(root);
             Lanterns(root, world);
             // ForestWorld owns all vegetation and wildlife.
             Atmosphere(game);
@@ -351,6 +357,214 @@ namespace LightingBlocks
             cache[key] = points.Count - 1;
             return points.Count - 1;
         }
+        // ---- pack dressing ---------------------------------------------------
+
+        // Nothing in the scene references the art pack's ENV meshes and materials, and there is no
+        // Resources copy of them, so the only loader this project owns is ArtIntegration's
+        // AssetDatabase lookup. The runtime borrows the same one behind the editor guard.
+        // ponytail: editor-only pack lookup. Ceiling: a player build dresses with the plain boxes
+        // below and the scene's own materials. Copy the pack under Resources, or hang the two
+        // meshes off ForestConfiguration, the day a standalone build has to match the editor.
+        static T Pack<T>(string path) where T : Object
+        {
+#if UNITY_EDITOR
+            return UnityEditor.AssetDatabase.LoadAssetAtPath<T>("Assets/LightingBlocks/Art/Pack/" + path);
+#else
+            return null;
+#endif
+        }
+        // A unit cube built the same way the rocks are, shared by the rim steps, the ruin lintel
+        // and both pack fallbacks: size comes off the transform, so one mesh serves all of them.
+        static readonly Vector3[] BoxFaces = { Vector3.up, Vector3.down, Vector3.left, Vector3.right, Vector3.forward, Vector3.back };
+        static Mesh UnitBox()
+        {
+            if(box!=null)return box;
+            var vertices=new List<Vector3>();var uv=new List<Vector2>();var triangles=new List<int>();
+            foreach(var face in BoxFaces)
+            {
+                // u is the axis cycled once, which is never parallel to the face normal, so u and
+                // v span the face whichever way it points.
+                var u=new Vector3(face.y,face.z,face.x);var v=Vector3.Cross(face,u);int n=vertices.Count;
+                foreach(var corner in new[]{-u-v,u-v,u+v,-u+v})vertices.Add((face+corner)*.5f);
+                uv.AddRange(new[]{Vector2.zero,Vector2.right,Vector2.one,Vector2.up});
+                triangles.AddRange(new[]{n,n+1,n+2,n,n+2,n+3});
+            }
+            return box=Finish(vertices,uv,triangles,"Dressing box");
+        }
+        // Two quads crossed at right angles, one metre wide and hanging one metre down, so a shaft
+        // still reads as a volume from any camera angle and the real size comes off the transform.
+        static Mesh Shaft()
+        {
+            if(shaft!=null)return shaft;
+            var vertices=new List<Vector3>();var uv=new List<Vector2>();var triangles=new List<int>();
+            foreach(var axis in new[]{Vector3.right,Vector3.forward})
+            {
+                int n=vertices.Count;var side=axis*.5f;
+                vertices.AddRange(new[]{-side,side,side+Vector3.down,-side+Vector3.down});
+                uv.AddRange(new[]{new Vector2(0,1),new Vector2(1,1),new Vector2(1,0),new Vector2(0,0)});
+                triangles.AddRange(new[]{n,n+1,n+2,n,n+2,n+3});
+            }
+            return shaft=Finish(vertices,uv,triangles,"Void shaft");
+        }
+        // Dressing standing on a court has to take the Wisdom Tree light the paving beside it
+        // takes; only the far islets and the shafts stay on the masked layer.
+        static GameObject Lit(Transform root, string name, Mesh mesh, Material material)
+        {
+            var obj=Islet(root,name,mesh,material);
+            obj.GetComponent<Renderer>().renderingLayerMask=1;
+            return obj;
+        }
+        // A broken ring of pack paving around every Wisdom Tree, so the hero of each island stands
+        // on something authored instead of on bare ground.
+        static void SpiritPaving(Transform root, Transform world, ForestConfiguration configuration)
+        {
+            if(configuration==null||configuration.islands==null)return;
+            var random=new System.Random(3571);
+            var paving=Pack<Material>("Materials/M_ENV_Paving.mat");if(paving==null)paving=SceneMaterial(world,"ShoreFloor0");
+            var slab=Pack<Mesh>("Meshes/ENV_PavingModule.asset");var slabSize=Vector3.one;
+            if(slab==null){slab=UnitBox();slabSize=new Vector3(2,.3f,2);}
+            foreach(var d in configuration.islands)
+            {
+                int count=8+random.Next(5);
+                for(int i=0;i<count;i++)
+                {
+                    // Even spokes with a little play on each, or the ring reads as a machined disc.
+                    float angle=(i+((float)random.NextDouble()-.5f)*.4f)*Mathf.PI*2/count;
+                    float radius=2+(float)random.NextDouble()*2;
+                    var stone=Lit(root,"Spirit paving",slab,paving);
+                    stone.transform.position=new Vector3(d.wisdomPosition.x+Mathf.Cos(angle)*radius,.02f,d.wisdomPosition.z+Mathf.Sin(angle)*radius);
+                    stone.transform.rotation=Quaternion.Euler(0,angle*Mathf.Rad2Deg,0);
+                    stone.transform.localScale=Vector3.Scale(slabSize,Vector3.one*(.5f+(float)random.NextDouble()*.3f));
+                }
+            }
+        }
+        // Where a crossing meets a shore the rim just stops. Three slabs stepping down past the
+        // edge give the landing somewhere to come from. The bridge cells run from BridgeStart to
+        // BridgeStart + 12, and the two courts either side end a metre short of each: four
+        // landings, all on the lane axis.
+        static void RimSteps(Transform root, Transform world)
+        {
+            var cliff=SceneMaterial(world,"ShoreCliff0");
+            for(int gap=0;gap<2;gap++)
+                foreach(int side in new[]{1,-1})
+                {
+                    // side is the direction out into the gap, so the near shore steps forward and
+                    // the far shore steps back towards it.
+                    float edge=side>0?Landscape.BridgeStart(gap)-1:Landscape.BridgeStart(gap)+GameManager.Rows*2-1;
+                    for(int n=0;n<3;n++)
+                    {
+                        var step=Lit(root,"Rim step",UnitBox(),cliff);
+                        // The first tread starts below a placed block's underside at -.36, so no
+                        // step ever pokes up through the crossing it leads onto.
+                        step.transform.position=new Vector3(0,-.5f-.25f*n,edge+side*(.7f+n*.8f));
+                        step.transform.localScale=new Vector3(5.2f-n*.7f,.22f,.8f);
+                    }
+                }
+        }
+        // The middle court carries the ruins. One island's worth of broken columns reads as a
+        // place that used to be lived in; three islands' worth reads as set dressing.
+        static void SpiritRuins(Transform root, Transform world, ForestConfiguration configuration)
+        {
+            if(configuration==null||configuration.islands==null||configuration.islands.Length<2)return;
+            var d=configuration.islands[1];
+            if(d.polygonIndex<0||d.polygonIndex>=Landscape.Shores.Length)return;
+            var shore=Landscape.Shores[d.polygonIndex];
+            var random=new System.Random(6151);
+            var stone=Pack<Material>("Materials/M_ENV_Paving.mat");if(stone==null)stone=SceneMaterial(world,"ShoreFloor0");
+            var drum=Pack<Mesh>("Meshes/ENV_ColumnStone.asset");var drumSize=Vector3.one;
+            if(drum==null){drum=UnitBox();drumSize=new Vector3(.85f,.8f,.85f);}
+            var min=shore[0];var max=min;
+            foreach(var q in shore){min=Vector2.Min(min,q);max=Vector2.Max(max,q);}
+            var spots=new List<Vector3>();
+            for(int attempt=0;attempt<400&&spots.Count<6;attempt++)
+            {
+                var p=new Vector3(Mathf.Lerp(min.x,max.x,(float)random.NextDouble()),0,Mathf.Lerp(min.y,max.y,(float)random.NextDouble()));
+                // Same rejection the rim rocks run, plus the two reservations the forest owns: a
+                // column in the hauling lane or over a particle output is a column in the way.
+                if(RiftLane(new Vector2(p.x,p.z)))continue;
+                if(!ForestLayoutGenerator.Inside(p,shore,4)||ForestLayoutGenerator.Reserved(p,d,6)||ForestHabitat.MainPath(p,d))continue;
+                bool crowded=false;
+                foreach(var other in spots)if((other-p).sqrMagnitude<64)crowded=true;
+                if(crowded)continue;
+                spots.Add(p);
+            }
+            for(int i=0;i<spots.Count;i++)
+            {
+                var p=spots[i];
+                float yaw=(float)random.NextDouble()*360;
+                if(i<5)
+                {
+                    // Tilt on one axis under a yaw, never Euler x and z together: two six degree
+                    // angles compound to eight and the column stops reading as merely settled.
+                    float height=.6f+(float)random.NextDouble()*.4f,tilt=(float)random.NextDouble()*12-6;
+                    var column=Lit(root,"Spirit ruin",drum,stone);
+                    column.transform.position=new Vector3(p.x,.4f*height,p.z);
+                    column.transform.rotation=Quaternion.Euler(0,yaw,0)*Quaternion.Euler(tilt,0,0);
+                    column.transform.localScale=Vector3.Scale(drumSize,new Vector3(1,height,1));
+                    continue;
+                }
+                // The arch is one Spirit ruin carrying three pieces, so the ruin count stays at
+                // the six the rest of the world is asserted against.
+                var arch=new GameObject("Spirit ruin").transform;
+                arch.SetParent(root,false);
+                arch.position=p;arch.rotation=Quaternion.Euler(0,yaw,0);
+                foreach(int leg in new[]{-1,1})
+                {
+                    var post=Lit(arch,"Arch column",drum,stone);
+                    post.transform.localPosition=new Vector3(leg*.95f,.8f,0);
+                    post.transform.localScale=Vector3.Scale(drumSize,new Vector3(1,2,1));
+                }
+                var lintel=Lit(arch,"Arch lintel",UnitBox(),stone);
+                lintel.transform.localPosition=new Vector3(0,1.75f,0);
+                lintel.transform.localScale=new Vector3(2.7f,.3f,.8f);
+            }
+        }
+        // Light spilling off every rim and falling away into the dark, which is what tells the eye
+        // the courts are floating rather than sitting on something it cannot see.
+        static void VoidShafts(Transform root)
+        {
+            var found=Shader.Find("LightingBlocks/Light Shaft");
+            // ponytail: the URP Unlit fallback paints the quad flat and opaque - no gradient, no
+            // additive blend. It is only here so a run before LightShaft.shader imports never
+            // throws; the look needs the real shader.
+            if(found==null)found=Shader.Find("Universal Render Pipeline/Unlit");
+            if(found==null)return;
+            var ink=new Color(.5f,.4f,1f)*.35f;
+            var glow=new Material(found){name="Void shaft"};
+            if(glow.HasProperty("_Shaft"))glow.SetColor("_Shaft",ink);
+            if(glow.HasProperty("_BaseColor"))glow.SetColor("_BaseColor",ink);
+            var random=new System.Random(5309);
+            var placed=new List<Vector2>();
+            foreach(var shore in Landscape.Shores)
+            {
+                Vector2 centre=Centroid(shore);
+                placed.Clear();
+                int count=4+random.Next(3);
+                for(int attempt=0;attempt<200&&placed.Count<count;attempt++)
+                {
+                    int e=random.Next(shore.Length);
+                    Vector2 a=shore[(e+shore.Length-1)%shore.Length],b=shore[e];
+                    Vector2 p=Vector2.Lerp(a,b,(float)random.NextDouble());
+                    if(RiftLane(p))continue;
+                    bool crowded=false;
+                    foreach(var other in placed)if(Vector2.Distance(other,p)<10)crowded=true;
+                    if(crowded)continue;
+                    placed.Add(p);
+                    Vector2 away=(p-centre).normalized*.4f;
+                    // ponytail: shaft area is pure additive overdraw and it dominates the GPU frame.
+                    // At 35 m x 3-6 m the profile ran mean GPU 14.9 ms against a 6.1 ms budget, so
+                    // the beams are kept short and narrow. Widen only with a profile run beside you.
+                    float width=2+(float)random.NextDouble()*2;
+                    var beam=Islet(root,"Void shaft",Shaft(),glow);
+                    var renderer=beam.GetComponent<Renderer>();
+                    renderer.shadowCastingMode=ShadowCastingMode.Off;renderer.receiveShadows=false;
+                    beam.transform.position=new Vector3(p.x+away.x,0,p.y+away.y);
+                    beam.transform.rotation=Quaternion.Euler(0,(float)random.NextDouble()*90,0);
+                    beam.transform.localScale=new Vector3(width,16,width);
+                }
+            }
+        }
+
         // The scene already holds six soul-well lanterns. Cloning one around every court rim
         // lights the edge you are about to walk off, and the clones cost nothing to author.
         static void Lanterns(Transform root, Transform world)
@@ -737,10 +951,12 @@ namespace LightingBlocks
                 var shade = entry.outline.effectColor; shade.a = .9f * alpha; entry.outline.effectColor = shade;
                 if (alpha <= 0) { entry.rect.position = new Vector3(Screen.width * .5f, Screen.height * .5f, 0); continue; }
                 // Keep every label fully inside the frame: half-offscreen text reads as a glitch.
+                // The top 120 px are spoken for by the HUD title and the toast, so a far label
+                // parks under that band instead of at the very edge, where it collided with both.
                 Vector2 half = entry.rect.sizeDelta * .5f * scale;
                 entry.rect.position = new Vector3(
                     Mathf.Clamp(view.x, half.x + 6, Screen.width - half.x - 6),
-                    Mathf.Clamp(view.y, half.y + 6, Screen.height - half.y - 6), 0);
+                    Mathf.Clamp(view.y, half.y + 6, Screen.height - half.y - 120), 0);
             }
         }
     }

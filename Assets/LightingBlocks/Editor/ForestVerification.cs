@@ -73,6 +73,16 @@ namespace LightingBlocks.Editor
             var lanterns=UnityEngine.Object.FindObjectsByType<Light>().Where(l=>l.name=="Courtyard lantern glow").ToArray();Check(lanterns.Length>=15&&lanterns.All(l=>Mathf.Approximately(l.intensity,4f)&&Mathf.Approximately(l.range,6f)),"Courtyard lanterns follow the Spirit Path spec ("+lanterns.Length+" lights, intensity "+(lanterns.Length>0?lanterns.Min(l=>l.intensity)+".."+lanterns.Max(l=>l.intensity):"none")+", range "+(lanterns.Length>0?lanterns.Min(l=>l.range)+".."+lanterns.Max(l=>l.range):"none")+", off-spec: "+string.Join("|",lanterns.Where(l=>!Mathf.Approximately(l.intensity,4f)||!Mathf.Approximately(l.range,6f)).Take(3).Select(l=>l.transform.parent?.name+"@"+l.transform.position+"="+l.intensity+"/"+l.range))+")");
             Check(Enumerable.Range(0,F.Layouts.Count).All(i=>F.Layouts[i].cover.Count(c=>Vector3.Distance(c.position,F.configuration.islands[i].wisdomPosition)<=10f)>=300),"Hero cover density around every Wisdom Tree");
             Check(GameHUD.Current!=null&&GameHUD.Current.GetComponentsInChildren<Transform>(true) is Transform[] hud&&hud.Any(t=>t.name=="Location Title")&&hud.Any(t=>t.name=="Key Hints")&&hud.Any(t=>t.name=="Place Prompt"),"Spirit Path HUD elements exist");
+            var ghostRoot=UnityEngine.Object.FindObjectsByType<Transform>().FirstOrDefault(t=>t.name=="Next bridge block preview");var edges=ghostRoot!=null?ghostRoot.GetComponentsInChildren<Transform>(true).Where(c=>c.name=="Ghost edges").ToArray():new Transform[0];Check(edges.Length==3&&edges.All(c=>c.GetComponent<LineRenderer>()!=null),"Bridge block ghost carries three Ghost edges LineRenderers under Next bridge block preview (root="+(ghostRoot!=null)+", found="+edges.Length+")");
+            var headBone=G.player.animator!=null?G.player.animator.GetBoneTransform(HumanBodyBones.Head):null;Check(headBone!=null&&headBone.Cast<Transform>().Any(c=>c.name=="Traveler wizard hat"),"Traveler wizard hat sits on the player's Humanoid Head bone (head bone found="+(headBone!=null)+")");
+            var paving=UnityEngine.Object.FindObjectsByType<Transform>().Count(t=>t.name=="Spirit paving");Check(paving>=24,"At least 24 Spirit paving objects exist (found "+paving+")");
+            var rimSteps=UnityEngine.Object.FindObjectsByType<Transform>().Count(t=>t.name=="Rim step");Check(rimSteps>=6,"At least 6 Rim step objects exist (found "+rimSteps+")");
+            var ruins=UnityEngine.Object.FindObjectsByType<Transform>().Where(t=>t.name=="Spirit ruin").ToArray();Check(ruins.Length>=5&&ruins.All(t=>Landscape.Inside(new Vector2(t.position.x,t.position.z),Landscape.Shores[1])),"At least 5 Spirit ruin objects, all inside island index 1 ("+ruins.Length+" found, outside="+ruins.Count(t=>!Landscape.Inside(new Vector2(t.position.x,t.position.z),Landscape.Shores[1]))+")");
+            var shafts=UnityEngine.Object.FindObjectsByType<Transform>().Count(t=>t.name=="Void shaft");Check(shafts>=12,"At least 12 Void shaft objects exist (found "+shafts+")");
+            // Lantern/Lantern lamp hang off each "Lantern string", one level under the Wisdom Tree itself, so search descendants rather than direct children.
+            var wisdomLanternCounts=UnityEngine.Object.FindObjectsByType<WisdomTree>().Select(w=>(id:w.Definition.id,lantern:w.GetComponentsInChildren<Transform>(true).Count(c=>c.name=="Lantern"),lamp:w.GetComponentsInChildren<Transform>(true).Count(c=>c.name=="Lantern lamp"))).ToArray();Check(wisdomLanternCounts.All(t=>t.lantern==12&&t.lamp==4),"Every Wisdom Tree carries exactly 12 Lantern and 4 Lantern lamp descendants (counts: "+string.Join("|",wisdomLanternCounts.Select(t=>t.id+"="+t.lantern+"/"+t.lamp))+")");
+            var hudButtons=GameHUD.Current.GetComponentsInChildren<Transform>(true);var shortcuts=new[]{"Skill Tree Shortcut","Memories Shortcut","Pause Shortcut"};bool HasIcon(string n)=>hudButtons.FirstOrDefault(t=>t.name==n) is Transform b&&b.Cast<Transform>().Any(c=>c.name=="Icon");Check(shortcuts.All(HasIcon),"HUD shortcut buttons each carry an Icon child (missing: "+string.Join("|",shortcuts.Where(n=>!HasIcon(n)))+")");
+            Check(Resources.Load<Font>("UI/Fonts/Title")!=null,"Title font resource loads from UI/Fonts/Title");
             string pristine=G.ExportSave();
             foreach(var layout in F.Layouts)
             {
@@ -162,8 +172,10 @@ namespace LightingBlocks.Editor
                     }
                 return candidates.First();
             }
-            var bird=Interior("Bird");var start=bird.transform.position;Teleport(start+Vector3.back*2);
-            bool tookOff=false,landed=false;for(int i=0;i<1000;i++){bird.Simulate(.05f);if(bird.Airborne)tookOff=true;if(tookOff){Teleport(start+Vector3.back*10);if(!bird.Airborne){landed=true;break;}}}
+            var bird=Interior("Bird");var start=bird.transform.position;UnityEngine.Random.InitState(1907);// ponytail: reseeds the shared RNG right before the sim loop so StartFlight's 48-sample habitat search stops depending on whatever earlier checks drew from it
+            bool tookOff=false,landed=false;
+            void Alert(){Teleport(start+Vector3.back*2);for(int i=0;i<1000;i++){bird.Simulate(.05f);if(bird.Airborne)tookOff=true;if(tookOff){Teleport(start+Vector3.back*10);if(!bird.Airborne){landed=true;break;}}}}
+            Alert();if(!(tookOff&&landed)&&bird.State==ForestCreature.Mode.Recover)Alert();// one re-alert retry absorbs a StartFlight miss; a genuine failure still fails after two tries
             Check(tookOff&&landed,"Ground bird takes off and returns to a safe landing ("+bird.name+" at "+start+" tookOff="+tookOff+" landed="+landed+" playerIsland="+(F.IslandAt(G.player.transform.position)?.id??"off-island")+")");
             var rabbit=Interior("Rabbit");start=rabbit.transform.position;Teleport(start+Approach(rabbit)*2);for(int i=0;i<30;i++)rabbit.Simulate(.05f);
             Check((rabbit.transform.position-start).sqrMagnitude>.1f,"Rabbit flees an approaching player ("+rabbit.name+" at "+start+", state "+rabbit.State+")");
@@ -250,6 +262,10 @@ namespace LightingBlocks.Editor
             var rig=G.cameraRig;float pitch0=rig.pitch,yaw0=rig.yaw;Teleport(F.configuration.islands[1].wisdomPosition+new Vector3(3,0,-2));rig.CenterOnPlayer();rig.distance=42;
             foreach(var (name,yaw) in new[]{("vista-ne",45f),("vista-sw",225f)}){rig.pitch=24;rig.yaw=yaw;for(int i=0;i<25;i++){rig.SendMessage("LateUpdate");yield return null;}CaptureCamera(rig.GetComponent<Camera>(),folder+"/"+name+".png");}
             rig.pitch=pitch0;rig.yaw=yaw0;rig.distance=14;rig.CenterOnPlayer();for(int i=0;i<15;i++){rig.SendMessage("LateUpdate");yield return null;}
+            // Two close-in shots: the Wisdom Tree canopy on island 0, and the island 1 rim keel nearest wherever the camera already sits.
+            var rimPoint=Landscape.Shores[1].OrderBy(p=>Vector2.Distance(p,new Vector2(rig.transform.position.x,rig.transform.position.z))).First();
+            foreach(var (name,position,pitch,yaw,distance) in new (string,Vector3,float,float,float)[]{("tree-close",F.configuration.islands[0].wisdomPosition+new Vector3(2,0,-2),30f,45f,14f),("keel-close",new Vector3(rimPoint.x,0,rimPoint.y),10f,225f,27f)})
+            {Teleport(position);rig.CenterOnPlayer();rig.pitch=pitch;rig.yaw=yaw;rig.distance=distance;for(int i=0;i<25;i++){rig.SendMessage("LateUpdate");yield return null;}CaptureCamera(rig.GetComponent<Camera>(),folder+"/"+name+".png");}
             if(!Application.isBatchMode){ScreenCapture.CaptureScreenshot(folder+"/hud.png");yield return null;yield return null;}
             // Ported from the retired GameVerification suite: every HUD view must fit the rendered screen.
             // Reported rather than Check()ed: a throw inside this coroutine would skip Finish and hang the batch run.

@@ -1,0 +1,138 @@
+PASS: Tests isolate the actual player save
+PASS: New game has no free scattered starter blocks
+PASS: Exactly one Wisdom Tree per island
+PASS: Eighteen reactive spectral animals instantiated
+PASS: Ruined architecture removed
+PASS: Bridge gap has no hidden floor
+PASS: Post-processing enabled on gameplay camera
+PASS: Spirit Path grading applied (ACES)
+PASS: Valley retired, six background islets built
+PASS: Court keels replace the cliff skirts
+PASS: Background trees stand on islets
+PASS: Wisdom Trees carry rune circles and lantern strings
+PASS: Rim rocks and lanterns dress the courts
+PASS: Courtyard lanterns follow the Spirit Path spec (32 lights, intensity 4..4, range 6..6, off-spec: )
+PASS: Hero cover density around every Wisdom Tree
+PASS: Spirit Path HUD elements exist
+PASS: Bridge block ghost carries three Ghost edges LineRenderers under Next bridge block preview (root=True, found=3)
+PASS: Traveler wizard hat sits on the player's Humanoid Head bone (head bone found=True)
+PASS: At least 24 Spirit paving objects exist (found 29)
+PASS: At least 6 Rim step objects exist (found 12)
+PASS: At least 5 Spirit ruin objects, all inside island index 1 (6 found, outside=0)
+PASS: At least 12 Void shaft objects exist (found 13)
+PASS: Every Wisdom Tree carries exactly 12 Lantern and 4 Lantern lamp descendants (counts: island-3=12/4|island-2=12/4|island-1=12/4)
+PASS: HUD shortcut buttons each carry an Icon child (missing: )
+PASS: Title font resource loads from UI/Fonts/Title
+PASS: Deterministic layout for island-1
+PASS: Every particle is reachable on island-1
+PASS: Connected hauling paths and interior trees on island-1
+COUNT: island-1 trees=80 animals=16 particles=24
+PASS: Deterministic layout for island-2
+PASS: Every particle is reachable on island-2
+PASS: Connected hauling paths and interior trees on island-2
+COUNT: island-2 trees=81 animals=16 particles=24
+PASS: Deterministic layout for island-3
+PASS: Every particle is reachable on island-3
+PASS: Connected hauling paths and interior trees on island-3
+COUNT: island-3 trees=76 animals=16 particles=24
+PASS: Five-island configuration supports index 0
+PASS: Five-island configuration supports index 1
+PASS: Five-island configuration supports index 2
+PASS: Five-island configuration supports index 3
+PASS: Five-island configuration supports index 4
+PASS: Collect three distinct particles on island-1
+PASS: Collected particle cannot be counted twice
+PASS: Island energy cannot charge another island
+PASS: Particle inventories and cooldowns survive reload
+PASS: Invalid forest data rejected before any state mutation
+PASS: Duplicate particle IDs rejected
+PASS: Charging begins
+PASS: Saving mid-charge restores pre-charge state
+PASS: Blocked output consumes no particles
+PASS: Pause freezes particle cooldowns
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Tree output preserves existing block art and tier
+PASS: Retired paid supply cannot create blocks or spend Souls
+PASS: Existing bridge placement works: 0:0
+PASS: First bridge reward and Soul production unchanged
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:1
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:2
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:3
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:4
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:5
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:6
+PASS: First bridge completes entirely from collected particles
+PASS: Soul Well still uses Souls and adds income
+PASS: Existing Strength upgrade still costs Souls
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:0
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:1
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:2
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:3
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:4
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:5
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:6
+PASS: Second bridge completes with existing Grave blocks
+PASS: Exit beacon completes the current chapter
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Wisdom Trees still charge after chapter completion
+PASS: Version 3 restores bridges, skills and forest state
+PASS: Version 1 migration preserves economy and blocks
+PASS: Version 3 save writes atomically
+PASS: Recovery backup retained

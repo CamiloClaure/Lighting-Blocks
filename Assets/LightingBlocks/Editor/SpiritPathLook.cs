@@ -76,6 +76,9 @@ namespace LightingBlocks.Editor
             void Emit(Material m,Color c){if(m!=null&&m.HasProperty("_EmissionColor")){m.SetColor("_EmissionColor",c);EditorUtility.SetDirty(m);}}
             // Wisdom Tree emission (Tier 3.5): #6A5AA8 x1.5 bark, #A38AD0 x1.2 leaves.
             Emit(Mat("Wisdom_Bark"),new Color(.40f,.34f,.62f));Emit(Mat("Wisdom_Leaves"),new Color(.20f,.16f,.30f));
+            // ponytail: the canopy still reads pale lavender, not the concept's blue-violet. Darkening
+            // Wisdom_Leaves _BaseColor here and in WisdomTree's per-slot block both failed to change
+            // it, so the pale cards are some other renderer. Find that renderer before tuning again.
             // Glowing plants (Tier 4.8).
             Emit(Mat("LuminousPlants"),new Color(.45f,.30f,1.2f));
             // Foliage readability (Tier 3): forest trees are black silhouettes without the cliff's rim/fill treatment.
@@ -87,6 +90,8 @@ namespace LightingBlocks.Editor
                 if(mat.HasProperty("_SoftFill"))mat.SetFloat("_SoftFill",.05f);
                 EditorUtility.SetDirty(mat);
             }
+            // Crystal saturation: mirror TwilightBuilder's tint*2.2 HDR _BaseColor so a rebuild agrees with the look pass.
+            var crystalHex=new[]{"#4AC7F5","#BE78E7","#FFC66F"};for(int t=0;t<3;t++){var tint=Hex(crystalHex[t]);var crystal=Load<Material>("Assets/LightingBlocks/Art/SpectralForest/Twilight/Materials/Crystal"+t+".mat");if(crystal!=null){crystal.SetColor("_BaseColor",new Color(tint.r*2.2f,tint.g*2.2f,tint.b*2.2f,1));EditorUtility.SetDirty(crystal);}}
             // Mist (Tier 5, shader contract with another agent).
             var mist=Load<Material>("Assets/LightingBlocks/Shaders/M_PlayerFog.mat");
             if(mist!=null)
@@ -95,7 +100,7 @@ namespace LightingBlocks.Editor
                 if(mist.HasProperty("_MistTop"))mist.SetFloat("_MistTop",-2f);
                 if(mist.HasProperty("_MistDepth"))mist.SetFloat("_MistDepth",28f);
                 if(mist.HasProperty("_MistStrength"))mist.SetFloat("_MistStrength",.85f);
-                if(mist.HasProperty("_VoidMist"))mist.SetFloat("_VoidMist",.7f);
+                if(mist.HasProperty("_VoidMist"))mist.SetFloat("_VoidMist",.45f);
                 EditorUtility.SetDirty(mist);
             }
             // --- end Spirit Path pass ---
@@ -109,7 +114,8 @@ namespace LightingBlocks.Editor
             void Set(string name,float value){if(material.HasProperty(name))material.SetFloat(name,value);}
             void SetColor(string name,Color value){if(material.HasProperty(name))material.SetColor(name,value);}
             if(custom!=null)
-            {SetColor("_SkyTop",Hex("#0B0D24"));SetColor("_SkyHorizon",Hex("#1A1B3D"));SetColor("_SkyBottom",Hex("#07081A"));Set("_StarDensity",.6f);Set("_StarBrightness",4f);SetColor("_StarTint",new Color(.85f,.9f,1f));}
+            // Bigger, brighter, fewer stars survive the 1.2px Gaussian DoF that erased 1-pixel points; nebula adds a faint lavender wash near the horizon.
+            {SetColor("_SkyTop",Hex("#0B0D24"));SetColor("_SkyHorizon",Hex("#1A1B3D"));SetColor("_SkyBottom",Hex("#07081A"));Set("_StarDensity",.5f);Set("_StarBrightness",9f);Set("_StarCells",140f);Set("_StarSize",6f);SetColor("_StarTint",new Color(.85f,.9f,1f));SetColor("_Nebula",Hex("#6A5AA8"));}
             else
             {Set("_SunDisk",0f);Set("_Exposure",.2f);Set("_AtmosphereThickness",.5f);SetColor("_SkyTint",Hex("#1A1B3D"));SetColor("_GroundColor",Hex("#0A0A14"));}
             RenderSettings.skybox=material;RenderSettings.defaultReflectionMode=DefaultReflectionMode.Skybox;EditorUtility.SetDirty(material);

@@ -43,7 +43,7 @@ Material:
     - _MistDepth: 28
     - _MistStrength: 0.85
     - _MistTop: -2
-    - _VoidMist: 0.7
+    - _VoidMist: 0.45
     m_Colors:
     - _FogColor: {r: 0.049999982, g: 0.06999998, b: 0.12999997, a: 1}
     - _MistColor: {r: 0.36, g: 0.3, b: 0.62, a: 1}

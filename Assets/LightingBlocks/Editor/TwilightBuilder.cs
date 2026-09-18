@@ -110,7 +110,7 @@ namespace LightingBlocks.Editor
             // The crystal shader's face-on output is about 0.39 x tint, and Bloom's threshold is 1.1, so an LDR tint can
             // never glow. _BaseColor is [HDR]: author it above 1. Set unconditionally, because defaults is false once
             // artVersion reaches 2 and anything inside that guard is silently skipped on a rebuilt project.
-            body.SetColor("_BaseColor",new Color(tint.r*3.2f,tint.g*3.2f,tint.b*3.2f,1));
+            body.SetColor("_BaseColor",new Color(tint.r*2.2f,tint.g*2.2f,tint.b*2.2f,1));
             var edge=Material("CrystalEdge"+tier,"LightingBlocks/Spectral Lit",Color.white,defaults);if(defaults){edge.SetColor("_EmissionColor",(tier==0?new Color(.25f,.75f,1):tier==1?new Color(.8f,.3f,1):new Color(1,.65f,.22f))*2);edge.SetFloat("_Cull",0);}
             var art=root.GetComponent<BlockArt>()??root.AddComponent<BlockArt>();var bodies=new List<Renderer>();
             for(int state=0;state<2;state++){bool placed=state==1;var visual=new GameObject(placed?"Placed crystal":"Loose crystal");visual.transform.SetParent(root.transform,false);float width=placed?1.96f:1.4f,height=placed?.36f:.7f;

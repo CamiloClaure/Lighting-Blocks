@@ -25,10 +25,12 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _StarBrightness: 4
-    - _StarCells: 220
-    - _StarDensity: 0.6
+    - _StarBrightness: 9
+    - _StarCells: 140
+    - _StarDensity: 0.5
+    - _StarSize: 6
     m_Colors:
+    - _Nebula: {r: 0.41568628, g: 0.3529412, b: 0.65882355, a: 1}
     - _SkyBottom: {r: 0.02745098, g: 0.03137255, b: 0.101960786, a: 1}
     - _SkyHorizon: {r: 0.101960786, g: 0.105882354, b: 0.23921569, a: 1}
     - _SkyTop: {r: 0.043137256, g: 0.050980393, b: 0.14117648, a: 1}
