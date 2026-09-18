@@ -45,8 +45,26 @@ namespace LightingBlocks
                 for(int i=0;i<terrace.area.Length;i++)terrace.area[i]=Shift(terrace.area[i],terrace.island,scale);
                 Terraces[t].from=Shift(terrace.from,terrace.island,scale);Terraces[t].to=Shift(terrace.to,terrace.island,scale);
             }
+            Bound();
         }
         static Vector2 Shift(Vector2 p,int island,float scale)=>island==1?new Vector2(p.x*scale,p.y):new Vector2(p.x,p.y+Expansion);
+        // Height sits in the wildlife pathfinder's inner loop, which samples every .3 m for ~48
+        // animals, so it gets a bounding box per terrace plus one over all of them. Cheap insurance
+        // rather than a measured win: the frame cost that prompted it turned out to be the editor
+        // hogging the machine, not this. Keep it anyway, the polygon tests are not free.
+        static Vector2[] low,high;static Vector2 extentLow,extentHigh;
+        static void Bound()
+        {
+            low=new Vector2[Terraces.Length];high=new Vector2[Terraces.Length];
+            for(int t=0;t<Terraces.Length;t++)
+            {
+                Vector2 lo=Terraces[t].area[0],hi=lo;
+                foreach(var v in Terraces[t].area){lo=Vector2.Min(lo,v);hi=Vector2.Max(hi,v);}
+                low[t]=lo;high[t]=hi;
+            }
+            extentLow=low[0];extentHigh=high[0];
+            for(int t=1;t<Terraces.Length;t++){extentLow=Vector2.Min(extentLow,low[t]);extentHigh=Vector2.Max(extentHigh,high[t]);}
+        }
         public static Vector3 UpgradePosition(Vector3 p){if(p.z>=34)p.z+=Expansion;return p;}
         public static bool Inside(Vector2 point, Vector2[] polygon)
         {
@@ -63,15 +81,18 @@ namespace LightingBlocks
         // landings and all the rim dressing are pinned to that plane.
         public static float Height(float x,float z)
         {
-            var p=new Vector2(x,z);
-            for(int i=0;i<Shores.Length;i++)
+            // Off every terrace is the overwhelmingly common answer, so the box test settles it in two
+            // compares. No shore test is needed: terraces are authored at least 5 m inside their own
+            // shore and the suite asserts it, so being inside one means being on that island.
+            if(x<extentLow.x||x>extentHigh.x||z<extentLow.y||z>extentHigh.y)return 0;
+            var p=new Vector2(x,z);float best=0;
+            for(int t=0;t<Terraces.Length;t++)
             {
-                if(!Inside(p,Shores[i]))continue;
-                float best=0;
-                foreach(var t in Terraces){if(t.island!=i||!Inside(p,t.area))continue;float h=Level(t,p);if(h>best)best=h;}
-                return best;
+                if(x<low[t].x||x>high[t].x||z<low[t].y||z>high[t].y)continue;
+                if(!Inside(p,Terraces[t].area))continue;
+                float h=Level(Terraces[t],p);if(h>best)best=h;
             }
-            return 0;
+            return best;
         }
         public static float Height(Vector3 p)=>Height(p.x,p.z);
         // One terrace's own surface, with no containment test. The mesh evaluates its corner and

@@ -41,11 +41,17 @@ Shader "LightingBlocks/Spectral Lit"
  half4 Frag(V i):SV_Target{
  UNITY_SETUP_INSTANCE_ID(i);half3 n=normalize(i.normalWS);
  // World-planar ground, but pick the plane from the normal or a terrace wall streaks: xz is constant
- // up a vertical face. A no-op on flat ground, where |n.y| is 1 on every triangle.
+ // up a vertical face. A no-op on flat ground, where |n.y| is 1 on every triangle. Its cost has not
+ // been isolated - move it to the vertex shader if a clean profile ever blames it.
  float2 uv=_Terrain>.5?(abs(n.y)>.5?i.positionWS.xz:abs(n.x)>abs(n.z)?i.positionWS.zy:i.positionWS.xy)/3:i.uv;
  half4 color=SAMPLE_TEXTURE2D(_BaseMap,sampler_BaseMap,uv),mask=SAMPLE_TEXTURE2D(_MaskMap,sampler_MaskMap,uv);
  half3 normal=UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap,sampler_NormalMap,uv),_NormalStrength);
  if(_Terrain>.5){float4 weights=SAMPLE_TEXTURE2D(_HabitatMap,sampler_HabitatMap,(i.positionWS.xz+float2(64,64))/float2(128,256));
+ // A terrace wall is ground the habitat map has no opinion about: it is sampled by world xz, so a
+ // vertical face inherits whatever grows on the plateau above it and reads as grass hanging off a
+ // cliff. Steep faces take the soil map instead, which is the rock the keels already use. Zero on
+ // flat ground, where n.y is 1, so nothing that existed before this changes.
+ weights=lerp(weights,float4(0,0,1,0),smoothstep(.35,.75,1-abs(n.y)));
  half4 soil=SAMPLE_TEXTURE2D(_SoilMap,sampler_SoilMap,uv),moss=SAMPLE_TEXTURE2D(_MossMap,sampler_MossMap,uv*.8),grass=SAMPLE_TEXTURE2D(_GrassMap,sampler_GrassMap,uv);
  color=color*weights.a+soil*weights.b+moss*weights.r+grass*weights.g;
  mask=mask*weights.a+SAMPLE_TEXTURE2D(_SoilMask,sampler_SoilMask,uv)*weights.b+half4(1,.85,0,.18)*(weights.r+weights.g);normal=normalize(normal*weights.a+UnpackNormalScale(SAMPLE_TEXTURE2D(_SoilNormal,sampler_SoilNormal,uv),_NormalStrength)*weights.b+UnpackNormalScale(SAMPLE_TEXTURE2D(_MossNormal,sampler_MossNormal,uv),_NormalStrength)*(weights.r+weights.g));}
