@@ -109,13 +109,13 @@ namespace LightingBlocks
                 }
             }
             var random=new System.Random(ForestLayoutGenerator.Hash(State.seed,"valley"));int count=0;
-            var bg=new GameObject("Forest Valley").transform;bg.SetParent(visualRoot,false);
-            for(int a=0;a<4000&&count<150;a++)
+            var bg=new GameObject("Background Forest").transform;bg.SetParent(visualRoot,false);
+            for(int a=0;a<4000&&count<120;a++)
             {
-                float angle=(float)random.NextDouble()*Mathf.PI*2,radius=30+(float)random.NextDouble()*178;
-                float x=Mathf.Cos(angle)*radius,z=25+Mathf.Sin(angle)*radius;
-                if(WorldDressing.ShoreDistance(x,z)<12||Mathf.Abs(x)<WorldDressing.RiftHalfWidth&&(z>1&&z<27||z>28+Landscape.Expansion&&z<54+Landscape.Expansion))continue;
-                var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,WorldDressing.Height(x,z),z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
+                float angle=(float)random.NextDouble()*Mathf.PI*2,radius=40+(float)random.NextDouble()*135;
+                float x=Mathf.Cos(angle)*radius,z=51+Mathf.Sin(angle)*radius;
+                if(WorldDressing.ShoreDistance(x,z)<12||!WorldDressing.BackgroundHeight(x,z,out float y))continue;
+                var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,y,z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
             }
             var ambience=visualRoot.gameObject.AddComponent<ForestAmbience>();ambience.Initialize(configuration,this,game);
             if(game.GetComponent<ForestSoundscape>()==null)game.gameObject.AddComponent<ForestSoundscape>();

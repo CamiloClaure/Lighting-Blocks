@@ -78,7 +78,7 @@ namespace LightingBlocks
                 foreach (var renderer in visual.GetComponentsInChildren<Renderer>(true))
                 {
                     renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-                    renderer.GetPropertyBlock(previewProperties); previewProperties.SetFloat("_Highlight", 1); renderer.SetPropertyBlock(previewProperties);
+                    renderer.GetPropertyBlock(previewProperties); previewProperties.SetFloat("_Highlight", 1); previewProperties.SetFloat("_Opacity", .25f); renderer.SetPropertyBlock(previewProperties);
                 }
                 visual.SetActive(tier == 0);
             }

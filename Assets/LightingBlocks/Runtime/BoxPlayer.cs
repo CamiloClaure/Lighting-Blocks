@@ -72,7 +72,7 @@ namespace LightingBlocks
             float best = grabReach;
             Vector3 origin = transform.position + Vector3.up * .7f;
             PullableBox pointed = null;
-            if (viewCamera != null && Mouse.current != null && Physics.Raycast(viewCamera.ScreenPointToRay(Mouse.current.position.ReadValue()), out var cursorHit, 150f))
+            if (viewCamera != null && Mouse.current != null && Physics.Raycast(viewCamera.ScreenPointToRay(Mouse.current.position.ReadValue()), out var cursorHit, 260f))
                 pointed = cursorHit.collider.GetComponentInParent<PullableBox>();
             foreach (var hit in Physics.OverlapSphere(origin, grabReach, ~0, QueryTriggerInteraction.Ignore))
             {

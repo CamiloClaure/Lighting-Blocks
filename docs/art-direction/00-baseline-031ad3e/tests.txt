@@ -1,0 +1,194 @@
+PASS: Tests isolate the actual player save
+PASS: New game has no free scattered starter blocks
+PASS: Exactly one Wisdom Tree per island
+PASS: Eighteen reactive spectral animals instantiated
+PASS: Ruined architecture removed
+PASS: Bridge gap has no hidden floor
+PASS: Post-processing enabled on gameplay camera
+PASS: Deterministic layout for island-1
+PASS: Every particle is reachable on island-1
+PASS: Connected hauling paths and interior trees on island-1
+COUNT: island-1 trees=80 animals=16 particles=24
+PASS: Deterministic layout for island-2
+PASS: Every particle is reachable on island-2
+PASS: Connected hauling paths and interior trees on island-2
+COUNT: island-2 trees=81 animals=16 particles=24
+PASS: Deterministic layout for island-3
+PASS: Every particle is reachable on island-3
+PASS: Connected hauling paths and interior trees on island-3
+COUNT: island-3 trees=76 animals=16 particles=24
+PASS: Five-island configuration supports index 0
+PASS: Five-island configuration supports index 1
+PASS: Five-island configuration supports index 2
+PASS: Five-island configuration supports index 3
+PASS: Five-island configuration supports index 4
+PASS: Collect three distinct particles on island-1
+PASS: Collected particle cannot be counted twice
+PASS: Island energy cannot charge another island
+PASS: Particle inventories and cooldowns survive reload
+PASS: Invalid forest data rejected before any state mutation
+PASS: Duplicate particle IDs rejected
+PASS: Charging begins
+PASS: Saving mid-charge restores pre-charge state
+PASS: Blocked output consumes no particles
+PASS: Pause freezes particle cooldowns
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Tree output preserves existing block art and tier
+PASS: Retired paid supply cannot create blocks or spend Souls
+PASS: Existing bridge placement works: 0:0
+PASS: First bridge reward and Soul production unchanged
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:1
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:2
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:3
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:4
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:5
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 0:6
+PASS: First bridge completes entirely from collected particles
+PASS: Soul Well still uses Souls and adds income
+PASS: Existing Strength upgrade still costs Souls
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:0
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:1
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:2
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:3
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:4
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:5
+PASS: Collect three distinct particles on island-2
+PASS: Wisdom Tree accepts charge on island-2
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Existing bridge placement works: 1:6
+PASS: Second bridge completes with existing Grave blocks
+PASS: Exit beacon completes the current chapter
+PASS: Collect three distinct particles on island-1
+PASS: Wisdom Tree accepts charge on island-1
+PASS: Repeated E cannot queue a second charge
+PASS: One block costs exactly three particles
+PASS: Wisdom Trees still charge after chapter completion
+PASS: Version 3 restores bridges, skills and forest state
+PASS: Version 1 migration preserves economy and blocks
+PASS: Version 3 save writes atomically
+PASS: Recovery backup retained
+PASS: Corrupt primary recovers from backup
+PASS: Restore clean scene for visual captures
+PASS: Full inventory leaves pickup available
+PASS: Pickup becomes collectable after inventory has space
+PASS: Particle renewal uses simulation time
+PASS: Visual rebuild preserves state without duplicate live systems
+PASS: Future save versions rejected
+PASS: Unknown island save IDs rejected
+PASS: Negative cooldown rejected
+PASS: Version 1 loose-block regression fixture imports without relocation
+PASS: Strength requirement remains enforced
+PASS: Strength I unlocks Grave hauling
+PASS: Speed upgrade improves hauling
+PASS: Radiance upgrade expands illumination
+PASS: Ordinary block can be hauled
+PASS: Soul Links upgrade preserves capacity
+PASS: Soul Links gathers two nearby blocks into orbit
+PASS: Orbit follows player movement
+PASS: Pause safely releases orbiting blocks
+PASS: Skill tree preserves powers and removes paid block supply
+PASS: Loose-block cap fixture loads
+PASS: 35 loose blocks prevent charging without spending particles
+PASS: Regression fixtures removed before visual review
+PASS: Wildlife reacts safely: Fox(Clone) at (27.12, 0.00, -5.48) (Flee)
+PASS: Wildlife reacts safely: Wolf(Clone) at (-6.85, 0.00, 144.45) (Flee)
+PASS: Wildlife reacts safely: Wolf(Clone) at (38.47, 0.00, 126.69) (Flee)
+PASS: Wildlife reacts safely: Deer(Clone) at (-36.97, 0.00, 64.31) (Recover)
+PASS: Wildlife reacts safely: Stag(Clone) at (-25.72, 0.00, -12.19) (Flee)
+PASS: Wildlife reacts safely: Wolf(Clone) at (-24.16, 0.00, 63.01) (Flee)
+PASS: Wildlife reacts safely: Wolf(Clone) at (-21.13, 0.00, 77.07) (Flee)
+PASS: Wildlife reacts safely: Fox(Clone) at (29.72, 0.00, 105.03) (Flee)
+PASS: Wildlife reacts safely: Deer(Clone) at (20.99, 0.00, 123.22) (Flee)
+PASS: Wildlife reacts safely: Fox(Clone) at (-7.87, 0.00, 40.91) (Flee)
+PASS: Wildlife reacts safely: Stag(Clone) at (41.53, 0.00, 133.49) (Flee)
+PASS: Wildlife reacts safely: Stag(Clone) at (4.89, 0.00, 52.64) (Flee)
+PASS: Wildlife reacts safely: Fox(Clone) at (32.19, 0.00, -12.42) (Flee)
+PASS: Wildlife reacts safely: Deer(Clone) at (3.62, 0.00, -31.02) (Flee)
+PASS: Wildlife reacts safely: Deer(Clone) at (-33.44, 0.00, 53.98) (Flee)
+PASS: Wildlife reacts safely: Wolf(Clone) at (-17.72, 0.00, -14.76) (Flee)
+PASS: Wildlife reacts safely: Stag(Clone) at (-17.34, 0.00, -44.44) (Flee)
+PASS: Wildlife reacts safely: Deer(Clone) at (13.38, 0.00, 148.75) (Flee)
+PASS: Twelve spectral rabbits and eighteen ground birds augment existing wildlife
+PASS: Instanced ground cover spans the islands
+PASS: Renewed collectible moves to a safe new position
+PASS: Randomized position and generation persist on reload
+PASS: V2 migration preserves inventory and cooldowns
+PASS: Two collectibles renewing in one tick both relocate and stay apart
+PASS: Reset for wildlife movement checks
+PASS: Ground bird takes off and returns to a safe landing (Bird(Clone) at (14.16, 0.00, -33.52) tookOff=True landed=True playerIsland=island-1)
+PASS: Rabbit flees an approaching player (Rabbit(Clone) at (-38.58, 0.00, 125.79), state Flee)
+PASS: Rabbit simulation respects pause
+PASS: Forest audio mixer groups imported
+PASS: Six variations exist for all footstep surfaces
+PASS: Spawn a loose crystal for the input checks
+PASS: HUD click does not grab a world block
+PASS: Actual left mouse input grabs a nearby crystal (nearby=Bridge Stone 0(Clone), menu=Playing)
+PASS: Actual left mouse release ends hauling
+PASS: Pause exposes persistent Master/Music/Ambience/Effects volumes (sliders=4)
+PASS: Reset before expanded world checks
+PASS: Second island has the first island's exact surface area
+PASS: Expanded middle island retains a real second bridge gap
+PASS: Swift Stride speeds up both unladen movement and hauling
+PASS: V3 expansion migration preserves player location, island inventory and cooldown
+PASS: Migrated collectible location stays stable through V4 reload
+PASS: Distinct habitat landmarks populate island-1
+PASS: Distinct habitat landmarks populate island-2
+PASS: Distinct habitat landmarks populate island-3
+PASS: Reset after twilight tests
+SUCCESS: spectral forest gameplay and persistence checks passed.
+PASS: Playing UI fits the rendered screen
+PASS: Skills UI fits the rendered screen
+PASS: Title UI fits the rendered screen
+PASS: Controls UI fits the rendered screen
+CAPTURES: D:\Games\Lighting Blocks\Library\SpectralForestCaptures

@@ -1,5 +1,7 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
+using UnityEngine.Rendering;
+using UnityEngine.Rendering.Universal;
 
 namespace LightingBlocks
 {
@@ -12,10 +14,17 @@ namespace LightingBlocks
         public float panSpeed = 12f;
         public float edgePixels = 12f;
         public float distance = 18f;
+        public float pitch = 42f;
+        public float yaw = 45f;
+        // the camera FOV drops from 60 to 26 degrees, and tan(30)/tan(13) is 2.5, so every existing distance keeps its framing
+        public float lensScale = 2.5f;
+        public float smoothing = 4f;
         public bool edgePan = true;
         public bool readInput = true;
         public Vector3 Focus { get; private set; }
         Vector3 smoothedFocus;
+        DepthOfField dof;
+        bool dofResolved;
         public void CenterOnPlayer()
         {
             if (player == null) return;
@@ -47,12 +56,12 @@ namespace LightingBlocks
                         if (position.y < edgePixels) pan.y -= 1;
                         if (position.y > Screen.height - edgePixels) pan.y += 1;
                     }
-                    if (inside && mouse.middleButton.isPressed) Pan(-mouse.delta.ReadValue() * (distance / Screen.height));
+                    if (inside && mouse.middleButton.isPressed) Pan(-mouse.delta.ReadValue() * (distance * lensScale / Screen.height));
                     if (inside) distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * .012f, 14f, 42f);
                 }
                 Pan(Vector2.ClampMagnitude(pan, 1) * panSpeed * Time.unscaledDeltaTime);
             }
-            Apply(1f - Mathf.Exp(-12f * Time.unscaledDeltaTime));
+            Apply(1f - Mathf.Exp(-smoothing * Time.unscaledDeltaTime));
         }
         public void Pan(Vector2 amount)
         {
@@ -63,9 +72,24 @@ namespace LightingBlocks
         }
         void Apply(float blend)
         {
-            transform.rotation = Quaternion.Euler(55, 0, 0);
+            transform.rotation = Quaternion.Euler(pitch, yaw, 0);
             smoothedFocus = Vector3.Lerp(smoothedFocus, Focus, blend);
-            transform.position = smoothedFocus - transform.forward * distance;
+            transform.position = smoothedFocus - transform.forward * distance * lensScale;
+            // Gaussian depth of field is far-only and metre based: keep the focus plane on the smoothed
+            // focus point and let everything more than ~8 m behind it soften toward the void.
+            if (!dofResolved && Application.isPlaying)
+            {
+                dofResolved = true;
+                var volume = FindAnyObjectByType<Volume>();
+                // volume.profile is the runtime instance, so this never dirties the shared asset.
+                if (volume != null && volume.profile != null) volume.profile.TryGet(out dof);
+            }
+            if (dof != null)
+            {
+                float span = distance * lensScale;
+                dof.gaussianStart.value = span + 8f;
+                dof.gaussianEnd.value = span + 45f;
+            }
         }
     }
 }

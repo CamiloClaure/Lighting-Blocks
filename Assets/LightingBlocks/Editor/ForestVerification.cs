@@ -64,6 +64,15 @@ namespace LightingBlocks.Editor
             Check(!UnityEngine.Object.FindObjectsByType<Transform>().Any(t=>t.name.StartsWith("ENV_BrokenColumn")||t.name.StartsWith("ENV_PartialArch")||t.name.StartsWith("Court ruin")||t.name.StartsWith("Deep ruin")),"Ruined architecture removed");
             Check(!G.CanStand(new Vector3(0,0,14))&&!Physics.Raycast(new Vector3(0,2,14),Vector3.down,4),"Bridge gap has no hidden floor");
             Check(G.cameraRig.GetComponent<Camera>().GetUniversalAdditionalCameraData().renderPostProcessing,"Post-processing enabled on gameplay camera");
+            Check(UnityEngine.Object.FindAnyObjectByType<Volume>() is Volume look&&look.sharedProfile!=null&&look.sharedProfile.TryGet<Tonemapping>(out var tone)&&tone.mode.value==TonemappingMode.ACES,"Spirit Path grading applied (ACES)");
+            Check(!UnityEngine.Object.FindObjectsByType<Transform>().Any(t=>t.name=="Deep Valley")&&UnityEngine.Object.FindObjectsByType<Transform>().FirstOrDefault(t=>t.name=="Immersive Deeps") is Transform deeps&&deeps.Cast<Transform>().Count(c=>c.name.StartsWith("Islet "))==6,"Valley retired, six background islets built");
+            Check(UnityEngine.Object.FindObjectsByType<Transform>().FirstOrDefault(t=>t.name=="ShoreCliff0") is Transform cliff&&cliff.GetComponent<MeshFilter>() is MeshFilter mf&&mf.sharedMesh.vertexCount==Landscape.Shores[0].Length*4*5+Landscape.Shores[0].Length+1,"Court keels replace the cliff skirts");
+            Check(UnityEngine.Object.FindObjectsByType<Transform>().FirstOrDefault(t=>t.name=="Background Forest") is Transform bg&&bg.childCount>0&&bg.Cast<Transform>().All(c=>c.position.y<-7f),"Background trees stand on islets");
+            Check(UnityEngine.Object.FindObjectsByType<WisdomTree>().All(w=>w.transform.Find("Rune circle")!=null&&w.transform.Cast<Transform>().Count(c=>c.name=="Lantern string")>=4),"Wisdom Trees carry rune circles and lantern strings");
+            Check(UnityEngine.Object.FindObjectsByType<Transform>().FirstOrDefault(t=>t.name=="Immersive Deeps") is Transform courts&&courts.Cast<Transform>().Count(c=>c.name=="Rim rock")>=60&&courts.Cast<Transform>().Count(c=>c.name=="Rim lantern")>=9,"Rim rocks and lanterns dress the courts");
+            var lanterns=UnityEngine.Object.FindObjectsByType<Light>().Where(l=>l.name=="Courtyard lantern glow").ToArray();Check(lanterns.Length>=15&&lanterns.All(l=>Mathf.Approximately(l.intensity,4f)&&Mathf.Approximately(l.range,6f)),"Courtyard lanterns follow the Spirit Path spec ("+lanterns.Length+" lights, intensity "+(lanterns.Length>0?lanterns.Min(l=>l.intensity)+".."+lanterns.Max(l=>l.intensity):"none")+", range "+(lanterns.Length>0?lanterns.Min(l=>l.range)+".."+lanterns.Max(l=>l.range):"none")+", off-spec: "+string.Join("|",lanterns.Where(l=>!Mathf.Approximately(l.intensity,4f)||!Mathf.Approximately(l.range,6f)).Take(3).Select(l=>l.transform.parent?.name+"@"+l.transform.position+"="+l.intensity+"/"+l.range))+")");
+            Check(Enumerable.Range(0,F.Layouts.Count).All(i=>F.Layouts[i].cover.Count(c=>Vector3.Distance(c.position,F.configuration.islands[i].wisdomPosition)<=10f)>=300),"Hero cover density around every Wisdom Tree");
+            Check(GameHUD.Current!=null&&GameHUD.Current.GetComponentsInChildren<Transform>(true) is Transform[] hud&&hud.Any(t=>t.name=="Location Title")&&hud.Any(t=>t.name=="Key Hints")&&hud.Any(t=>t.name=="Place Prompt"),"Spirit Path HUD elements exist");
             string pristine=G.ExportSave();
             foreach(var layout in F.Layouts)
             {
@@ -156,7 +165,7 @@ namespace LightingBlocks.Editor
             var bird=Interior("Bird");var start=bird.transform.position;Teleport(start+Vector3.back*2);
             bool tookOff=false,landed=false;for(int i=0;i<1000;i++){bird.Simulate(.05f);if(bird.Airborne)tookOff=true;if(tookOff){Teleport(start+Vector3.back*10);if(!bird.Airborne){landed=true;break;}}}
             Check(tookOff&&landed,"Ground bird takes off and returns to a safe landing ("+bird.name+" at "+start+" tookOff="+tookOff+" landed="+landed+" playerIsland="+(F.IslandAt(G.player.transform.position)?.id??"off-island")+")");
-            var rabbit=animals.First(a=>a.name.Contains("Rabbit"));start=rabbit.transform.position;Teleport(start+Approach(rabbit)*2);for(int i=0;i<30;i++)rabbit.Simulate(.05f);
+            var rabbit=Interior("Rabbit");start=rabbit.transform.position;Teleport(start+Approach(rabbit)*2);for(int i=0;i<30;i++)rabbit.Simulate(.05f);
             Check((rabbit.transform.position-start).sqrMagnitude>.1f,"Rabbit flees an approaching player ("+rabbit.name+" at "+start+", state "+rabbit.State+")");
             GameHUD.Current.ShowPause();var frozen=rabbit.transform.position;for(int i=0;i<20;i++)rabbit.Simulate(.1f);Check(rabbit.transform.position==frozen,"Rabbit simulation respects pause");GameHUD.Current.HandleEscape();
             var mixer=Resources.Load<UnityEngine.Audio.AudioMixer>("Forest/ForestMix");Check(mixer!=null&&mixer.FindMatchingGroups("Footsteps").Length==1&&mixer.FindMatchingGroups("Ambience").Length==1,"Forest audio mixer groups imported");
@@ -237,6 +246,11 @@ namespace LightingBlocks.Editor
             // ScreenCapture.CaptureScreenshot writes nothing in batch mode, which left a stale gameplay.png as evidence.
             // Render through the camera like the island shots do.
             CaptureCamera(G.cameraRig.GetComponent<Camera>(),folder+"/gameplay.png");yield return null;
+            // Two low, wide vistas so the keels under the islands and the background islets show up in the archive.
+            var rig=G.cameraRig;float pitch0=rig.pitch,yaw0=rig.yaw;Teleport(F.configuration.islands[1].wisdomPosition+new Vector3(3,0,-2));rig.CenterOnPlayer();rig.distance=42;
+            foreach(var (name,yaw) in new[]{("vista-ne",45f),("vista-sw",225f)}){rig.pitch=24;rig.yaw=yaw;for(int i=0;i<25;i++){rig.SendMessage("LateUpdate");yield return null;}CaptureCamera(rig.GetComponent<Camera>(),folder+"/"+name+".png");}
+            rig.pitch=pitch0;rig.yaw=yaw0;rig.distance=14;rig.CenterOnPlayer();for(int i=0;i<15;i++){rig.SendMessage("LateUpdate");yield return null;}
+            if(!Application.isBatchMode){ScreenCapture.CaptureScreenshot(folder+"/hud.png");yield return null;yield return null;}
             // Ported from the retired GameVerification suite: every HUD view must fit the rendered screen.
             // Reported rather than Check()ed: a throw inside this coroutine would skip Finish and hang the batch run.
             if(Screen.width>200&&Screen.height>200)

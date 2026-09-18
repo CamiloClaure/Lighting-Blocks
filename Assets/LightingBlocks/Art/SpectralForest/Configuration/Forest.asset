@@ -150,11 +150,11 @@ MonoBehaviour:
   particleMesh: {fileID: 4300000, guid: d2a72ff54248cb148a19416b008799af, type: 2}
   ambientBudget: 600
   wind: {x: 0.16, y: 0, z: 0.09}
-  moonIntensity: 0.42
-  moonColor: {r: 0.62, g: 0.74, b: 0.92, a: 1}
-  ambientSky: {r: 0.22, g: 0.27, b: 0.35, a: 1}
-  ambientEquator: {r: 0.12, g: 0.19, b: 0.2, a: 1}
-  ambientGround: {r: 0.075, g: 0.105, b: 0.125, a: 1}
+  moonIntensity: 0.6
+  moonColor: {r: 0.56078434, g: 0.7058824, b: 1, a: 1}
+  ambientSky: {r: 0.16470589, g: 0.18039216, b: 0.36862746, a: 1}
+  ambientEquator: {r: 0.2, g: 0.17254902, b: 0.34509805, a: 1}
+  ambientGround: {r: 0.07058824, g: 0.07058824, b: 0.14901961, a: 1}
   haze: {r: 0.08235294, g: 0.11764706, b: 0.21568628, a: 1}
-  fogStart: 48
-  fogEnd: 150
+  fogStart: 90
+  fogEnd: 260

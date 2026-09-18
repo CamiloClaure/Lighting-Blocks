@@ -165,7 +165,7 @@ namespace LightingBlocks.Editor
             {if(t==null)continue;if(new[]{"ENV_BrokenColumn","ENV_PartialArch","ENV_LowWall","ENV_RubbleCluster","ENV_CliffChunk"}.Any(n=>t.name.StartsWith(n)))UnityEngine.Object.DestroyImmediate(t.gameObject);}
             foreach(var block in game.blocksRoot.GetComponentsInChildren<BridgeBlock>(true))UnityEngine.Object.DestroyImmediate(block.gameObject);
             foreach(var renderer in world.GetComponentsInChildren<Renderer>())
-            {if(renderer.name.StartsWith("ShoreFloor"))renderer.sharedMaterial=config.ground;if(renderer.name.StartsWith("ShoreCliff")||renderer.name=="Deep Valley")renderer.sharedMaterial=config.cliff;}
+            {if(renderer.name.StartsWith("ShoreFloor"))renderer.sharedMaterial=config.ground;if(renderer.name.StartsWith("ShoreCliff"))renderer.sharedMaterial=config.cliff;}
             foreach(var text in world.GetComponentsInChildren<TextMesh>(true)){text.text=text.text.Replace("THE WANDERING COURT","THE WANDERING GROVE").Replace("THE SILENT REACH","THE SILENT WOOD");}
             var camera=game.cameraRig.GetComponent<Camera>();camera.GetUniversalAdditionalCameraData().renderPostProcessing=true;
             var profile=AssetDatabase.LoadAssetAtPath<VolumeProfile>("Assets/Settings/SampleSceneProfile.asset");

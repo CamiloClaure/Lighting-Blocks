@@ -11,7 +11,9 @@ namespace LightingBlocks.Editor
 {
     [InitializeOnLoad] public static class ForestDelivery
     {
-        static ForestDelivery(){EditorApplication.update+=Poll;}
+        const string BuildReq="Library/LightingBlocks.build-request",BuildRes="Library/LightingBlocks.build-result.txt";
+        const string BuildDir="Builds/SpectralForestPerformance",ExeName="LightingBlocks.exe";
+        static ForestDelivery(){EditorApplication.update+=Poll;EditorApplication.update+=PollBuild;}
         static void Poll()
         {
             if(EditorApplication.isPlayingOrWillChangePlaymode||EditorApplication.isCompiling)return;
@@ -20,6 +22,13 @@ namespace LightingBlocks.Editor
                 File.Delete("Library/SpectralForest.delivery-request");
                 try{Inspection();Build();}catch(Exception e){File.WriteAllText("Library/SpectralForest.delivery-result.txt",e.ToString());Debug.LogException(e);}
             }
+        }
+        static void PollBuild()
+        {
+            if(EditorApplication.isPlayingOrWillChangePlaymode||EditorApplication.isCompiling||!File.Exists(BuildReq))return;
+            File.Delete(BuildReq);
+            try{Build();File.WriteAllText(BuildRes,"SUCCESS: "+Path.GetFullPath(BuildDir)+"/"+ExeName);}
+            catch(Exception e){File.WriteAllText(BuildRes,e.ToString());Debug.LogException(e);}
         }
         [MenuItem("Tools/Lighting Blocks/Build Forest Verification Player")]
         public static void Request(){File.WriteAllText("Library/SpectralForest.delivery-request","build");}
@@ -45,12 +54,12 @@ namespace LightingBlocks.Editor
         }
         static void Build()
         {
-            string directory=Path.GetFullPath("Builds/SpectralForestPerformance");Directory.CreateDirectory(directory);
+            string directory=Path.GetFullPath(BuildDir);Directory.CreateDirectory(directory);
             bool prior=PlayerSettings.enableFrameTimingStats;PlayerSettings.enableFrameTimingStats=true;
             try
             {
                 File.WriteAllText("Library/SpectralForest.delivery-result.txt","BUILDING Windows development player");
-                var result=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/Scenes/SampleScene.unity"},locationPathName=directory+"/LightingBlocks.exe",target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development});
+                var result=BuildPipeline.BuildPlayer(new BuildPlayerOptions{scenes=new[]{"Assets/Scenes/SampleScene.unity"},locationPathName=directory+"/"+ExeName,target=BuildTarget.StandaloneWindows64,options=BuildOptions.Development});
                 if(result==null)throw new Exception("Unity returned no build report. Inspect the preceding build error in the Console.");
                 File.WriteAllText("Library/SpectralForest.delivery-result.txt",result.summary.result+"; errors="+result.summary.totalErrors+"; warnings="+result.summary.totalWarnings+"; size="+result.summary.totalSize+"; duration="+result.summary.totalTime+"; path="+directory);
                 if(result.summary.result!=BuildResult.Succeeded)throw new Exception("Windows development build failed: "+result.summary.result);

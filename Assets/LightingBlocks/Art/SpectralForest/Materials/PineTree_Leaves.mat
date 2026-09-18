@@ -11,9 +11,9 @@ Material:
   m_Shader: {fileID: 4800000, guid: 2879fc508d048914bb0e6ba5373b68b1, type: 3}
   m_Parent: {fileID: 0}
   m_ModifiedSerializedProperties: 0
-  m_ValidKeywords:
+  m_ValidKeywords: []
+  m_InvalidKeywords:
   - _ALPHATEST_ON
-  m_InvalidKeywords: []
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 1
   m_DoubleSidedGI: 0
@@ -28,7 +28,23 @@ Material:
         m_Texture: {fileID: 2800000, guid: f63979cbd8c5bd540b48ccd0f602af58, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _GrassMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _HabitatMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _MaskMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MossNormal:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -58,12 +74,14 @@ Material:
     - _NormalStrength: 0.25
     - _RimPower: 3
     - _Smoothness: 0.3
+    - _SoftFill: 0.05
     - _Terrain: 0
     - _Triplanar: 0
+    - _VertexTint: 0
     - _Wind: 0.08
     m_Colors:
     - _BaseColor: {r: 0.4392157, g: 0.5568628, b: 0.6745098, a: 1}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
-    - _RimColor: {r: 0, g: 0, b: 0, a: 1}
+    - _RimColor: {r: 0.16, g: 0.14, b: 0.32, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

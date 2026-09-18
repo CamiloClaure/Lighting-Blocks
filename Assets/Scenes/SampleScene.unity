@@ -18,15 +18,15 @@ RenderSettings:
   m_FogColor: {r: 0.08235294, g: 0.11764706, b: 0.21568628, a: 1}
   m_FogMode: 1
   m_FogDensity: 0.01
-  m_LinearFogStart: 48
-  m_LinearFogEnd: 150
-  m_AmbientSkyColor: {r: 0.22156863, g: 0.26666668, b: 0.3529412, a: 0.5}
-  m_AmbientEquatorColor: {r: 0.12176471, g: 0.18882352, b: 0.19941176, a: 0.45}
-  m_AmbientGroundColor: {r: 0.07529412, g: 0.10666668, b: 0.12392157, a: 0.4}
+  m_LinearFogStart: 90
+  m_LinearFogEnd: 260
+  m_AmbientSkyColor: {r: 0.16470589, g: 0.18039216, b: 0.36862746, a: 1}
+  m_AmbientEquatorColor: {r: 0.2, g: 0.17254902, b: 0.34509805, a: 1}
+  m_AmbientGroundColor: {r: 0.07058824, g: 0.07058824, b: 0.14901961, a: 1}
   m_AmbientIntensity: 1
   m_AmbientMode: 1
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
-  m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
+  m_SkyboxMaterial: {fileID: 2100000, guid: f6f1ffb9074546443ac47ab36f634321, type: 2}
   m_HaloStrength: 0.5
   m_FlareStrength: 1
   m_FlareFadeSpeed: 3
@@ -1627,7 +1627,7 @@ MeshCollider:
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
-  m_Mesh: {fileID: 4300000, guid: 8e2dfc78d04bf1d43836366d68af60ce, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 26a4d8bd557c8d94fb13b6ebf4a8b188, type: 2}
 --- !u!23 &14169422
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -1653,7 +1653,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 8c34d7def4e129744bcf0d49ae1dedb0, type: 2}
+  - {fileID: 2100000, guid: 1ff25b05137c1f74aa3baed7055de21e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -1684,7 +1684,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 14169419}
-  m_Mesh: {fileID: 4300000, guid: 8e2dfc78d04bf1d43836366d68af60ce, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 26a4d8bd557c8d94fb13b6ebf4a8b188, type: 2}
 --- !u!1 &14424776
 GameObject:
   m_ObjectHideFlags: 0
@@ -23159,7 +23159,7 @@ Light:
     m_Type: 2
     m_Resolution: -1
     m_CustomResolution: -1
-    m_Strength: 1
+    m_Strength: 0.7
     m_Bias: 0.05
     m_NormalBias: 0.4
     m_NearPlane: 0.2
@@ -23212,7 +23212,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 191328793}
   serializedVersion: 2
-  m_LocalRotation: {x: 0.38791165, y: -0.27470842, z: 0.12230807, w: 0.8712638}
+  m_LocalRotation: {x: -0.059391182, y: 0.9254166, z: -0.3368241, w: -0.16317594}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -23775,7 +23775,7 @@ Camera:
   m_GameObject: {fileID: 195537663}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 2
+  m_ClearFlags: 1
   m_BackGroundColor: {r: 0.08235294, g: 0.11764706, b: 0.21568628, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
@@ -23799,7 +23799,7 @@ Camera:
     height: 1
   near clip plane: 0.1
   far clip plane: 180
-  field of view: 60
+  field of view: 26
   orthographic: 0
   orthographic size: 5
   m_Depth: 0
@@ -23835,6 +23835,10 @@ MonoBehaviour:
   panSpeed: 12
   edgePixels: 12
   distance: 27
+  pitch: 42
+  yaw: 45
+  lensScale: 2.5
+  smoothing: 4
   edgePan: 1
   readInput: 1
 --- !u!81 &195537666
@@ -23884,7 +23888,7 @@ MonoBehaviour:
   m_VolumeTrigger: {fileID: 0}
   m_VolumeFrameworkUpdateModeOption: 2
   m_RenderPostProcessing: 1
-  m_Antialiasing: 0
+  m_Antialiasing: 2
   m_AntialiasingQuality: 2
   m_StopNaN: 0
   m_Dithering: 0
@@ -36935,7 +36939,7 @@ MeshCollider:
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
-  m_Mesh: {fileID: 4300000, guid: 2aa897b1c7d564344a291537eab2deec, type: 2}
+  m_Mesh: {fileID: 4300000, guid: dcf13733f32c2d24891dd47455ef166e, type: 2}
 --- !u!23 &316527450
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -36961,7 +36965,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 8c34d7def4e129744bcf0d49ae1dedb0, type: 2}
+  - {fileID: 2100000, guid: 1ff25b05137c1f74aa3baed7055de21e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -36992,7 +36996,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 316527447}
-  m_Mesh: {fileID: 4300000, guid: 2aa897b1c7d564344a291537eab2deec, type: 2}
+  m_Mesh: {fileID: 4300000, guid: dcf13733f32c2d24891dd47455ef166e, type: 2}
 --- !u!1 &317210525
 GameObject:
   m_ObjectHideFlags: 0
@@ -126903,7 +126907,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 951286996}
-  m_Mesh: {fileID: 4300000, guid: 4f2a01ffcb82efa419de91984d1ec7f9, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 15851a0b6d8fbe740bb55bab185c071c, type: 2}
 --- !u!1 &951353339
 GameObject:
   m_ObjectHideFlags: 0
@@ -128347,7 +128351,7 @@ MeshCollider:
   serializedVersion: 5
   m_Convex: 0
   m_CookingOptions: 30
-  m_Mesh: {fileID: 4300000, guid: db40f9d8cdd5f0a41b38f0cb8f604928, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 1d5be712b7d272f4bb60ec300076f317, type: 2}
 --- !u!23 &963036611
 MeshRenderer:
   m_ObjectHideFlags: 0
@@ -128373,7 +128377,7 @@ MeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 8c34d7def4e129744bcf0d49ae1dedb0, type: 2}
+  - {fileID: 2100000, guid: 1ff25b05137c1f74aa3baed7055de21e, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -128404,7 +128408,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 963036608}
-  m_Mesh: {fileID: 4300000, guid: db40f9d8cdd5f0a41b38f0cb8f604928, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 1d5be712b7d272f4bb60ec300076f317, type: 2}
 --- !u!1 &963412668
 GameObject:
   m_ObjectHideFlags: 0
@@ -142871,7 +142875,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1101040659}
-  m_Mesh: {fileID: 4300000, guid: 3cd8d384cfe689d419311445109041bc, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 62dfbdfc13a62ce42a5b5c2cb321af43, type: 2}
 --- !u!1 &1101304441
 GameObject:
   m_ObjectHideFlags: 0
@@ -149699,6 +149703,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1164289289}
   - component: {fileID: 1164289290}
+  - component: {fileID: 1164289291}
   m_Layer: 0
   m_Name: Wisdom glow
   m_TagString: Untagged
@@ -149786,6 +149791,35 @@ Light:
   m_LightUnit: 1
   m_LuxAtDistance: 1
   m_EnableSpotReflector: 1
+--- !u!114 &1164289291
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1164289288}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 474bcb49853aa07438625e644c072ee6, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalLightData
+  m_UsePipelineSettings: 1
+  m_AdditionalLightsShadowResolutionTier: 2
+  m_CustomShadowLayers: 0
+  m_LightCookieSize: {x: 1, y: 1}
+  m_LightCookieOffset: {x: 0, y: 0}
+  m_SoftShadowQuality: 0
+  m_RenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_ShadowRenderingLayersMask:
+    serializedVersion: 0
+    m_Bits: 1
+  m_Version: 4
+  m_LightLayerMask: 1
+  m_ShadowLayerMask: 1
+  m_RenderingLayers: 1
+  m_ShadowRenderingLayers: 1
 --- !u!1 &1164713296
 GameObject:
   m_ObjectHideFlags: 0
@@ -282887,7 +282921,7 @@ MeshFilter:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 2095257323}
-  m_Mesh: {fileID: 4300000, guid: b60d9a4a888ab4a4b8dcbc0145b94f4f, type: 2}
+  m_Mesh: {fileID: 4300000, guid: 5a8c09ec3d96094459ac883483c28ba8, type: 2}
 --- !u!1 &2098027111
 GameObject:
   m_ObjectHideFlags: 0

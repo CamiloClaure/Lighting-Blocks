@@ -14,7 +14,7 @@ namespace LightingBlocks
         {
             viewer=player;settings=config;islandId=layout.definition.id;var world=FindAnyObjectByType<ForestWorld>();seed=world!=null&&world.State!=null?world.State.seed:1907;batches.Clear();InstanceCount=layout.cover.Count;
             var groups=new Dictionary<Vector3Int,List<Matrix4x4>>();
-            foreach(var p in layout.cover){int variant=p.variant%config.coverMeshes.Length;var key=new Vector3Int(Mathf.FloorToInt(p.position.x/12),Mathf.FloorToInt(p.position.z/12),variant);if(!groups.TryGetValue(key,out var list)){list=new List<Matrix4x4>();groups.Add(key,list);}list.Add(Matrix4x4.TRS(p.position,Quaternion.Euler(0,p.yaw,0),Vector3.one*p.scale));}
+            foreach(var p in layout.cover){int variant=p.variant%config.coverMeshes.Length;var key=new Vector3Int(Mathf.FloorToInt(p.position.x/12),Mathf.FloorToInt(p.position.z/12),variant);if(!groups.TryGetValue(key,out var list)){list=new List<Matrix4x4>();groups.Add(key,list);}float tx=((p.id*7919)%9)-4f,tz=((p.id*104729)%9)-4f;list.Add(Matrix4x4.TRS(p.position,Quaternion.Euler(tx,p.yaw,tz),Vector3.one*p.scale));}
             foreach(var entry in groups){var key=entry.Key;var centre=new Vector3(key.x*12+6,1,key.y*12+6);var material=config.coverMaterials[key.z%config.coverMaterials.Length];
                 batches.Add(new Batch{transforms=entry.Value.ToArray(),mesh=config.coverMeshes[key.z],centre=centre,variant=key.z,parameters=new RenderParams(material){worldBounds=new Bounds(centre,new Vector3(16,4,16)),shadowCastingMode=ShadowCastingMode.Off,receiveShadows=true,lightProbeUsage=LightProbeUsage.Off}});}
         }

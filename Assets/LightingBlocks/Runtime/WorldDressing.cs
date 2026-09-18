@@ -6,17 +6,11 @@ namespace LightingBlocks
 {
     // The playable islands are authored by the editor setup scripts. This pass rebuilds them at
     // their full size and fills the rest of the frame at runtime so the camera never looks at
-    // empty background: wide courts you have to drag the camera across, a lit valley under them,
-    // distant ruin silhouettes, neon paving, a light on every bridge step, and crisp labels.
+    // empty background: wide courts you have to drag the camera across, rock keels hanging off
+    // each one into the void, a few far-off islets for depth, neon paving, a light on every
+    // bridge step, and crisp labels.
     public static class WorldDressing
     {
-        // The player recovers below y = -3, so scenery at -5 can never be stood on.
-        public const float Floor = -5f;
-        // The authored cliff skirts hang to -5..-7. The valley meets them at -3.6 so no sliver of
-        // empty background shows under a shore, while staying under the -3 recovery threshold.
-        public const float Shoulder = -3.6f;
-        // The courts now reach 84 units from the centre, so the far rim has to begin past them.
-        public const float RimStart = 96f, RimEnd = 150f, Radius = 210f;
         // Both rifts are carved past the full width of the courts: a gap has to read as a chasm
         // splitting the world, not as a notch you could walk around. Full depth to 58, gone by 74.
         public const float RiftHalfWidth = 74f;
@@ -35,7 +29,9 @@ namespace LightingBlocks
             var root = new GameObject("Immersive Deeps").transform;
             root.SetParent(world, false);
             Reshape(world);
-            BuildValley(root, world);
+            BuildBackgroundIslands(root, world);
+            RimRocks(root, world);
+            Lanterns(root, world);
             // ForestWorld owns all vegetation and wildlife.
             Atmosphere(game);
             WorldLabels.Adopt();
@@ -77,23 +73,60 @@ namespace LightingBlocks
             for (int i = 0; i < count; i++) triangles.AddRange(new[] { 0, (i + 1) % count + 1, i + 1 });
             return Finish(vertices, uv, triangles, "Shore " + index);
         }
+        // The islands float over a starfield, so every court needs a rock keel under it instead of
+        // a short skirt that meets a valley floor. Six rings pulled in towards the centroid and a
+        // capped point give the silhouette, the whole drop scaled to the width of the polygon;
+        // ring 0 is untouched because it is the collision rim CanStand and the MeshCollider read.
+        static readonly float[] KeelInset = { 1f, .92f, .78f, .60f, .40f, .20f };
+        static readonly float[] KeelDrop = { 0f, -3f, -9f, -17f, -27f, -36f };
+        const float KeelTip = -40f;
         public static Mesh CliffMesh(Vector2[] points, int index)
         {
-            int count = points.Length;
+            int count = points.Length, rings = KeelInset.Length;
             var vertices = new List<Vector3>(); var uv = new List<Vector2>(); var triangles = new List<int>();
             Vector2 centre = Centroid(points);
-            for (int i = 0; i < count; i++)
+            // A 40 m court earns the full 40 m keel; a 12 m islet given the same drop reads as a
+            // spike. Scale the depth (never the insets) by how wide the polygon actually is.
+            float mean = 0;
+            foreach (var p in points) mean += Vector2.Distance(centre, p);
+            mean /= count;
+            float depth = Mathf.Clamp01(mean / 35f);
+            var ring = new Vector3[rings][];
+            for (int r = 0; r < rings; r++)
             {
-                Vector2 a = points[i], b = points[(i + 1) % count]; int n = vertices.Count;
-                vertices.AddRange(new[] {
-                    new Vector3(a.x, 0, a.y), new Vector3(b.x, 0, b.y),
-                    new Vector3(centre.x + (b.x - centre.x) * .88f, -5 - (i % 3), centre.y + (b.y - centre.y) * .88f),
-                    new Vector3(centre.x + (a.x - centre.x) * .88f, -5 - (i % 3), centre.y + (a.y - centre.y) * .88f) });
-                float span = Vector2.Distance(a, b) / 6;
-                uv.AddRange(new[] { new Vector2(0, 1), new Vector2(span, 1), new Vector2(span, 0), new Vector2(0, 0) });
-                triangles.AddRange(new[] { n, n + 1, n + 2, n, n + 2, n + 3 });
+                ring[r] = new Vector3[count];
+                for (int i = 0; i < count; i++) ring[r][i] = KeelVertex(points[i], centre, i, r, index, depth);
             }
+            for (int r = 0; r < rings - 1; r++)
+                for (int i = 0; i < count; i++)
+                {
+                    int j = (i + 1) % count, n = vertices.Count;
+                    Vector3 a = ring[r][i], b = ring[r][j], below = ring[r + 1][j], under = ring[r + 1][i];
+                    vertices.AddRange(new[] { a, b, below, under });
+                    float span = Vector2.Distance(points[i], points[j]) / 6;
+                    // World-metre tiling down the keel as well as along it, or the cliff texture
+                    // gets stretched over forty metres of rock.
+                    uv.AddRange(new[] { new Vector2(0, -a.y / 6), new Vector2(span, -b.y / 6),
+                        new Vector2(span, -below.y / 6), new Vector2(0, -under.y / 6) });
+                    triangles.AddRange(new[] { n, n + 1, n + 2, n, n + 2, n + 3 });
+                }
+            // Cap, wound the opposite way round to FloorMesh's fan so the face points down.
+            int tip = vertices.Count;
+            vertices.Add(new Vector3(centre.x, KeelTip * depth, centre.y)); uv.Add(centre / 6);
+            // ponytail: planar uv on the cap, nobody gets under a floating island to see the seam.
+            for (int i = 0; i < count; i++) { var p = ring[rings - 1][i]; vertices.Add(p); uv.Add(new Vector2(p.x, p.z) / 6); }
+            for (int i = 0; i < count; i++) triangles.AddRange(new[] { tip, tip + i + 1, tip + (i + 1) % count + 1 });
             return Finish(vertices, uv, triangles, "Cliff " + index);
+        }
+        // Deterministic wobble keyed on the point index, never on the vertex list position: the
+        // corner shared by two quads has to move the same way in both or the keel tears open.
+        static Vector3 KeelVertex(Vector2 p, Vector2 centre, int i, int r, int index, float depth)
+        {
+            if (r == 0) return new Vector3(p.x, 0, p.y);
+            float inset = KeelInset[r] + (Mathf.PerlinNoise(i * .37f + r * 5.13f + index * 13.7f, r * 2.31f + index * 3.17f + .7f) - .5f) * .16f;
+            // The wobble scales with the drop too, or a shallow keel gets a 1.5 m ripple on a 10 m fall.
+            float y = (KeelDrop[r] + (Mathf.PerlinNoise(i * .53f + r * 3.91f + index * 7.31f + 31.7f, r * 1.73f + index * 5.91f + 17.3f) - .5f) * 3f) * depth;
+            return new Vector3(centre.x + (p.x - centre.x) * inset, y, centre.y + (p.y - centre.y) * inset);
         }
         static Mesh Finish(List<Vector3> vertices, List<Vector2> uv, List<int> triangles, string name)
         {
@@ -124,24 +157,11 @@ namespace LightingBlocks
             return bounds;
         }
 
-        // ---- the deeps -------------------------------------------------------
+        // ---- the void --------------------------------------------------------
 
-        // Ground height around the play area. The rim lifts far away so the frame ends in land,
-        // and both rifts are carved deep so the gaps read as chasms instead of flat holes.
-        public static float Height(float x, float z)
-        {
-            float radius = Vector2.Distance(new Vector2(x, z), Centre);
-            float hills = (Mathf.PerlinNoise(x * .034f + 11.3f, z * .034f + 7.1f) - .5f) * 3.6f
-                + (Mathf.PerlinNoise(x * .115f + 3.7f, z * .115f + 1.9f) - .5f) * .9f;
-            float rim = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(RimStart, RimEnd, radius)) * 12f;
-            float ground = Mathf.Lerp(Shoulder, Floor + hills, Mathf.SmoothStep(0, 1, ShoreDistance(x, z) / 10f));
-            return ground + rim - Chasm(x, z);
-        }
-        static float Chasm(float x, float z)
-        {
-            float rift = Mathf.Max(Band(z, 7, 21), Band(z, 34 + Landscape.Expansion, 48 + Landscape.Expansion));
-            return rift * Mathf.Clamp01((RiftHalfWidth - Mathf.Abs(x)) / 16f) * 14f;
-        }
+        // There is no ground under the courts any more, only the starfield skybox. Depth comes
+        // from the keels hanging off each island and from a handful of islets far out in the dark.
+
         // Distance from a point to the nearest playable shore, zero when standing over one.
         public static float ShoreDistance(float x, float z)
         {
@@ -170,43 +190,218 @@ namespace LightingBlocks
             float t = edge.sqrMagnitude < .0001f ? 0 : Mathf.Clamp01(Vector2.Dot(point - a, edge) / edge.sqrMagnitude);
             return Vector2.Distance(point, a + edge * t);
         }
-        static float Band(float value, float from, float to)
-            => Mathf.Min(Mathf.SmoothStep(0, 1, (value - from) / 3.5f), Mathf.SmoothStep(0, 1, (to - value) / 3.5f));
-
-        static void BuildValley(Transform root, Transform world)
+        // Small islands drifting out past the play area, purely to give the void a sense of scale.
+        // Scenery only: no colliders, never saved, rebuilt identically every Play from one seed.
+        static readonly List<(Vector2[] points, Vector3 origin)> islets = new List<(Vector2[] points, Vector3 origin)>();
+        public static void BuildBackgroundIslands(Transform root, Transform world)
         {
+            islets.Clear();
+            var random = new System.Random(2026);
             var radii = new List<float>();
-            for (float r = 0; r <= 120; r += 4) radii.Add(r);
-            foreach (float r in new[] { 138f, 158f, 180f, 196f, Radius }) radii.Add(r);
-            const int segments = 120;
-            var vertices = new List<Vector3>(); var uv = new List<Vector2>(); var triangles = new List<int>();
-            for (int ring = 0; ring < radii.Count; ring++)
-                for (int step = 0; step <= segments; step++)
+            var top = SceneMaterial(world, "ShoreFloor0"); var rock = SceneMaterial(world, "ShoreCliff0");
+            for (int attempt = 0; attempt < 400 && islets.Count < 6; attempt++)
+            {
+                float angle = (float)random.NextDouble() * Mathf.PI * 2, distance = 80 + (float)random.NextDouble() * 80;
+                float cx = Centre.x + Mathf.Cos(angle) * distance, cz = Centre.y + Mathf.Sin(angle) * distance;
+                float r = 10 + (float)random.NextDouble() * 12;
+                // Never crowd a court, never block the view down a rift, never overlap a sibling.
+                if (ShoreDistance(cx, cz) < r + 15) continue;
+                if (Mathf.Abs(cx) < RiftHalfWidth && (cz > 1 && cz < 27 || cz > 28 + Landscape.Expansion && cz < 54 + Landscape.Expansion)) continue;
+                bool crowded = false;
+                for (int k = 0; k < islets.Count && !crowded; k++)
+                    crowded = Vector2.Distance(new Vector2(cx, cz), new Vector2(islets[k].origin.x, islets[k].origin.z)) < r + radii[k] + 12;
+                if (crowded) continue;
+                int sides = 8 + random.Next(3);
+                var points = new Vector2[sides];
+                for (int i = 0; i < sides; i++)
                 {
-                    float angle = step * Mathf.PI * 2 / segments;
-                    float x = Centre.x + Mathf.Cos(angle) * radii[ring], z = Centre.y + Mathf.Sin(angle) * radii[ring];
-                    vertices.Add(new Vector3(x, Height(x, z), z)); uv.Add(new Vector2(x, z) / 9f);
+                    float a = (i * Mathf.PI * 2 / sides) + ((float)random.NextDouble() - .5f) * 30 * Mathf.Deg2Rad;
+                    float d = r * (.7f + (float)random.NextDouble() * .3f);
+                    points[i] = new Vector2(Mathf.Cos(a) * d, Mathf.Sin(a) * d);
                 }
-            for (int ring = 0; ring < radii.Count - 1; ring++)
-                for (int step = 0; step < segments; step++)
-                {
-                    int a = ring * (segments + 1) + step, b = a + segments + 1;
-                    triangles.AddRange(new[] { a, b, a + 1, a + 1, b, b + 1 });
-                }
-            var obj = new GameObject("Deep Valley", typeof(MeshFilter), typeof(MeshRenderer));
-            obj.transform.SetParent(root, false);
-            obj.GetComponent<MeshFilter>().sharedMesh = Finish(vertices, uv, triangles, "Deep Valley");
-            obj.GetComponent<Renderer>().sharedMaterial = ValleyMaterial(world);
-            // No collider: the valley is scenery, the bridges stay the only way across.
+                int index = islets.Count;
+                var origin = new Vector3(cx, -22 + (float)random.NextDouble() * 14, cz);
+                var obj = new GameObject("Islet " + index);
+                obj.transform.SetParent(root, false); obj.transform.position = origin;
+                Islet(obj.transform, "Top", FloorMesh(points, 100 + index), top);
+                Islet(obj.transform, "Keel", CliffMesh(points, 100 + index), rock);
+                islets.Add((points, origin));
+                radii.Add(r);
+            }
         }
-        static Material ValleyMaterial(Transform world)
+        static GameObject Islet(Transform parent, string name, Mesh mesh, Material material)
         {
-             var cliff = Find(world, "ShoreCliff0");
-            var renderer = cliff != null ? cliff.GetComponent<Renderer>() : null;
+            var obj = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            obj.transform.SetParent(parent, false);
+            obj.GetComponent<MeshFilter>().sharedMesh = mesh;
+            var renderer = obj.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
+            // Tier 3 masks the Wisdom Tree lights off anything on this layer.
+            renderer.renderingLayerMask = 2;
+            return obj;
+        }
+        // Ground height over a background islet, so scenery can be planted on one. Zero and false
+        // everywhere else, because everywhere else is the void.
+        public static bool BackgroundHeight(float x, float z, out float y)
+        {
+            foreach (var islet in islets)
+                if (Landscape.Inside(new Vector2(x - islet.origin.x, z - islet.origin.z), islet.points))
+                { y = islet.origin.y; return true; }
+            y = 0; return false;
+        }
+        // The islets borrow whatever the courts are already wearing, so one material change in the
+        // scene carries to the background too.
+        static Material SceneMaterial(Transform world, string name)
+        {
+            var obj = Find(world, name);
+            var renderer = obj != null ? obj.GetComponent<Renderer>() : null;
             return renderer != null && renderer.sharedMaterial != null
                 ? renderer.sharedMaterial
                 : new Material(Shader.Find("Universal Render Pipeline/Lit"));
         }
+
+        // ---- the rim ---------------------------------------------------------
+
+        // A court that ends in a clean polygon edge reads as a cut-out. Rocks along every shore
+        // and a lantern every so often give the rim a silhouette and something to light it.
+        // Scenery only: no colliders, one seed, rebuilt with the rest of Immersive Deeps.
+
+        // The bridge lanes have to stay clear of both, or the crossing you are aiming at is
+        // hidden behind a boulder. Same band the background islands avoid.
+        static bool RiftLane(Vector2 p) =>
+            Mathf.Abs(p.x) < 8 && (p.y > 1 && p.y < 27 || p.y > 28 + Landscape.Expansion && p.y < 54 + Landscape.Expansion);
+        static void RimRocks(Transform root, Transform world)
+        {
+            var random = new System.Random(4127);
+            // ponytail: rocks sit in the veil at eye level, the shared cliff material reads black there; one lighter clone, tuned by eye.
+            var rock = new Material(SceneMaterial(world, "ShoreCliff0")) { name = "Rim rock" };
+            if (rock.HasProperty("_BaseColor")) { var c = rock.GetColor("_BaseColor"); rock.SetColor("_BaseColor", new Color(Mathf.Min(1, c.r * 1.6f), Mathf.Min(1, c.g * 1.6f), Mathf.Min(1, c.b * 1.7f), c.a)); }
+            if (rock.HasProperty("_SoftFill")) rock.SetFloat("_SoftFill", .28f);
+            if (rock.HasProperty("_RimColor")) rock.SetColor("_RimColor", new Color(.42f, .36f, .66f));
+            // Four shapes shared by every rock: yaw, tilt and scale do the rest of the variety.
+            var shapes = new Mesh[4];
+            for (int i = 0; i < shapes.Length; i++) shapes[i] = RockMesh(random);
+            foreach (var shore in Landscape.Shores)
+            {
+                Vector2 centre = Centroid(shore);
+                for (int i = 0, j = shore.Length - 1; i < shore.Length; j = i++)
+                {
+                    Vector2 a = shore[j], b = shore[i];
+                    float length = Vector2.Distance(a, b);
+                    for (float t = 3.5f + (float)random.NextDouble() * 1.5f; t < length; t += 3.5f + (float)random.NextDouble() * 1.5f)
+                    {
+                        Vector2 p = Vector2.Lerp(a, b, t / length);
+                        if (RiftLane(p)) continue;
+                        // ponytail: outward is the direction from the centroid, not the edge
+                        // normal. On these near-convex courts the two agree to a few degrees.
+                        Vector2 away = (p - centre).normalized * .3f;
+                        var obj = Islet(root, "Rim rock", shapes[random.Next(shapes.Length)], rock);
+                        // A rock sitting on the rim has to take the Wisdom Tree light the paving
+                        // beside it takes, or it reads as a hole. Only the far islets stay masked.
+                        obj.GetComponent<Renderer>().renderingLayerMask = 1;
+                        obj.transform.position = new Vector3(p.x + away.x, -.25f, p.y + away.y);
+                        obj.transform.rotation = Quaternion.Euler(
+                            (float)random.NextDouble() * 24 - 12,
+                            (float)random.NextDouble() * 360,
+                            (float)random.NextDouble() * 24 - 12);
+                        obj.transform.localScale = Vector3.one * (.6f + (float)random.NextDouble() * .8f);
+                    }
+                }
+            }
+        }
+        // An icosahedron subdivided once - 42 vertices - with every vertex pulled in a random
+        // amount, then split into loose triangles so RecalculateNormals shades it faceted.
+        static Mesh RockMesh(System.Random random)
+        {
+            const float t = 1.618034f;
+            var points = new List<Vector3> {
+                new Vector3(-1, t, 0), new Vector3(1, t, 0), new Vector3(-1, -t, 0), new Vector3(1, -t, 0),
+                new Vector3(0, -1, t), new Vector3(0, 1, t), new Vector3(0, -1, -t), new Vector3(0, 1, -t),
+                new Vector3(t, 0, -1), new Vector3(t, 0, 1), new Vector3(-t, 0, -1), new Vector3(-t, 0, 1) };
+            for (int i = 0; i < points.Count; i++) points[i] = points[i].normalized;
+            int[] faces = { 0,11,5, 0,5,1, 0,1,7, 0,7,10, 0,10,11, 1,5,9, 5,11,4, 11,10,2, 10,7,6, 7,1,8,
+                3,9,4, 3,4,2, 3,2,6, 3,6,8, 3,8,9, 4,9,5, 2,4,11, 6,2,10, 8,6,7, 9,8,1 };
+            var middles = new Dictionary<int, int>();
+            var indices = new List<int>();
+            for (int f = 0; f < faces.Length; f += 3)
+            {
+                int a = faces[f], b = faces[f + 1], c = faces[f + 2];
+                int ab = Middle(points, middles, a, b), bc = Middle(points, middles, b, c), ca = Middle(points, middles, c, a);
+                indices.AddRange(new[] { a, ab, ca, b, bc, ab, c, ca, bc, ab, bc, ca });
+            }
+            // Jitter the shared vertices, never the split copies: a corner has to move the same
+            // way in every face that touches it or the rock opens up along the seam.
+            for (int i = 0; i < points.Count; i++) points[i] *= .7f + (float)random.NextDouble() * .3f;
+            var vertices = new List<Vector3>(); var uv = new List<Vector2>(); var triangles = new List<int>();
+            foreach (var index in indices)
+            {
+                var p = points[index];
+                triangles.Add(vertices.Count); vertices.Add(p);
+                // ponytail: planar uv, a rock this small never shows the stretch on its sides.
+                uv.Add(new Vector2(p.x, p.z) * .5f + Vector2.one * .5f);
+            }
+            return Finish(vertices, uv, triangles, "Rim rock");
+        }
+        // Midpoint of an edge, created once and shared by both faces that own it.
+        static int Middle(List<Vector3> points, Dictionary<int, int> cache, int a, int b)
+        {
+            int key = a < b ? a * 64 + b : b * 64 + a;
+            if (cache.TryGetValue(key, out int found)) return found;
+            points.Add(((points[a] + points[b]) * .5f).normalized);
+            cache[key] = points.Count - 1;
+            return points.Count - 1;
+        }
+        // The scene already holds six soul-well lanterns. Cloning one around every court rim
+        // lights the edge you are about to walk off, and the clones cost nothing to author.
+        static void Lanterns(Transform root, Transform world)
+        {
+            GameObject template = null;
+            foreach (var light in world.GetComponentsInChildren<Light>(true))
+                if (light.name == "Courtyard lantern glow" && light.transform.parent != null)
+                    { template = light.transform.parent.gameObject; break; }
+            if (template == null) return;
+            var random = new System.Random(8613);
+            foreach (var shore in Landscape.Shores)
+            {
+                Vector2 centre = Centroid(shore);
+                // One walk around the whole perimeter, so the spacing carries across corners.
+                float next = (float)random.NextDouble() * 26, walked = 0;
+                for (int i = 0, j = shore.Length - 1; i < shore.Length; j = i++)
+                {
+                    Vector2 a = shore[j], b = shore[i];
+                    float length = Vector2.Distance(a, b);
+                    for (; next < walked + length; next += 26)
+                    {
+                        Vector2 p = Vector2.Lerp(a, b, (next - walked) / length);
+                        if (RiftLane(p)) continue;
+                        // ponytail: no wisdom-tree spacing check. Landscape has no wisdom
+                        // position - it lives on ForestConfiguration, which is not built yet -
+                        // and every authored tree sits 10 m or more inside its rim anyway.
+                        Vector2 inward = (centre - p).normalized;
+                        var clone = Object.Instantiate(template, root);
+                        clone.name = "Rim lantern";
+                        clone.transform.position = new Vector3(p.x + inward.x * 1.2f, 0, p.y + inward.y * 1.2f);
+                        clone.transform.rotation = Quaternion.LookRotation(new Vector3(inward.x, 0, inward.y));
+                        clone.transform.localScale = template.transform.localScale;
+                        // Block placement and the tests read the world through physics overlaps,
+                        // so dressing may never own a collider.
+                        foreach (var collider in clone.GetComponentsInChildren<Collider>(true)) ForestWorld.Remove(collider);
+                    }
+                    walked += length;
+                }
+            }
+            foreach (var light in Object.FindObjectsByType<Light>())
+                if (light.name == "Courtyard lantern glow") Lantern(light);
+        }
+        // Tier 3 lantern: a warm ember that pools on the paving around it and lights nothing
+        // further out, so thirty of them still cost less than one shadowed lamp.
+        public static void Lantern(Light light)
+        {
+            if (light == null) return;
+            light.color = new Color(1f, .714f, .380f);   // #FFB661
+            light.intensity = 4; light.range = 6; light.shadows = LightShadows.None;
+        }
+
         static void Atmosphere(GameManager game)
         {
             var haze = new Color(.062f, .072f, .098f);
@@ -308,6 +503,11 @@ namespace LightingBlocks
             light.color = colour;
             light.range = block.Connected ? 6.8f : 3.4f;
             light.intensity = block.Connected ? 4.4f : 1f;
+            var breath = light.GetComponent<Breath>();
+            if (breath == null) breath = light.gameObject.AddComponent<Breath>();
+            breath.baseIntensity = light.intensity;
+            // Phase off where the block sits, so the crossing ripples instead of pulsing as one.
+            breath.phase = .7f * (block.transform.position.x + block.transform.position.z);
             Seams(block, colour);
         }
         static void Seams(BridgeBlock block, Color colour)
@@ -332,6 +532,24 @@ namespace LightingBlocks
                 properties.SetColor("_EmissionColor", colour * 2.4f);
                 seam.SetPropertyBlock(properties);
             }
+        }
+    }
+
+    // A step light holding one exact value reads as a decal stuck to the tile. A slow twelve
+    // percent swell, phased per block, is what makes the crossing look lit rather than painted.
+    sealed class Breath : MonoBehaviour
+    {
+        public float baseIntensity, phase;
+        Light lamp;
+        void Awake() { lamp = GetComponent<Light>(); }
+        void Update()
+        {
+            if (lamp == null) return;
+            // ponytail: the footfall flare drives this same light to 2.6x for about a second.
+            // While it is above the swell's own ceiling, leave it alone rather than wire the
+            // two effects together - if they ever need to compose, give Footlights the phase.
+            if (lamp.intensity > baseIntensity * 1.13f) return;
+            lamp.intensity = baseIntensity * (1 + .12f * Mathf.Sin(Time.time * 1.3f + phase));
         }
     }
 
@@ -460,7 +678,7 @@ namespace LightingBlocks
     {
         class Entry { public RectTransform rect; public UnityEngine.UI.Text text; public UnityEngine.UI.Outline outline; public Vector3 anchor; }
         readonly List<Entry> entries = new List<Entry>();
-        public float fadeDistance = 54f;
+        public float fadeDistance = 135f;
         static readonly Color Ink = new Color(.98f, .84f, .56f);
 
         public static void Adopt()

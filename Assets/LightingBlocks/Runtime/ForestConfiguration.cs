@@ -118,6 +118,17 @@ namespace LightingBlocks
                 if(ForestHabitat.PathDistance(p,d)<3.2f)v=0;foreach(var habitat in layout.habitats)if((p-habitat).sqrMagnitude<2.25f){v=0;break;}
                 layout.cover.Add(new ForestPlacement{id=layout.cover.Count,position=p,yaw=rng.Next(360),scale=.8f+(float)rng.NextDouble()*.4f,variant=v});
             }
+            // Hero density: dense cover in the ring around the wisdom, same acceptance rules, own rng/grid so the passes above stay byte-identical.
+            rng=new System.Random(Hash(seed,d.id+"/cover-hero"));
+            float hx0=Mathf.Max(min.x,d.wisdomPosition.x-10),hx1=Mathf.Min(max.x,d.wisdomPosition.x+10),hz0=Mathf.Max(min.y,d.wisdomPosition.z-10),hz1=Mathf.Min(max.y,d.wisdomPosition.z+10);
+            for(float x=hx0;x<hx1;x+=.45f)for(float z=hz0;z<hz1;z+=.45f)
+            {
+                var p=new Vector3(x+(float)rng.NextDouble()*.45f,0,z+(float)rng.NextDouble()*.45f);if(!Inside(p,polygon,.5f)||Reserved(p,d,2.3f)||Vector3.Distance(p,d.wisdomPosition)>10f)continue;
+                if(rng.NextDouble()>ForestHabitat.Green(p,d)*.93f)continue;
+                int v=rng.Next(100);v=v<42?0:v<68?1:v<80?2:v<85?3:v<90?4:v<93?5:v<96?6:v<98?7:8;
+                if(ForestHabitat.PathDistance(p,d)<3.2f)v=0;foreach(var habitat in layout.habitats)if((p-habitat).sqrMagnitude<2.25f){v=0;break;}
+                layout.cover.Add(new ForestPlacement{id=layout.cover.Count,position=p,yaw=rng.Next(360),scale=.8f+(float)rng.NextDouble()*.4f,variant=v});
+            }
             // Small habitat compositions give the eye landmarks between the large trees.
             // They share the cover renderer and never obstruct hauling or interaction space.
             rng=new System.Random(Hash(seed,d.id+"/habitat-groves"));int groves=0;var centres=new List<Vector3>();

@@ -112,3 +112,10 @@ InitTestScene*.unity*
 
 # Auto-generated cache in Assets folder
 /[Aa]ssets/[Ss]ceneDependencyCache*
+
+# Spirit Path capture archives: keep 4 curated shots per tier, ignore the rest (LFS quota)
+docs/art-direction/*/*.png
+!docs/art-direction/*/island-1-14.png
+!docs/art-direction/*/gameplay.png
+!docs/art-direction/*/vista-sw.png
+!docs/art-direction/*/hud.png

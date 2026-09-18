@@ -27,6 +27,13 @@ background.
 - Camera distance 27 -> 22, and 4x MSAA in `PC_RPAsset` (it was disabled - that was the
   jagged geometry in the screenshot).
 
+**2026-09-17, Spirit Path Tier 2:** the valley, its rim and the chasm carving are gone -
+below the islands there is now only the night-sky void. Each island has a 40 m rock keel
+(`WorldDressing.CliffMesh`, six rings plus a cap), and six small non-collidable background
+islets with trees (`WorldDressing.BuildBackgroundIslands`, rendering layer 2) give depth.
+The reason: the long 26 degree lens plus fog and depth of field make empty background the
+composition, so the original "fill the frame with land" rationale no longer applies.
+
 ## 2. The skill tree was a card grid
 
 `SkillTree` (new) draws a real tree from procedural circle sprites (no new assets):

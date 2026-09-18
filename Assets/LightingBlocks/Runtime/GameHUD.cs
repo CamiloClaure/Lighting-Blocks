@@ -48,11 +48,20 @@ namespace LightingBlocks
 #else
         int windowWidth = 1280, windowHeight = 720;
 #endif
-        static readonly Color Ink = new Color(.055f, .045f, .04f, .97f);
-        static readonly Color Card = new Color(.12f, .105f, .09f, .98f);
-        static readonly Color White = new Color(.95f, .90f, .82f);
-        static readonly Color Muted = new Color(.73f, .69f, .61f);
-        static readonly Color Mint = new Color(.90f, .72f, .36f);
+        // The Spirit Path palette: deep navy glass, warm parchment text, a single gold accent.
+        static readonly Color Ink = new Color(.07f, .06f, .10f, .86f);
+        static readonly Color Card = new Color(.11f, .10f, .15f, .90f);
+        static readonly Color White = new Color(.949f, .922f, .867f);
+        static readonly Color Muted = new Color(.604f, .576f, .659f);
+        static readonly Color Mint = new Color(.894f, .749f, .478f);
+        static Sprite fillSprite, edgeSprite;
+        // Screen-space chip that follows the placement ghost, plus what it needs to project.
+        RectTransform placeChip;
+        Canvas surface;
+        Camera gameCamera;
+        Transform ghost;
+        float ghostSearch;
+        string diamond = "*";
         class PurchaseBinding { public string id, description; public Button button; public Text detail; }
 
         void Awake()
@@ -95,18 +104,19 @@ namespace LightingBlocks
                 wasMaximized = fullscreenView.maximized;
             }
             fullscreenView.Show(); fullscreenView.Focus(); fullscreenView.maximized = !fullscreenView.maximized;
-            game.Notify(fullscreenView.maximized ? "EXPANDED GAME VIEW\nPress F1 again to restore the editor layout." : "EDITOR LAYOUT RESTORED\nPress F1 to expand the Game view.", false);
+            // The F1 state lives in a toast, never as a permanent label on the diorama.
+            if (game != null) game.Notify(fullscreenView.maximized ? "EXPANDED GAME VIEW\nPress F1 again to restore the editor layout." : "EDITOR LAYOUT RESTORED\nPress F1 to expand the Game view.", false);
 #else
             if (Screen.fullScreen)
             {
                 Screen.SetResolution(windowWidth, windowHeight, FullScreenMode.Windowed);
-                game.Notify("WINDOWED MODE\nPress F1 for fullscreen.", false);
+                if (game != null) game.Notify("WINDOWED MODE\nPress F1 for fullscreen.", false);
             }
             else
             {
                 windowWidth = Screen.width; windowHeight = Screen.height;
                 Screen.SetResolution(Screen.currentResolution.width, Screen.currentResolution.height, FullScreenMode.FullScreenWindow);
-                game.Notify("FULLSCREEN\nPress F1 to return to windowed mode.", false);
+                if (game != null) game.Notify("FULLSCREEN\nPress F1 to return to windowed mode.", false);
             }
 #endif
         }
@@ -114,10 +124,10 @@ namespace LightingBlocks
         public void BeginJourney()
         {
             SetView(ScreenView.Playing);
-            if (!(game.ConnectedCount > 0)) game.Notify("Collect 3 particles, then press E beside the Wisdom Tree. Haul its block to the glowing bridge edge.", false);
+            if (game != null && !(game.ConnectedCount > 0)) game.Notify("Collect 3 particles, then press E beside the Wisdom Tree. Haul its block to the glowing bridge edge.", false);
         }
-        public void ShowPause() { if (View != ScreenView.Title) { game.Save(); SetView(ScreenView.Pause); } }
-        public void ShowTitle() { game.Save(); SetView(ScreenView.Title); }
+        public void ShowPause() { if (View != ScreenView.Title) { if (game != null) game.Save(); SetView(ScreenView.Pause); } }
+        public void ShowTitle() { if (game != null) game.Save(); SetView(ScreenView.Title); }
         public void ShowControls()
         {
             controlsReturn = View == ScreenView.Title ? ScreenView.Title : ScreenView.Pause;
@@ -144,7 +154,7 @@ namespace LightingBlocks
         public void SetView(ScreenView next)
         {
             View = next;
-            if (GameplayBlocked && game != null) game.player.Release();
+            if (GameplayBlocked && game != null && game.player != null) game.player.Release();
             Time.timeScale = SimulationPaused ? 0 : previousTimeScale;
             AudioListener.pause = SimulationPaused || previousAudioPause;
             if (canvas == null) return;
@@ -174,7 +184,7 @@ namespace LightingBlocks
             font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             var root = new GameObject("Last Spark Canvas UI", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler), typeof(GraphicRaycaster));
             root.transform.SetParent(transform, false); canvas = root.GetComponent<RectTransform>();
-            var canvasComponent = root.GetComponent<Canvas>();
+            var canvasComponent = surface = root.GetComponent<Canvas>();
             canvasComponent.renderMode = RenderMode.ScreenSpaceOverlay; canvasComponent.sortingOrder = 100;
             // Fractional canvas scales resample every glyph. Whole-pixel quads plus a reference
             // resolution close to the real window keep the text sharp instead of smeared.
@@ -191,35 +201,51 @@ namespace LightingBlocks
             pointer = new PointerEventData(eventSystem);
             playRoot = FullRect("Gameplay HUD", canvas).gameObject;
             WorldLabelRoot = FullRect("World Labels", playRoot.transform);
-            var mission = Panel("Current Objective", playRoot.transform, 22, 0, 418, 158, Ink);
+            diamond = Glyph('\u2726', '\u25c6', '*');
+            var location = Label("Location Title", playRoot.transform, diamond + "  " + Spaced("THE SPIRIT PATH") + "  " + diamond,
+                0, 0, 760, 34, 21, Mint, TextAnchor.MiddleCenter).rectTransform;
+            location.anchorMin = location.anchorMax = new Vector2(.5f, 1); location.pivot = new Vector2(.5f, 1); location.anchoredPosition = new Vector2(0, -14);
+            // Resources sit under the Souls wallet so the whole top-left column reads as one stack.
+            var calls = Panel("Fragment Calls", playRoot.transform, 22, 162, 350, 152, Ink);
+            Label("Call Heading", calls, diamond + "  RESOURCES", 18, 12, 314, 22, 15, Mint).fontStyle = FontStyle.Bold;
+            particleText = Label("Particle Inventory", calls, "", 18, 40, 314, 52, 17, White);
+            Label("Particle Help", calls, "Walk over particles to collect them.\nE near a wisdom tree: 3 particles = 1 block.", 18, 96, 314, 46, 14, Muted);
+            var mission = Panel("Current Objective", playRoot.transform, 22, 0, 430, 118, Ink);
             Bottom(mission, 22, 24, false);
-            Label("Objective Heading", mission, "YOUR NEXT DISCOVERY", 18, 14, 380, 26, 17, Mint);
-            objectiveText = Label("Objective", mission, "", 18, 45, 380, 100, 18, White);
-            var context = Panel("Interaction Hint", playRoot.transform, 0, 0, 540, 84, Ink);
-            context.anchorMin = context.anchorMax = new Vector2(.5f, 0); context.pivot = new Vector2(.5f, 0); context.anchoredPosition = new Vector2(0, 24);
-            contextText = Label("Interaction", context, "", 18, 12, 504, 60, 19, White, TextAnchor.MiddleCenter);
-            var calls = Panel("Fragment Calls", playRoot.transform, 0, 0, 360, 170, Ink); Bottom(calls, 22, 24, true);
-            Label("Call Heading", calls, "WISDOM TREE ENERGY", 16, 12, 328, 24, 17, Mint);
-            particleText = Label("Particle Inventory", calls, "", 16, 45, 328, 32, 19, White);
-            Label("Particle Help", calls, "Walk over particles to collect.\nE near a tree: 3 particles = 1 block.\nSouls still unlock your skills.", 16, 82, 328, 76, 16, White);
+            Label("Objective Heading", mission, diamond + "  YOUR NEXT DISCOVERY", 16, 12, 398, 22, 15, Mint).fontStyle = FontStyle.Bold;
+            objectiveText = Label("Objective", mission, "", 16, 40, 398, 66, 16, Muted);
+            var context = Panel("Interaction Hint", playRoot.transform, 0, 0, 430, 66, Ink);
+            Bottom(context, 22, 150, false);
+            context.GetComponent<Image>().raycastTarget = false;
+            contextText = Label("Interaction", context, "", 16, 10, 398, 46, 15, White);
+            var keycaps = Panel("Key Hints", playRoot.transform, 0, 0, 470, 46, Ink);
+            keycaps.anchorMin = keycaps.anchorMax = new Vector2(.5f, 0); keycaps.pivot = new Vector2(.5f, 0); keycaps.anchoredPosition = new Vector2(0, 24);
+            keycaps.GetComponent<Image>().raycastTarget = false;
+            Label("Key Hints Text", keycaps, "[W][A][S][D] Move    [E] Interact", 12, 0, 446, 46, 16, White, TextAnchor.MiddleCenter);
+            placeChip = Panel("Place Prompt", playRoot.transform, 0, 0, 170, 38, Ink);
+            placeChip.anchorMin = placeChip.anchorMax = placeChip.pivot = new Vector2(.5f, .5f);
+            placeChip.GetComponent<Image>().raycastTarget = false;
+            Label("Place Prompt Text", placeChip, "[E] Place block", 8, 0, 154, 38, 15, White, TextAnchor.MiddleCenter);
+            placeChip.gameObject.SetActive(false);
 
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
 
             // This panel is above every modal so Souls is always visible, including during pause and skill selection.
             var wallet = Panel("Souls Counter", canvas, 22, 20, 350, 132, Ink);
-            Label("Souls Label", wallet, "SOULS", 20, 12, 310, 23, 17, Mint);
-            SoulsText = Label("Souls Amount", wallet, "0.0", 20, 37, 310, 52, 40, Mint);
-            incomeText = Label("Souls Income", wallet, "+0.0 / sec", 20, 94, 310, 26, 18, White);
-            navigation = Rect("Quick Menu", canvas, 0, 0, 476, 58).gameObject;
+            Label("Souls Label", wallet, diamond + "  SOULS", 20, 12, 310, 23, 15, Mint).fontStyle = FontStyle.Bold;
+            SoulsText = Label("Souls Amount", wallet, "0.0", 20, 37, 310, 52, 40, White);
+            incomeText = Label("Souls Income", wallet, "+0.0 / sec", 20, 94, 310, 26, 16, Muted);
+            // Equal rounded squares, the way the diorama concept stacks its icon buttons.
+            navigation = Rect("Quick Menu", canvas, 0, 0, 218, 66).gameObject;
             var nav = navigation.GetComponent<RectTransform>(); nav.anchorMin = nav.anchorMax = new Vector2(1, 1); nav.pivot = new Vector2(1, 1); nav.anchoredPosition = new Vector2(-22, -20);
-            SkillsButton = Button("Skill Tree Shortcut", nav, "SKILL TREE  [TAB]", 0, 0, 202, 58, ToggleSkills);
-            Button("Memories Shortcut", nav, "MEMORIES", 212, 0, 152, 58, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories));
-            Button("Pause Shortcut", nav, "ESC", 374, 0, 102, 58, ShowPause);
-            var feedback = Panel("Action Feedback", canvas, 0, 0, 620, 108, Ink);
-            feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -18);
+            SkillsButton = Button("Skill Tree Shortcut", nav, "SKILLS\n[TAB]", 0, 0, 66, 66, ToggleSkills, 11);
+            Button("Memories Shortcut", nav, "MEMORY", 76, 0, 66, 66, () => SetView(View == ScreenView.Memories ? ScreenView.Playing : ScreenView.Memories), 11);
+            Button("Pause Shortcut", nav, "PAUSE\n[ESC]", 152, 0, 66, 66, ShowPause, 11);
+            var feedback = Panel("Action Feedback", canvas, 0, 0, 620, 84, Ink);
+            feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -58);
             feedback.GetComponent<Image>().raycastTarget = false; feedbackPanel = feedback.gameObject;
-            noticeText = Label("Action Feedback Text", feedback, "", 16, 10, 588, 88, 19, Mint, TextAnchor.MiddleCenter);
+            noticeText = Label("Action Feedback Text", feedback, "", 16, 8, 588, 68, 17, Mint, TextAnchor.MiddleCenter);
         }
         void BuildTitle()
         {
@@ -294,12 +320,12 @@ namespace LightingBlocks
             Label("Confirmation Heading", panel, "START AGAIN?", 32, 28, 536, 52, 34, White, TextAnchor.MiddleCenter);
             Label("Confirmation Text", panel, "This restarts your bridges and clears their progress.\nThe previous save will be kept as a backup.", 45, 110, 510, 90, 22, White, TextAnchor.MiddleCenter);
             Button("Cancel New Journey", panel, "KEEP MY JOURNEY", 32, 241, 258, 58, () => SetView(confirmReturn));
-            Button("Confirm Restart", panel, "RESTART", 310, 241, 258, 58, game.NewJourney);
+            Button("Confirm Restart", panel, "RESTART", 310, 241, 258, 58, game != null ? (UnityAction)game.NewJourney : null);
         }
         void ConfirmNew(ScreenView previous) { confirmReturn = previous; SetView(ScreenView.ConfirmNewJourney); }
         void Quit()
         {
-            game.Save();
+            if (game != null) game.Save();
 #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
 #else
@@ -309,7 +335,7 @@ namespace LightingBlocks
 
         Button AddPurchase(string id, Transform parent, float x, float y, float width, float height, Text detail, string description)
         {
-            var b = Button("Purchase - " + id, parent, "", x, y, width, height, () => { game.Purchase(id); RefreshUI(); });
+            var b = Button("Purchase - " + id, parent, "", x, y, width, height, () => { if (game != null) game.Purchase(id); RefreshUI(); });
             purchases.Add(new PurchaseBinding { id = id, button = b, detail = detail, description = description }); return b;
         }
         public void RefreshUI()
@@ -319,13 +345,13 @@ namespace LightingBlocks
             incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
             objectiveText.text = game.Objective;
             var forest = ForestWorld.For(game);
-            if (particleText != null && forest != null && forest.State != null) particleText.text = forest.InventoryLabel;
+            if (particleText != null && forest != null && forest.State != null) particleText.text = forest.InventoryLabel + "\n" + game.ConnectedCount + " path blocks";
             bool journey = game.ConnectedCount > 0 || game.souls > 0 || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
             feedbackPanel.SetActive(showFeedback); noticeText.text = showFeedback ? game.Notice : "";
-            string hint = game.links>0 ? "WASD to move · Click to gather · Q to drop\nE for your objective · Tab for powers" : "WASD to move · Hold left mouse to haul\nE for your objective · Tab for powers";
-            var box = game.player.HeldBox;
+            string hint = game.links>0 ? "Click to gather · Q to drop · Tab for powers" : "Hold left mouse to haul · Tab for powers";
+            var box = game.player == null ? null : game.player.HeldBox;
             if (box != null)
             {
                 var b = box.GetComponent<BridgeBlock>();
@@ -333,19 +359,49 @@ namespace LightingBlocks
                 else if (b != null && game.FindPlacement(b, out _, out _, out _, out _)) hint = "RELEASE TO BUILD THE BRIDGE\nHauling " + game.player.HeldBoxes.Count + "/" + game.Capacity + " blocks";
                 else hint = "HAULING " + game.player.HeldBoxes.Count + "/" + game.Capacity + " BLOCKS\nDrag to the glowing path edge, then release";
             }
-            else if (game.player.NearbyBox != null)
+            else if (game.player != null && game.player.NearbyBox != null)
             {
                 var b = game.player.NearbyBox.GetComponent<BridgeBlock>();
                 if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
             }
-            var wisdom = forest?.Nearby(game.player.transform.position);
+            var wisdom = game.player == null ? null : forest?.Nearby(game.player.transform.position);
             if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles";
-            contextText.text = hint;
-            journalText.text = "I — They called it the end of the universe. But souls still wander between its broken shores.\n\n"
-                + (game.Bridges[0] ? "II — Your first bridge did more than carry you. It gave the lost a path home." : "II — A memory waits across the first rift.") + "\n\n"
-                + (game.completed ? "III — The light you carried was never yours alone. Every soul you guided became part of the next dawn." : "III — Build through the darkness to reach the next dawn.");
+            contextText.text = diamond + "  " + hint;
+            RefreshPlacePrompt();
+            journalText.text = "I · They called it the end of the universe. But souls still wander between its broken shores.\n\n"
+                + (game.Bridges[0] ? "II · Your first bridge did more than carry you. It gave the lost a path home." : "II · A memory waits across the first rift.") + "\n\n"
+                + (game.completed ? "III · The light you carried was never yours alone. Every soul you guided became part of the next dawn." : "III · Build through the darkness to reach the next dawn.");
             foreach (var binding in purchases) UpdatePurchase(binding);
             if (skillTree != null) skillTree.Refresh();
+        }
+        // The placement preview has no public handle, so the chip finds it by name once and caches it.
+        // ponytail: one Find per second while it is missing; make GameManager expose the ghost if that ever shows up in a profile.
+        void RefreshPlacePrompt()
+        {
+            if (placeChip == null) return;
+            if (ghost == null && Time.unscaledTime >= ghostSearch)
+            {
+                ghostSearch = Time.unscaledTime + 1;
+                var found = GameObject.Find("Next bridge block preview");
+                if (found != null) ghost = found.transform;
+            }
+            if (gameCamera == null && game != null && game.cameraRig != null) gameCamera = game.cameraRig.GetComponent<Camera>();
+            bool show = false;
+            if (View == ScreenView.Playing && gameCamera != null && ghost != null && ghost.gameObject.activeInHierarchy)
+            {
+                var point = gameCamera.WorldToScreenPoint(ghost.position);
+                // Behind the camera or off the frame: no chip. Otherwise keep it fully inside the frame.
+                show = point.z > 1f && point.x >= 0 && point.y >= 0 && point.x <= Screen.width && point.y <= Screen.height;
+                if (show)
+                {
+                    float scale = surface == null || surface.scaleFactor <= 0 ? 1 : surface.scaleFactor;
+                    Vector2 half = placeChip.sizeDelta * .5f * scale;
+                    placeChip.position = new Vector3(
+                        Mathf.Clamp(point.x + half.x + 22, half.x + 6, Screen.width - half.x - 6),
+                        Mathf.Clamp(point.y, half.y + 6, Screen.height - half.y - 6), 0);
+                }
+            }
+            if (placeChip.gameObject.activeSelf != show) placeChip.gameObject.SetActive(show);
         }
         void UpdatePurchase(PurchaseBinding b)
         {
@@ -374,7 +430,45 @@ namespace LightingBlocks
             var r = Rect(name, parent, 0, 0, 0, 0); r.anchorMin = Vector2.zero; r.anchorMax = Vector2.one; r.offsetMin = r.offsetMax = Vector2.zero; return r;
         }
         RectTransform Panel(string name, Transform parent, float x, float y, float width, float height, Color color)
-        { var r = Rect(name, parent, x, y, width, height); r.gameObject.AddComponent<Image>().color = color; return r; }
+        {
+            var r = Rect(name, parent, x, y, width, height);
+            var image = r.gameObject.AddComponent<Image>();
+            image.sprite = Fill(); image.type = Image.Type.Sliced; image.color = color;
+            // ponytail: the gold ring is a stretched child rather than a second colour in the
+            // sprite, because an Image tint multiplies the whole graphic and panels tint their fill.
+            var edge = Rect("Edge", r, 0, 0, 0, 0);
+            edge.anchorMin = Vector2.zero; edge.anchorMax = Vector2.one; edge.offsetMin = edge.offsetMax = Vector2.zero;
+            var ring = edge.gameObject.AddComponent<Image>();
+            ring.sprite = Edge(); ring.type = Image.Type.Sliced; ring.color = Mint; ring.raycastTarget = false;
+            return r;
+        }
+        static Sprite Fill() => fillSprite != null ? fillSprite : fillSprite = Rounded(d => Mathf.Clamp01(.5f - d));
+        static Sprite Edge() => edgeSprite != null ? edgeSprite : edgeSprite = Rounded(d => Mathf.Clamp01(1.1f - Mathf.Abs(d + .55f) * 1.7f));
+        // One 32x32 rounded rect with a 10 px slice border dresses every panel and button.
+        static Sprite Rounded(Func<float, float> alpha)
+        {
+            const int size = 32, radius = 8;
+            var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
+            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, name = "HUD panel shape" };
+            var pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+                for (int x = 0; x < size; x++)
+                {
+                    float px = x + .5f, py = y + .5f;
+                    float dx = px - Mathf.Clamp(px, radius, size - radius), dy = py - Mathf.Clamp(py, radius, size - radius);
+                    // Signed distance to the rounded edge: negative inside, positive outside.
+                    pixels[y * size + x] = new Color(1, 1, 1, Mathf.Clamp01(alpha(Mathf.Sqrt(dx * dx + dy * dy) - radius)));
+                }
+            texture.SetPixels(pixels); texture.Apply();
+            return Sprite.Create(texture, new UnityEngine.Rect(0, 0, size, size), new Vector2(.5f, .5f), 100, 0, SpriteMeshType.FullRect, new Vector4(10, 10, 10, 10));
+        }
+        // Legacy Text has no tracking, so caps are spaced by hand; the ornament degrades to what the font owns.
+        static string Spaced(string value) => string.Join(" ", value.ToCharArray());
+        string Glyph(params char[] options)
+        {
+            if (font != null) foreach (var option in options) if (font.HasCharacter(option)) return option.ToString();
+            return "*";
+        }
         RectTransform CenterPanel(string name, float width, float height)
         {
             var r = Panel(name, canvas, 0, 0, width, height, Ink); r.anchorMin = r.anchorMax = r.pivot = new Vector2(.5f, .5f); r.anchoredPosition = Vector2.zero; return r;
@@ -387,13 +481,13 @@ namespace LightingBlocks
             text.color = color; text.alignment = alignment; text.raycastTarget = false; text.horizontalOverflow = HorizontalWrapMode.Wrap; text.verticalOverflow = VerticalWrapMode.Truncate;
             return text;
         }
-        Button Button(string name, Transform parent, string caption, float x, float y, float width, float height, UnityAction action)
+        Button Button(string name, Transform parent, string caption, float x, float y, float width, float height, UnityAction action, int captionSize = 18)
         {
-            var r = Panel(name, parent, x, y, width, height, new Color(.30f, .235f, .145f)); var button = r.gameObject.AddComponent<Button>();
+            var r = Panel(name, parent, x, y, width, height, new Color(.13f, .12f, .18f, .92f)); var button = r.gameObject.AddComponent<Button>();
             button.targetGraphic = r.GetComponent<Image>(); var colors = button.colors;
-            colors.normalColor = Color.white; colors.highlightedColor = new Color(1.3f, 1.5f, 1.4f); colors.selectedColor = colors.highlightedColor;
-            colors.pressedColor = new Color(.75f, .63f, .43f); colors.disabledColor = new Color(.43f, .49f, .57f, .85f); button.colors = colors;
-            Label("Label", r, caption, 9, 3, width - 18, height - 6, 18, White, TextAnchor.MiddleCenter);
+            colors.normalColor = Color.white; colors.highlightedColor = new Color(1.45f, 1.28f, .90f); colors.selectedColor = colors.highlightedColor;
+            colors.pressedColor = new Color(.75f, .63f, .43f); colors.disabledColor = new Color(.43f, .42f, .52f, .85f); button.colors = colors;
+            Label("Label", r, caption, 6, 3, width - 12, height - 6, captionSize, White, TextAnchor.MiddleCenter);
             if (action != null) button.onClick.AddListener(action); return button;
         }
     }

@@ -27,7 +27,23 @@ Material:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
+    - _GrassMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _HabitatMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
     - _MaskMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MossNormal:
         m_Texture: {fileID: 0}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
@@ -57,12 +73,14 @@ Material:
     - _NormalStrength: 0.25
     - _RimPower: 3
     - _Smoothness: 0.3
+    - _SoftFill: 0
     - _Terrain: 0
     - _Triplanar: 0
+    - _VertexTint: 0
     - _Wind: 0
     m_Colors:
     - _BaseColor: {r: 0.29411766, g: 0.25882354, b: 0.41960785, a: 1}
-    - _EmissionColor: {r: 0.05294118, g: 0.04658824, b: 0.07552942, a: 0.18}
+    - _EmissionColor: {r: 0.4, g: 0.34, b: 0.62, a: 1}
     - _RimColor: {r: 0.40529412, g: 0.37470588, b: 0.54294115, a: 0.65}
   m_BuildTextureStacks: []
   m_AllowLocking: 1
