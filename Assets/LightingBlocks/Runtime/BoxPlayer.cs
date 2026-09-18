@@ -318,9 +318,7 @@ namespace LightingBlocks
         {
             for(int ring=1;ring<=10;ring++) for(int i=0;i<16;i++)
             {
-                // Ground-relative, or the overlap test below sits inside a terrace and every drop
-                // candidate on a plateau is rejected as blocked.
-                float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=Landscape.Height(candidate)+.26f;
+                float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=.26f;
                 var game=GameManager.Instance;
                 if(!game.CanStand(candidate) || !game.CanStand(candidate+new Vector3(.43f,0,.43f)) || !game.CanStand(candidate-new Vector3(.43f,0,.43f)))continue;
                 bool occupied=false;

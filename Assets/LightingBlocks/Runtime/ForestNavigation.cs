@@ -21,25 +21,14 @@ namespace LightingBlocks
         public bool InReachableArea(Vector3 p)=>reachable.Contains(Cell(p))&&Segment(p,Point(Cell(p)));
         public bool Walkable(Vector3 p)
         {
-            // Flatten first: the tree clearance below is a 3D distance against y=0 tree positions,
-            // so an animal standing on a terrace would otherwise measure itself clear of a trunk
-            // it is walking straight through. A no-op for the layout nav, which is already flat.
-            p.y=0;
             if(!ForestLayoutGenerator.Inside(p,polygon,Mathf.Max(.8f,clearance)))return false;
             if((p-layout.definition.wisdomPosition).sqrMagnitude<1.5f*1.5f)return false;
             foreach(var t in layout.trees)if((p-t.position).sqrMagnitude<Mathf.Pow(.65f+clearance,2))return false;
             if(wildlife && ForestLayoutGenerator.Reserved(p,layout.definition,4))return false;
             return true;
         }
-        // The cliff gate is wildlife-only on purpose. The layout nav runs with wildlife:false and its
-        // reachability is re-checked against saved particle slots in ForestWorld.Valid, so adding a
-        // height clause there would reject a save the moment a terrace moved. Animals pay it instead.
         public bool Segment(Vector3 a,Vector3 b)
-        {int steps=Mathf.Max(1,Mathf.CeilToInt(Vector3.Distance(a,b)/.3f));float last=Landscape.Height(a);
-         for(int i=0;i<=steps;i++){var p=Vector3.Lerp(a,b,(float)i/steps);if(!Walkable(p))return false;
-            // Same .4 the CharacterController steps over: an authored ramp passes, a cliff face does not.
-            if(wildlife){float h=Landscape.Height(p);if(Mathf.Abs(h-last)>.4f)return false;last=h;}}
-         return true;}
+        {int steps=Mathf.Max(1,Mathf.CeilToInt(Vector3.Distance(a,b)/.3f));for(int i=0;i<=steps;i++)if(!Walkable(Vector3.Lerp(a,b,(float)i/steps)))return false;return true;}
         static Vector2Int Cell(Vector3 p)=>new Vector2Int(Mathf.RoundToInt(p.x),Mathf.RoundToInt(p.z));
         static Vector3 Point(Vector2Int p)=>new Vector3(p.x,0,p.y);
         public bool Reachable(Vector3 a,Vector3 b)=>Path(a,b,scratch);

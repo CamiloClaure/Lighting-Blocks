@@ -270,7 +270,7 @@ namespace LightingBlocks
             {
                 block.transform.localScale = new Vector3(2, .36f, 2); block.transform.position = Cell(block.gap, block.column, block.row);
             }
-            else { block.transform.localScale = new Vector3(.84f, .5f, .84f); var ground=block.transform.position; ground.y=Landscape.Height(ground)+.26f; block.transform.position=ground; }
+            else { block.transform.localScale = new Vector3(.84f, .5f, .84f); var ground=block.transform.position; ground.y=.26f; block.transform.position=ground; }
             block.transform.rotation=Quaternion.identity;
             var art=block.GetComponent<BlockArt>(); if(art!=null)art.Refresh();
             block.Box.Body.position = block.transform.position; Physics.SyncTransforms();
