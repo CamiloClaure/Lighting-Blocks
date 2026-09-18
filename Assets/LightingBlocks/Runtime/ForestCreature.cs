@@ -54,7 +54,7 @@ namespace LightingBlocks
             var next=Vector3.MoveTowards(transform.position,path[waypoint],(State==Mode.Flee?species.fleeSpeed:species.walkSpeed)*gait*dt);
             if(!ClearGround(next,0)||!nav.Segment(transform.position,next)){State=Mode.Recover;timer=1;path.Clear();return;}
             var direction=next-transform.position;if(direction.sqrMagnitude>.00001f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(direction),dt*6);
-            transform.position=next;if((next-path[waypoint]).sqrMagnitude<.01f)waypoint++;
+            next.y=Landscape.Height(next);transform.position=next;if((next-path[waypoint]).sqrMagnitude<.01f)waypoint++;
             if(waypoint>=path.Count){State=State==Mode.Flee?Mode.Recover:Mode.Idle;timer=Range(2,5);cooldown=2;Animate(species.idle);}
         }
         void Pick(bool fleeing)
@@ -69,11 +69,16 @@ namespace LightingBlocks
             var polygon=Landscape.Shores[layout.definition.polygonIndex];
             for(int n=0;n<48;n++)
             {
-                var p=layout.habitats[random.Next(layout.habitats.Count)];float dist=Vector3.Distance(transform.position,p);
+                // Re-ground the target once and the whole flight follows: the range test, the arc
+                // and the landing snap all read flightEnd.
+                var p=layout.habitats[random.Next(layout.habitats.Count)];p.y=Landscape.Height(p);float dist=Vector3.Distance(transform.position,p);
                 if(dist<7||dist>30||!ClearGround(p,8))continue;
                 bool safe=true;float height=3.5f;
                 for(int k=0;k<=24;k++){float t=k/24f;var sample=Vector3.Lerp(transform.position,p,t);if(!ForestLayoutGenerator.Inside(sample,polygon,.6f)){safe=false;break;}
                     foreach(var tree in layout.trees)if((new Vector3(sample.x,0,sample.z)-tree.position).sqrMagnitude<9*tree.scale*tree.scale){if(t<.16f||t>.84f){safe=false;break;}height=Mathf.Max(height,(7.5f*tree.scale)/Mathf.Sin(Mathf.PI*t));}
+                    // Lift the arc over any terrace it crosses. Measured against the straight line
+                    // between the two ends, so a flight that stays on one level pays nothing.
+                    height=Mathf.Max(height,Landscape.Height(sample)-Mathf.Lerp(transform.position.y,p.y,t)+3.5f);
                     if((sample-layout.definition.wisdomPosition).sqrMagnitude<25){safe=false;break;}
                     if(!safe)break;}
                 if(!safe||height>18)continue;bool alreadyFlying=Airborne;flightFromAir=alreadyFlying;holding=false;flightStart=transform.position;flightEnd=p;flightHeight=height;flightT=0;flightDuration=Mathf.Max(takeoffLength+landingLength+1,dist/4+takeoffLength+landingLength);State=alreadyFlying?Mode.Flight:Mode.Takeoff;Animate(alreadyFlying?"Flight":"Takeoff");ForestSoundscape.Play("wing",transform.position,.06f);return true;

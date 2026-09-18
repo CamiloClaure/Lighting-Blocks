@@ -81,6 +81,6 @@ namespace LightingBlocks
         static ProfilerRecorder Marker(List<ProfilerRecorderHandle> handles,string name){var handle=handles.FirstOrDefault(h=>ProfilerRecorderHandle.GetDescription(h).Name==name);return handle.Valid?new ProfilerRecorder(handle,1,ProfilerRecorderOptions.Default|ProfilerRecorderOptions.StartImmediately):default;}
         static double Ms(ProfilerRecorder recorder)=>recorder.Valid?recorder.LastValue/1e6:-1;
         void OnDisable(){mainThread.Dispose();gcCollect.Dispose();gfxWait.Dispose();cameraRender.Dispose();physicsSim.Dispose();animators.Dispose();forestCover.Dispose();}
-        void Move(Vector3 p){var cc=game.player.GetComponent<CharacterController>();cc.enabled=false;game.player.transform.position=new Vector3(p.x,.025f,p.z);cc.enabled=true;}
+        void Move(Vector3 p){var cc=game.player.GetComponent<CharacterController>();cc.enabled=false;game.player.transform.position=new Vector3(p.x,Landscape.Height(p)+.025f,p.z);cc.enabled=true;}
     }
 }

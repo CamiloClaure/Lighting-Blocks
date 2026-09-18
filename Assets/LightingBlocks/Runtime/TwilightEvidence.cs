@@ -45,6 +45,6 @@ namespace LightingBlocks
             }
             File.WriteAllText(folder+"/complete.txt","Captured all three islands, crystal bridges and bird encounter; fixture isolated from user saves.");yield return new WaitForSeconds(1);Application.Quit();
         }
-        void Move(Vector3 p){var cc=game.player.GetComponent<CharacterController>();cc.enabled=false;game.player.transform.position=new Vector3(p.x,.025f,p.z);cc.enabled=true;}
+        void Move(Vector3 p){var cc=game.player.GetComponent<CharacterController>();cc.enabled=false;game.player.transform.position=new Vector3(p.x,Landscape.Height(p)+.025f,p.z);cc.enabled=true;}
     }
 }

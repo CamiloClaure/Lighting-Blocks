@@ -39,7 +39,10 @@ Shader "LightingBlocks/Spectral Lit"
  o.positionCS=vp.positionCS;o.positionWS=vp.positionWS;o.normalWS=vn.normalWS;o.tangentWS=half4(vn.tangentWS,a.tangentOS.w*GetOddNegativeScale());o.uv=TRANSFORM_TEX(a.uv,_BaseMap);o.fog=ComputeFogFactor(vp.positionCS.z);o.color=a.color;return o;}
  void Cut(V i){clip(SAMPLE_TEXTURE2D(_BaseMap,sampler_BaseMap,i.uv).a-_Cutoff);}
  half4 Frag(V i):SV_Target{
- UNITY_SETUP_INSTANCE_ID(i);float2 uv=_Terrain>.5?i.positionWS.xz/3:i.uv;half3 n=normalize(i.normalWS);
+ UNITY_SETUP_INSTANCE_ID(i);half3 n=normalize(i.normalWS);
+ // World-planar ground, but pick the plane from the normal or a terrace wall streaks: xz is constant
+ // up a vertical face. A no-op on flat ground, where |n.y| is 1 on every triangle.
+ float2 uv=_Terrain>.5?(abs(n.y)>.5?i.positionWS.xz:abs(n.x)>abs(n.z)?i.positionWS.zy:i.positionWS.xy)/3:i.uv;
  half4 color=SAMPLE_TEXTURE2D(_BaseMap,sampler_BaseMap,uv),mask=SAMPLE_TEXTURE2D(_MaskMap,sampler_MaskMap,uv);
  half3 normal=UnpackNormalScale(SAMPLE_TEXTURE2D(_NormalMap,sampler_NormalMap,uv),_NormalStrength);
  if(_Terrain>.5){float4 weights=SAMPLE_TEXTURE2D(_HabitatMap,sampler_HabitatMap,(i.positionWS.xz+float2(64,64))/float2(128,256));

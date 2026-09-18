@@ -77,6 +77,34 @@ namespace LightingBlocks
             vertices.Add(new Vector3(centre.x, 0, centre.y)); uv.Add(centre / 8);
             foreach (var p in points) { vertices.Add(new Vector3(p.x, 0, p.y)); uv.Add(p / 8); }
             for (int i = 0; i < count; i++) triangles.AddRange(new[] { 0, (i + 1) % count + 1, i + 1 });
+            // Terraces are appended, never tessellated into the fan above: the rim ring stays
+            // bit-identical, so KeelVertex's "ring 0 matches the floor rim" contract holds by
+            // construction and the keel's asserted vertex count is untouched. Each terrace is a top
+            // fan at Landscape.Height plus one wall quad per edge dropping to the plane below.
+            foreach (var terrace in Landscape.Terraces)
+            {
+                if (terrace.island != index) continue;
+                var area = terrace.area; int n = area.Length, top = vertices.Count;
+                Vector2 middle = Centroid(area);
+                vertices.Add(new Vector3(middle.x, Landscape.Level(terrace, middle), middle.y)); uv.Add(middle / 8);
+                foreach (var q in area) { vertices.Add(new Vector3(q.x, Landscape.Level(terrace, q), q.y)); uv.Add(q / 8); }
+                for (int i = 0; i < n; i++) triangles.AddRange(new[] { top, top + (i + 1) % n + 1, top + i + 1 });
+                for (int i = 0, j = n - 1; i < n; j = i++)
+                {
+                    Vector3 a = vertices[top + j + 1], b = vertices[top + i + 1];
+                    if (a.y < .01f && b.y < .01f) continue;
+                    // A terrace meeting its own ramp needs no wall: the ground outside the edge is
+                    // already at this height, and a wall there would punch up through that surface.
+                    Vector2 edge = new Vector2(b.x - a.x, b.z - a.z), mid = new Vector2((a.x + b.x) * .5f, (a.z + b.z) * .5f);
+                    Vector2 outward = new Vector2(edge.y, -edge.x).normalized;
+                    if (Vector2.Dot(outward, mid - middle) < 0) outward = -outward;
+                    if (Landscape.Height(mid + outward * .35f) >= Mathf.Min(a.y, b.y) - .01f) continue;
+                    int w = vertices.Count;
+                    vertices.AddRange(new[] { a, b, new Vector3(b.x, 0, b.z), new Vector3(a.x, 0, a.z) });
+                    uv.AddRange(new[] { new Vector2(a.x, a.z) / 8, new Vector2(b.x, b.z) / 8, new Vector2(b.x, b.z) / 8, new Vector2(a.x, a.z) / 8 });
+                    triangles.AddRange(new[] { w, w + 1, w + 2, w, w + 2, w + 3 });
+                }
+            }
             return Finish(vertices, uv, triangles, "Shore " + index);
         }
         // The islands float over a starfield, so every court needs a rock keel under it instead of
@@ -498,7 +526,7 @@ namespace LightingBlocks
                     // angles compound to eight and the column stops reading as merely settled.
                     float height=.6f+(float)random.NextDouble()*.4f,tilt=(float)random.NextDouble()*12-6;
                     var column=Lit(root,"Spirit ruin",drum,stone);
-                    column.transform.position=new Vector3(p.x,.4f*height,p.z);
+                    column.transform.position=new Vector3(p.x,Landscape.Height(p)+.4f*height,p.z);
                     column.transform.rotation=Quaternion.Euler(0,yaw,0)*Quaternion.Euler(tilt,0,0);
                     column.transform.localScale=Vector3.Scale(drumSize,new Vector3(1,height,1));
                     continue;
@@ -507,7 +535,7 @@ namespace LightingBlocks
                 // the six the rest of the world is asserted against.
                 var arch=new GameObject("Spirit ruin").transform;
                 arch.SetParent(root,false);
-                arch.position=p;arch.rotation=Quaternion.Euler(0,yaw,0);
+                arch.position=p+Vector3.up*Landscape.Height(p);arch.rotation=Quaternion.Euler(0,yaw,0);
                 foreach(int leg in new[]{-1,1})
                 {
                     var post=Lit(arch,"Arch column",drum,stone);

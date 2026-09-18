@@ -28,7 +28,7 @@ namespace LightingBlocks
         public void CenterOnPlayer()
         {
             if (player == null) return;
-            Focus = new Vector3(player.position.x, 0, player.position.z);
+            Focus = new Vector3(player.position.x, Landscape.Height(player.position), player.position.z);
         }
         void Start() { CenterOnPlayer(); smoothedFocus = Focus; Apply(1f); }
         void LateUpdate()
@@ -68,7 +68,10 @@ namespace LightingBlocks
             Vector3 forward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
             Vector3 right = Vector3.Cross(Vector3.up, forward);
             Vector3 target = Focus + right * amount.x + forward * amount.y;
-            Focus = new Vector3(Mathf.Clamp(target.x, minimumFocus.x, bounds.x), 0, Mathf.Clamp(target.z, minimumFocus.y, bounds.y));
+            // The pivot rides the ground so climbing a terrace does not push the player up-screen.
+            // smoothedFocus already lerps toward this, so the vertical move damps for free.
+            float fx = Mathf.Clamp(target.x, minimumFocus.x, bounds.x), fz = Mathf.Clamp(target.z, minimumFocus.y, bounds.y);
+            Focus = new Vector3(fx, Landscape.Height(fx, fz), fz);
         }
         void Apply(float blend)
         {

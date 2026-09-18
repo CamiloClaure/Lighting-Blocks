@@ -88,24 +88,29 @@ namespace LightingBlocks
                 var root=new GameObject(d.id).transform;root.SetParent(visualRoot,false);
                 foreach(var p in layout.trees)
                 {
-                    var t=Instantiate(configuration.trees[p.variant],p.position,Quaternion.Euler(0,p.yaw,0),root);t.transform.localScale*=p.scale;
+                    var t=Instantiate(configuration.trees[p.variant],p.position+Vector3.up*Landscape.Height(p.position),Quaternion.Euler(0,p.yaw,0),root);t.transform.localScale*=p.scale;
                     var trunk=t.AddComponent<CapsuleCollider>();trunk.radius=.32f;trunk.height=1.8f;trunk.center=new Vector3(0,.9f,0);
                 }
                 if(configuration.coverMeshes!=null&&configuration.coverMeshes.Length>0){var cover=root.gameObject.AddComponent<ForestCoverRenderer>();cover.Initialize(configuration,layout,game.player.transform);}
+                // Not lifted by Landscape.Height on purpose: wisdom courts are authored flat, and
+                // routing the trunk without also routing Outputs(), FindOutput and the paving ring
+                // would put the tree above its own sockets. Flat courts is the cheaper contract.
                 var wisdom=Instantiate(configuration.wisdomPrefab,d.wisdomPosition,Quaternion.identity,root);wisdom.name="Wisdom Tree - "+d.id;
                 var component=wisdom.GetComponent<WisdomTree>();component.Initialize(this,d);WisdomTrees.Add(component);
                 var owner=Inventory(d.id);
                 for(int i=0;i<layout.particles.Count;i++)
                 {
                     var pickup=new GameObject("Particle "+owner.slots[i].id,typeof(MeshFilter),typeof(MeshRenderer));pickup.GetComponent<MeshFilter>().sharedMesh=configuration.particleMesh;
-                    pickup.transform.SetParent(root,false);layout.particles[i]=owner.slots[i].position;pickup.transform.position=owner.slots[i].position+Vector3.up*.7f;pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
+                    // A saved slot Y of 0 means "ground level at this XZ", not "y=0". The height is
+                    // added here and never stored, which is what keeps the save format untouched.
+                    pickup.transform.SetParent(root,false);layout.particles[i]=owner.slots[i].position;pickup.transform.position=owner.slots[i].position+Vector3.up*(.7f+Landscape.Height(owner.slots[i].position));pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
                     pickup.GetComponent<Renderer>().sharedMaterial=configuration.particleMaterial;pickup.GetComponent<Renderer>().shadowCastingMode=ShadowCastingMode.Off;
                     pickupVisuals.Add(pickup.transform);pickupStates.Add(owner.slots[i]);pickupOwners.Add(owner);pickupLayouts.Add(layout);pickupAppear.Add(1);pickup.SetActive(owner.slots[i].remaining<=0&&!owner.slots[i].pending);
                 }
                 for(int i=0;i<layout.animals.Count;i++)
                 {
-                    if(i<d.animalCount){int species=ForestLayoutGenerator.Hash(State.seed,d.id+"/species/"+i)%configuration.animals.Length;var animal=Instantiate(configuration.animals[species],layout.animals[i],Quaternion.identity,root);animal.GetComponent<SpectralAnimal>().Initialize(game,new ForestNavigation(Landscape.Shores[d.polygonIndex],layout,true),d,ForestLayoutGenerator.Hash(State.seed,d.id+"/animal/"+i));}
-                    else if(configuration.species!=null&&configuration.species.Length>=2){var species=configuration.species[i<d.animalCount+d.rabbitCount?0:1];var animal=Instantiate(species.prefab,layout.animals[i],Quaternion.identity,root);animal.GetComponent<ForestCreature>().Initialize(game,layout,species,ForestLayoutGenerator.Hash(State.seed,d.id+"/creature/"+i));}
+                    if(i<d.animalCount){int species=ForestLayoutGenerator.Hash(State.seed,d.id+"/species/"+i)%configuration.animals.Length;var animal=Instantiate(configuration.animals[species],layout.animals[i]+Vector3.up*Landscape.Height(layout.animals[i]),Quaternion.identity,root);animal.GetComponent<SpectralAnimal>().Initialize(game,new ForestNavigation(Landscape.Shores[d.polygonIndex],layout,true),d,ForestLayoutGenerator.Hash(State.seed,d.id+"/animal/"+i));}
+                    else if(configuration.species!=null&&configuration.species.Length>=2){var species=configuration.species[i<d.animalCount+d.rabbitCount?0:1];var animal=Instantiate(species.prefab,layout.animals[i]+Vector3.up*Landscape.Height(layout.animals[i]),Quaternion.identity,root);animal.GetComponent<ForestCreature>().Initialize(game,layout,species,ForestLayoutGenerator.Hash(State.seed,d.id+"/creature/"+i));}
                 }
             }
             var random=new System.Random(ForestLayoutGenerator.Hash(State.seed,"valley"));int count=0;
@@ -157,7 +162,7 @@ namespace LightingBlocks
             for(int i=0;i<pickupVisuals.Count;i++)
             {
                 var t=pickupVisuals[i];var slot=pickupStates[i];if(slot.pending&&respawnTimer<=0)Respawn(i);bool active=slot.remaining<=0&&!slot.pending;t.gameObject.SetActive(active);
-                if(!active)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
+                if(!active)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Landscape.Height(slot.position)+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
                 if(collect&&collectionTimer<=0)TryCollect(i);
             }
             if(collectionTimer<=0)collectionTimer=.1f;if(respawnTimer<=0)respawnTimer=.5f;
@@ -168,7 +173,7 @@ namespace LightingBlocks
             int start=ForestLayoutGenerator.Hash(State.seed,slot.id+"/"+(slot.generation+1))%layout.candidates.Count;
             for(int n=0;n<layout.candidates.Count;n++){
                 var p=layout.candidates[(start+n)%layout.candidates.Count];var delta=game.player.transform.position-p;delta.y=0;
-                if(delta.sqrMagnitude<9||(p-slot.position).sqrMagnitude<4||Occupied(p+Vector3.up*.7f,new Vector3(.2f,.15f,.2f),true))continue;
+                if(delta.sqrMagnitude<9||(p-slot.position).sqrMagnitude<4||Occupied(p+Vector3.up*(.7f+Landscape.Height(p)),new Vector3(.2f,.15f,.2f),true))continue;
                 bool blocked=false;foreach(var b in game.Blocks)if((new Vector3(b.transform.position.x,0,b.transform.position.z)-p).sqrMagnitude<1.44f){blocked=true;break;}
                 foreach(var other in pickupOwners[index].slots)if(other!=slot&&other.remaining<=0&&!other.pending&&(other.position-p).sqrMagnitude<6.25f){blocked=true;break;}
                 if(blocked)continue;slot.position=p;slot.generation++;slot.pending=false;pickupAppear[index]=0;int local=pickupOwners[index].slots.IndexOf(slot);layout.particles[local]=p;return true;

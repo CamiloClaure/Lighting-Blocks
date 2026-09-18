@@ -33,7 +33,7 @@ namespace LightingBlocks
             foreach(var b in game.Blocks)if(!b.placed&&b.Box.Holder==null&&(b.transform.position-next).sqrMagnitude<1){blocked=true;break;}
             if(blocked||!nav.Segment(transform.position,next)){path.Clear();State=Mode.Recover;remaining=1;return;}
             var direction=next-transform.position;if(direction.sqrMagnitude>.00001f)transform.rotation=Quaternion.Slerp(transform.rotation,Quaternion.LookRotation(direction),delta*8);
-            transform.position=next;if((next-path[waypoint]).sqrMagnitude<.01f)waypoint++;
+            next.y=Landscape.Height(next);transform.position=next;if((next-path[waypoint]).sqrMagnitude<.01f)waypoint++;
         }
         void Pick(bool fleeing)
         {

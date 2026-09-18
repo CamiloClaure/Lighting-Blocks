@@ -39,7 +39,9 @@ namespace LightingBlocks.Editor
         public static void BatchRun(){SessionState.SetBool("Twilight.Batch",true);Request();}
         static GameManager G=>GameManager.Instance;static ForestWorld F=>ForestWorld.For(G);
         static string StableSave(){var data=JsonUtility.FromJson<GameManager.SaveData>(G.ExportSave());data.utc=0;return JsonUtility.ToJson(data);}
-        static void Teleport(Vector3 p){var c=G.player.GetComponent<CharacterController>();c.enabled=false;G.player.transform.position=new Vector3(p.x,.025f,p.z);c.enabled=true;Physics.SyncTransforms();}
+        // Terrain-aware, not a relaxed assertion: land at .025 under a pickup sitting on a terrace and
+        // TryCollect's vertical gate refuses it, which takes a third of the suite down with it.
+        static void Teleport(Vector3 p){var c=G.player.GetComponent<CharacterController>();c.enabled=false;G.player.transform.position=new Vector3(p.x,Landscape.Height(p)+.025f,p.z);c.enabled=true;Physics.SyncTransforms();}
         static void CollectThree(int island)
         {
             var d=F.configuration.islands[island];int before=F.Inventory(d.id).inventory,offset=0;for(int i=0;i<island;i++)offset+=F.configuration.islands[i].particleCount;
@@ -79,6 +81,22 @@ namespace LightingBlocks.Editor
             var rimSteps=UnityEngine.Object.FindObjectsByType<Transform>().Count(t=>t.name=="Rim step");Check(rimSteps>=6,"At least 6 Rim step objects exist (found "+rimSteps+")");
             var ruins=UnityEngine.Object.FindObjectsByType<Transform>().Where(t=>t.name=="Spirit ruin").ToArray();Check(ruins.Length>=5&&ruins.All(t=>Landscape.Inside(new Vector2(t.position.x,t.position.z),Landscape.Shores[1])),"At least 5 Spirit ruin objects, all inside island index 1 ("+ruins.Length+" found, outside="+ruins.Count(t=>!Landscape.Inside(new Vector2(t.position.x,t.position.z),Landscape.Shores[1]))+")");
             var shafts=UnityEngine.Object.FindObjectsByType<Transform>().Count(t=>t.name=="Void shaft");Check(shafts>=12,"At least 12 Void shaft objects exist (found "+shafts+")");
+            // Terraces: the four invariants the rest of the world is built on. Break any of them and
+            // the rim dressing, the bridge landings or the wisdom sockets end up floating.
+            float terraceEdge=float.MaxValue;foreach(var t in Landscape.Terraces)foreach(var v in t.area)terraceEdge=Mathf.Min(terraceEdge,ForestLayoutGenerator.Edge(v,Landscape.Shores[t.island]));
+            Check(terraceEdge>=5f,"Every terrace vertex sits at least 5 m inside its shore, so the rim stays flat (closest "+terraceEdge.ToString("0.0")+" m)");
+            var raisedCourt=F.configuration.islands.FirstOrDefault(d=>Landscape.Height(d.wisdomPosition)>.001f||d.outputOffsets.Any(o=>Landscape.Height(d.wisdomPosition+o)>.001f));
+            Check(raisedCourt==null,"Every Wisdom Tree court and output socket stands on flat ground"+(raisedCourt==null?"":" (raised: "+raisedCourt.id+")"));
+            float landingRise=0;foreach(int gap in new[]{0,1})foreach(float dz in new[]{-2f,-1f,1f,2f})for(float x=-6;x<=6;x+=2)landingRise=Mathf.Max(landingRise,Landscape.Height(x,Landscape.BridgeStart(gap)+dz));
+            Check(landingRise<=.001f,"Both bridge landings stay flat so placed blocks meet the shore (worst rise "+landingRise.ToString("0.00")+" m)");
+            float drift=0;var driftAt=Vector3.zero;
+            foreach(var d in F.configuration.islands)foreach(var probe in new[]{new Vector2(20,-27),new Vector2(24,10),new Vector2(-20,-10),new Vector2(12,-2)})
+            {
+                var p=new Vector3(d.wisdomPosition.x+probe.x,0,d.wisdomPosition.z+probe.y);if(!Landscape.Supports(p))continue;
+                if(!Physics.Raycast(p+Vector3.up*10,Vector3.down,out var hit,20)||!hit.collider.name.StartsWith("ShoreFloor"))continue;
+                float delta=Mathf.Abs(hit.point.y-Landscape.Height(p));if(delta>drift){drift=delta;driftAt=p;}
+            }
+            Check(drift<.05f,"The floor collider agrees with Landscape.Height everywhere sampled (worst drift "+drift.ToString("0.000")+" m at "+driftAt+")");
             // Lantern/Lantern lamp hang off each "Lantern string", one level under the Wisdom Tree itself, so search descendants rather than direct children.
             var wisdomLanternCounts=UnityEngine.Object.FindObjectsByType<WisdomTree>().Select(w=>(id:w.Definition.id,lantern:w.GetComponentsInChildren<Transform>(true).Count(c=>c.name=="Lantern"),lamp:w.GetComponentsInChildren<Transform>(true).Count(c=>c.name=="Lantern lamp"))).ToArray();Check(wisdomLanternCounts.All(t=>t.lantern==12&&t.lamp==4),"Every Wisdom Tree carries exactly 12 Lantern and 4 Lantern lamp descendants (counts: "+string.Join("|",wisdomLanternCounts.Select(t=>t.id+"="+t.lantern+"/"+t.lamp))+")");
             var hudButtons=GameHUD.Current.GetComponentsInChildren<Transform>(true);var shortcuts=new[]{"Skill Tree Shortcut","Memories Shortcut","Pause Shortcut"};bool HasIcon(string n)=>hudButtons.FirstOrDefault(t=>t.name==n) is Transform b&&b.Cast<Transform>().Any(c=>c.name=="Icon");Check(shortcuts.All(HasIcon),"HUD shortcut buttons each carry an Icon child (missing: "+string.Join("|",shortcuts.Where(n=>!HasIcon(n)))+")");
