@@ -31,8 +31,8 @@ namespace LightingBlocks
         public int Capacity => 1 + links;
         public string Notice { get; private set; }
         public float NoticeUntil { get; private set; }
-        public string SavePath => savePathOverride ?? Path.Combine(Application.persistentDataPath, "soul-bridge-v1.json");
-        public const int Rows = 7;
+        public string SavePath => savePathOverride ?? Path.Combine(Application.persistentDataPath, BridgeProfile.Current.saveFile);
+        public static int Rows => BridgeProfile.Current.rows;
         float saveTimer;
         bool initialized;
         Transform ghost;
@@ -40,13 +40,55 @@ namespace LightingBlocks
         AudioSource audioSource;
         AudioClip chime;
         public int CurrentGap => Bridges[0] ? 1 : 0;
+        // The colour one bridge tile demands. Under mixedBridge every tile draws its own stone from
+        // its own coordinates, so all three colours are wanted from the first crossing onward. It is a
+        // pure function of the cell, so the pattern survives a reload with no save field, and the
+        // ghost, the Wisdom Tree draw and FindPlacement cannot drift apart. Legacy profile: gap 1
+        // wanted Grave Stone or better, gap 0 took anything.
+        public static int RequiredTier(int gap, int column, int row)
+        {
+            if (!BridgeProfile.Current.mixedBridge) return gap == 1 ? 1 : 0;
+            unchecked
+            {
+                // ponytail: one xorshift-multiply hash. It only has to look unpatterned to someone
+                // walking a 50-tile lane; reach for a real PRNG if the lanes ever read as striped.
+                uint h = (uint)(gap * 73856093) ^ (uint)((column + 8) * 19349663) ^ (uint)((row + 1) * 83492791);
+                h ^= h >> 13; h *= 2654435761u; h ^= h >> 16;
+                return (int)(h % 3u);
+            }
+        }
+        // Whether a stone may land on a cell. Every acceptance test routes through here, so the ghost
+        // preview and the placement rule are one rule.
+        public static bool Accepts(int gap, int column, int row, int tier)
+            => BridgeProfile.Current.mixedBridge ? tier == RequiredTier(gap, column, row) : gap != 1 || tier != 0;
+        // The cell a world point resolves to; the rounding FindPlacement has always used.
+        public static void CellOf(Vector3 point, out int gap, out int column, out int row)
+        {
+            gap = GapAt(point.z);
+            column = Mathf.Clamp(Mathf.RoundToInt(point.x / 2), -2, 2);
+            row = Mathf.Clamp(Mathf.RoundToInt((point.z - Landscape.BridgeStart(gap)) / 2), 0, Rows - 1);
+        }
         public static Vector3 Cell(int gap, int column, int row) => new Vector3(column * 2, -.18f, Landscape.BridgeStart(gap) + row * 2);
+        // Which crossing a depth belongs to. Splitting at the midpoint between the two lane starts
+        // worked while both lanes were 14 m long and 67 m apart, but a 100 m crossing swallows that
+        // midpoint, so a stone two thirds of the way over the first rift was being read as the
+        // second. Measure the distance to each lane instead and take the nearer.
+        public static int GapAt(float z)
+        {
+            float first = Landscape.BridgeStart(0), second = Landscape.BridgeStart(1), reach = (Rows - 1) * 2;
+            float toFirst = z < first ? first - z : z > first + reach ? z - first - reach : 0;
+            float toSecond = z < second ? second - z : z > second + reach ? z - second - reach : 0;
+            return toSecond < toFirst ? 1 : 0;
+        }
         // One open 16-point walk over the 12 cube edges; three edges are retraced because every corner has odd degree.
         // Corner index bits are x, y, z, so bit 0 picks max.x, bit 1 max.y, bit 2 max.z.
         static readonly int[] GhostEdgeWalk = { 0, 1, 5, 1, 3, 2, 3, 7, 6, 4, 6, 2, 0, 4, 5, 7 };
+        // Share of the first tree's random draw that lands on the tier the current crossing needs. See TrySpawnAtWisdomTree.
+        const float RequiredShare = .6f;
 
         void Awake()
         {
+            BridgeProfile.Select(gameObject.scene.name);
             Instance = this;
             if(ForestPerformanceProbe.Requested||TwilightEvidence.Requested)persistenceEnabled=false;
 #if UNITY_EDITOR
@@ -61,6 +103,17 @@ namespace LightingBlocks
         void Start()
         {
             Blocks.Clear(); Blocks.AddRange(blocksRoot.GetComponentsInChildren<BridgeBlock>(true));
+            if (Landscape.Shifted)
+            {
+                // Scene-authored props and loose blocks are still positioned in the shipped layout;
+                // carry them onto their island now that Landscape has moved it. Placed blocks are
+                // re-seated by ConfigureBlock from Cell(...) below, so only the loose ones need this.
+                if (exit != null) exit.position = Landscape.ImportPosition(exit.position);
+                if (soulWell != null) soulWell.position = Landscape.ImportPosition(soulWell.position);
+                if (wellCore != null) wellCore.transform.position = Landscape.ImportPosition(wellCore.transform.position);
+                if (nextAreaGlow != null) nextAreaGlow.transform.position = Landscape.ImportPosition(nextAreaGlow.transform.position);
+                foreach (var b in Blocks) if (!b.placed) b.transform.position = Landscape.ImportPosition(b.transform.position);
+            }
             foreach(var b in Blocks) ConfigureBlock(b);
             ApplyUpgrades(); Recalculate(); initialized = true;
             var forest = ForestWorld.For(this); if (forest != null) forest.BeginSession();
@@ -121,6 +174,16 @@ namespace LightingBlocks
             {
                 var k = Keyboard.current;
                 if (k.eKey.wasPressedThisFrame) Interact();
+                // Holding E keeps the Wisdom Tree channelling: BeginCharge no-ops while a charge is
+                // running, so this only re-arms on the frame after one completes. Silent, so an empty
+                // satchel does not repaint the same refusal notice every frame.
+                if (BridgeProfile.Current.holdChannel && k.eKey.isPressed && !k.eKey.wasPressedThisFrame)
+                    ForestWorld.For(this)?.Nearby(player.transform.position)?.BeginCharge(true);
+                if (k.rKey.wasPressedThisFrame) ReturnStones();
+                // ponytail: test cheat. P fills the satchel on the island underfoot, so bridge
+                // behaviour can be exercised without hand-farming 150 particles. Delete the branch
+                // and GrantParticles to ship.
+                if (k.pKey.wasPressedThisFrame) GrantParticles();
                 if (k.digit1Key.wasPressedThisFrame) Purchase("speed");
                 if (k.digit2Key.wasPressedThisFrame) Purchase("links");
                 if (k.digit3Key.wasPressedThisFrame) Purchase("strength");
@@ -136,11 +199,33 @@ namespace LightingBlocks
                 var block = held ? player.HeldBox.GetComponent<BridgeBlock>() : null;
                 // Preview the tier that will actually land: the held crystal, or the starter tier when empty handed.
                 int previewTier = block == null ? 0 : Mathf.Clamp(block.tier, 0, ghost.childCount - 1);
-                for (int i = 0; i < ghost.childCount; i++) ghost.GetChild(i).gameObject.SetActive(i == previewTier);
-                if (player.Orbiting && FindOrbitPlacement(block,out var orbitCell)) ghost.position=orbitCell+Vector3.up*.205f;
+                // The gap of the placement being previewed, falling back to the next gap to build when
+                // nothing here resolves to a valid placement.
+                int targetGap = CurrentGap, targetColumn = 0, targetRow = 0;
+                if (player.Orbiting && FindOrbitPlacement(block,out var orbitCell))
+                {
+                    ghost.position = orbitCell + Vector3.up * .205f;
+                    CellOf(orbitCell, out targetGap, out targetColumn, out targetRow);
+                }
                 else if (block != null && FindPlacement(block, out int g, out int x, out int z, out _))
+                {
                     ghost.position = Cell(g, x, z) + Vector3.up * .205f;
-                else ghost.position = NextCell() + Vector3.up * .205f;
+                    targetGap = g; targetColumn = x; targetRow = z;
+                }
+                else
+                {
+                    var next = NextCell();
+                    ghost.position = next + Vector3.up * .205f;
+                    CellOf(next, out targetGap, out targetColumn, out targetRow);
+                }
+                if (BridgeProfile.Current.requiredTierGhost)
+                {
+                    // Show the stone this tile needs, unless the stone in hand is about to land here:
+                    // it is about to land, and showing a different colour would be a lie.
+                    if (block == null || !Accepts(targetGap, targetColumn, targetRow, block.tier))
+                        previewTier = Mathf.Clamp(RequiredTier(targetGap, targetColumn, targetRow), 0, ghost.childCount - 1);
+                }
+                for (int i = 0; i < ghost.childCount; i++) ghost.GetChild(i).gameObject.SetActive(i == previewTier);
                 ghost.gameObject.SetActive(!Bridges[1]);
             }
         }
@@ -184,7 +269,7 @@ namespace LightingBlocks
                 case "radiance": radiance++; break; case "generator": generator++; break; default: summoned++; break;
             }
             ApplyUpgrades();
-            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nClick to gather up to " + Capacity + " floating stones. Q drops or builds them." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Walking and hauling are faster." : "Strength level " + strength + ". Grave Stones need I; Obsidian needs III."));
+            Notify(supply ? "A NEW STONE ANSWERS\nIt waits on the island beside the stone source." : id == "generator" ? "SOUL WELL AWAKENED\nIndependent income: +" + Format(GeneratorRate) + " Souls/sec." : id == "links" ? "SOUL LINKS " + links + "\nClick to gather up to " + Capacity + " floating stones. Q drops or builds them." : id == "radiance" ? "LIGHTING SOUL " + radiance + "\nYour light now reaches " + soulLight.range.ToString("0") + " metres." : "POWER AWAKENED\n" + (id == "speed" ? "Walking and hauling are faster." : "Strength level " + strength + "." + (BridgeProfile.Current.equalWeight ? "" : " Grave Stones need I; Obsidian needs III.")));
             Save(); return true;
         }
         public void ApplyUpgrades()
@@ -194,16 +279,39 @@ namespace LightingBlocks
             if (wellCore != null) wellCore.gameObject.SetActive(generator > 0);
         }
         public bool Spawn(int tier, int island) => false; // Legacy paid supply is retired.
-        public bool TrySpawnAtWisdomTree(string islandId, out BridgeBlock block)
+        // forceTier skips the draw. The offline fixtures in ForestPerformanceProbe and TwilightEvidence
+        // build a whole completed bridge and cannot roll dice for the colour of 50 tiles in a row.
+        public bool TrySpawnAtWisdomTree(string islandId, out BridgeBlock block, int forceTier = -1)
         {
             block = null;
             var forest = ForestWorld.For(this);
             if (forest == null) return false;
             var definition = forest.configuration.Find(islandId);
             if (definition == null || !forest.FindOutput(definition, out var point)) return false;
+            // Every tree answers with a random stone, weighted toward the colour the bridge wants
+            // next: an equal draw over the three tiers made two stones in three unplaceable, so the
+            // wanted tier now comes up about three times in five. It has to be every tree, not just
+            // the first: a gap-1 tile can ask for blue or amber, and island 2's configured tier is
+            // Grave alone, which would mean hauling the other two colours 100 m back from island 1.
+            int tier = definition.blockTier;
+            if (forceTier >= 0) tier = Mathf.Clamp(forceTier, 0, blockPrefabs.Length - 1);
+            else if (BridgeProfile.Current.randomTreeStones)
+            {
+                int count = Mathf.Min(3, blockPrefabs.Length);
+                // Aim at the next forward tile, not at the crossing: every tile asks for its own
+                // colour now, so the only useful draw is whatever the column-0 head wants next. The
+                // 40% tail still supplies the side columns, which want their own colours.
+                CellOf(NextCell(), out int nextGap, out int nextColumn, out int nextRow);
+                int wanted = Mathf.Clamp(RequiredTier(nextGap, nextColumn, nextRow), 0, count - 1);
+                // Two-step draw: RequiredShare chance of the wanted tier, else uniform over the other
+                // two, gives exactly 60/20/20. Rolling "wanted, else uniform over all three" would
+                // still land on wanted a third of the time in the else branch, giving 73/13/13 instead.
+                if (UnityEngine.Random.value < RequiredShare) tier = wanted;
+                else { int other = UnityEngine.Random.Range(0, count - 1); if (other >= wanted) other++; tier = other; }
+            }
             BridgeBlock created = null;
             try {
-                created = Instantiate(blockPrefabs[definition.blockTier], point, Quaternion.identity, blocksRoot);
+                created = Instantiate(blockPrefabs[tier], point, Quaternion.identity, blocksRoot);
                 created.id = "wisdom-" + Guid.NewGuid().ToString("N");
                 ConfigureBlock(created); Blocks.Add(created); Physics.SyncTransforms(); block = created; return true;
             } catch (Exception e) {
@@ -211,17 +319,57 @@ namespace LightingBlocks
                 Debug.LogException(e); return false;
             }
         }
+        // Test aid: top the island underfoot up to a full satchel.
+        public bool GrantParticles()
+        {
+            var forest = ForestWorld.For(this);
+            var island = forest == null ? null : forest.IslandAt(player.transform.position);
+            var inventory = island == null ? null : forest.Inventory(island.id);
+            if (inventory == null) { Notify("STAND ON AN ISLAND\nParticles stay with their island.", false); return false; }
+            int before = inventory.inventory;
+            // 30 is ForestWorld.Valid's ceiling: a save above it will not load again.
+            inventory.inventory = 30;
+            Notify("PARTICLES GRANTED\n+" + (30 - before) + " fundamental particles here - 30 / 30");
+            Save();
+            return true;
+        }
+        // Random draws hand out stones the first rift refuses and Strength cannot lift, so the tree takes
+        // them back. Returning a stone refunds exactly what the tree charged for it: 3 particles.
+        public bool ReturnStones()
+        {
+            if (!BridgeProfile.Current.treeReturn || GameHUD.GameplayBlocked) return false;
+            var forest = ForestWorld.For(this);
+            var tree = forest?.Nearby(player.transform.position);
+            if (tree == null) { Notify("STAND BESIDE A WISDOM TREE\nIt can only take stones back from its own clearing.", false); return false; }
+            var loose = Blocks.Where(b => !b.placed && b.Box.Holder == null && !player.HeldBoxes.Contains(b.Box)
+                && new Vector2(b.transform.position.x - tree.transform.position.x, b.transform.position.z - tree.transform.position.z).magnitude <= 4).ToArray();
+            if (loose.Length == 0) { Notify("NO LOOSE STONES HERE\nDrag unwanted stones into the tree's clearing first.", false); return false; }
+            var inventory = forest.Inventory(tree.Definition.id);
+            int before = inventory.inventory;
+            foreach (var b in loose)
+            {
+                Blocks.Remove(b); b.gameObject.SetActive(false); Destroy(b.gameObject);
+                // Clamp to 30: ForestWorld.Valid rejects any island inventory above 30, so an unclamped refund would leave the save unable to load.
+                inventory.inventory = Mathf.Min(30, inventory.inventory + 3);
+            }
+            // Report the refund that actually landed, not 3 per stone: a full satchel swallows the rest.
+            Notify("THE TREE TAKES THEM BACK\n" + loose.Length + " stones returned · +" + (inventory.inventory - before) + " particles");
+            Save();
+            return true;
+        }
         public bool FindPlacement(BridgeBlock block, out int gap, out int column, out int row, out string reason)
         {
-            gap = block.transform.position.z > (Landscape.BridgeStart(0)+Landscape.BridgeStart(1))*.5f ? 1 : 0;
-            row = Mathf.Clamp(Mathf.RoundToInt((block.transform.position.z - Landscape.BridgeStart(gap)) / 2), 0, Rows - 1);
-            column = Mathf.Clamp(Mathf.RoundToInt(block.transform.position.x / 2), -2, 2);
+            CellOf(block.transform.position, out gap, out column, out row);
             var cell = Cell(gap, column, row); var difference = cell - block.transform.position; difference.y = 0;
             reason = "Move the block to the glowing edge of the connected bridge, then release.";
             if (difference.magnitude > 1.65f) return false;
             int selectedGap = gap, selectedColumn = column, selectedRow = row;
             if (gap == 1 && !Bridges[0]) { reason = "Finish the first bridge before extending the second."; return false; }
-            if (gap == 1 && block.tier == 0) { reason = "The second rift needs Grave Stone or Obsidian. Upgrade Strength in the skill tree [Tab]."; return false; }
+            if (!Accepts(selectedGap, selectedColumn, selectedRow, block.tier))
+            {
+                int wanted = RequiredTier(selectedGap, selectedColumn, selectedRow);
+                reason = "THIS TILE ASKS FOR " + BridgeBlock.TierName(wanted).ToUpper() + "\nEvery tile wants its own colour (" + BridgeBlock.TierColour(wanted) + " here); the preview shows which. Press R beside the Wisdom Tree to return the rest."; return false;
+            }
             if (Blocks.Any(b => b.placed && b.gap == selectedGap && b.column == selectedColumn && b.row == selectedRow)) { reason = "That bridge tile is occupied. Move to an empty edge."; return false; }
             bool adjacent = row == 0 && column == 0 || Blocks.Any(b => b.Connected && b.gap == selectedGap && Math.Abs(b.column - selectedColumn) + Math.Abs(b.row - selectedRow) == 1);
             if (!adjacent) { reason = "PATH DISCONNECTED\nAttach this block to the end or side of the glowing connected path. Diagonals do not connect."; return false; }
@@ -252,7 +400,8 @@ namespace LightingBlocks
             if (!FindPlacement(block, out int gap, out int x, out int z, out string reason))
             {
                 // Loose blocks remain movable on the island; only explain placement when near a rift.
-                if (block.transform.position.z > 5 && block.transform.position.z < 22 || block.transform.position.z > 32 && block.transform.position.z < 49) Notify(reason, false);
+                float depth = block.transform.position.z;
+                if ((depth > Landscape.BridgeStart(0) - 3 && depth < Landscape.BridgeStart(0) + Rows * 2 + 1) || (depth > Landscape.BridgeStart(1) - 3 && depth < Landscape.BridgeStart(1) + Rows * 2 + 1)) Notify(reason, false);
                 return false;
             }
             double before = Rate;
@@ -296,11 +445,18 @@ namespace LightingBlocks
             }
             // Count connected stones once and reward the length of the network.
             // Adding a shortcut must never reduce income by shortening BFS distances.
-            PathRate *= 1 + Math.Max(0, ConnectedCount - 1) * .15;
+            // Default profile leaves linkBonusBlocks at int.MaxValue, so the cap never engages and
+            // SampleScene stays byte-identical. The terrain profile caps it at 13, which reproduces
+            // the shipped completed-route multiplier (2.95x at 14 connected) and makes income linear,
+            // not quadratic, past that.
+            PathRate *= 1 + Math.Min(BridgeProfile.Current.linkBonusBlocks, Math.Max(0, ConnectedCount - 1)) * .15;
             foreach (var b in Blocks)
             {
                 var property = new MaterialPropertyBlock(); b.GetComponent<Renderer>().GetPropertyBlock(property);
-                property.SetColor("_EmissionColor", b.Connected ? WorldDressing.StepColor(b.gap, b.row) : Color.black);
+                var colour = b.Connected ? WorldDressing.StepColor(b.gap, b.row) : Color.black;
+                // A recalculation mid-fade must not relight a block the player has already left.
+                if (BridgeProfile.Current.occupancyLight) colour *= b.lit;
+                property.SetColor("_EmissionColor", colour);
                 b.GetComponent<Renderer>().SetPropertyBlock(property);
                 var art=b.GetComponent<BlockArt>(); if(art!=null)art.Refresh();
                 WorldDressing.StepLight(b);
@@ -346,8 +502,12 @@ namespace LightingBlocks
             { completed = true; Notify("THE NEXT DAWN\nThe souls were never lost. They were waiting for a way home.\nChapter complete. Your bridges and Soul Well keep generating."); Save(); return; }
             Notify(Bridges[1] ? "NEXT AREA READY\nCross the second bridge and press E beside the distant beacon." : "BUILD THE SOUL PATH\n" + Objective + "\nHold left mouse to drag. Release at the glowing edge.", false);
         }
-        public string Objective => !Bridges[0] ? "Collect particles; E at the Wisdom Tree makes blocks. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with 7 forward tiles."
-            : !Bridges[1] ? "Cross the first bridge. Learn Strength I and use Grave Stones to bridge the second rift." : !completed ? "Cross the second bridge. Reach the beacon and press E to enter the next area." : "The next dawn is open. Improve your paths, Soul Well and lighting soul.";
+        public string Objective => !Bridges[0] ? (BridgeProfile.Current.mixedBridge
+                ? "Collect particles; E at the Wisdom Tree makes blocks. Every tile asks for its own stone colour - the preview shows which; wrong stones go back to the tree with R. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with " + Rows + " forward tiles."
+                : "Collect particles; E at the Wisdom Tree makes blocks. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with " + Rows + " forward tiles.")
+            : !Bridges[1] ? (BridgeProfile.Current.mixedBridge
+                ? "Cross the first bridge. The second rift asks for its own colour on every tile too; the tree on island 2 answers with all three."
+                : "Cross the first bridge. Learn Strength I and use Grave Stones to bridge the second rift.") : !completed ? "Cross the second bridge. Reach the beacon and press E to enter the next area." : "The next dawn is open. Improve your paths, Soul Well and lighting soul.";
         public void Notify(string message, bool sound = true) { Notice = message; NoticeUntil = Time.unscaledTime + 8; if (sound && audioSource != null) audioSource.PlayOneShot(chime); }
         bool Deny(string message) { Notify(message, false); return false; }
         public static string Format(double n) => n < 10000 ? n.ToString("N1") : n < 1000000 ? (n / 1000).ToString("0.0") + "K" : (n / 1000000).ToString("0.0") + "M";
@@ -365,17 +525,29 @@ namespace LightingBlocks
             foreach (var b in Blocks) data.blocks.Add(new BlockSave { id = b.id, tier = b.tier, placed = b.placed, rewarded = b.rewarded, gap = b.gap, column = b.column, row = b.row, position = player.SavedBlockPosition(b) });
             return JsonUtility.ToJson(data, true);
         }
-        public bool ImportSave(string json, bool offline = false)
+        public bool ImportSave(string json, bool offline = false, bool adopt = false)
         {
             SaveData d; try { d = JsonUtility.FromJson<SaveData>(json); } catch { return false; }
             if (d == null || (d.version != 1 && d.version != 2 && d.version != 3 && d.version != 4) || d.blocks == null || d.blocks.Count > 150 || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.summoned < 0 || !PositionValid(d.player)) return false;
             if (d.blocks.Any(b => b == null || string.IsNullOrEmpty(b.id) || b.tier < 0 || b.tier > 2 || !PositionValid(b.position) || b.placed && (b.gap < 0 || b.gap > 1 || Math.Abs(b.column) > 2 || b.row < 0 || b.row >= Rows || b.gap == 1 && b.tier == 0)) || d.blocks.Select(b => b.id).Distinct().Count() != d.blocks.Count) return false;
             if (d.blocks.Where(b => b.placed).GroupBy(b => b.gap + ":" + b.column + ":" + b.row).Any(g => g.Count() > 1)) return false;
             if(d.version<4){d.player=Landscape.UpgradePosition(d.player);foreach(var block in d.blocks)block.position=block.placed?Cell(block.gap,block.column,block.row):Landscape.UpgradePosition(block.position);}
+            if (adopt)
+            {
+                // A one-time import from the legacy save: the incoming data is in the SHIPPED layout
+                // (Landscape.UpgradePosition above already brought pre-v4 saves up to it), so carry
+                // the player and loose blocks onto whichever island moved. Placed blocks are re-seated
+                // by ConfigureBlock from Cell(...) below and need no adjustment here.
+                d.player = Landscape.ImportPosition(d.player);
+                foreach (var block in d.blocks) if (!block.placed) block.position = Landscape.ImportPosition(block.position);
+            }
             var forest = ForestWorld.For(this);
             ForestSave incoming = null;
             if (forest != null) {
-                incoming = forest.Migrate(d.forest,d.version,d.blocks,d.player);
+                // The forest cannot survive the shift: every particle slot is validated against a
+                // regenerated layout and an island 2/3 slot would now fall outside it. Adopt rebuilds
+                // the forest from scratch in the current geometry instead of migrating positions.
+                incoming = adopt ? forest.Adopt(d.forest) : forest.Migrate(d.forest,d.version,d.blocks,d.player);
                 if (incoming == null) return false;
             }
             player.Release();
@@ -421,6 +593,22 @@ namespace LightingBlocks
         public void Load()
         {
             foreach (var path in new[] { SavePath, SavePath + ".bak" }) try { if (File.Exists(path) && ImportSave(File.ReadAllText(path), true)) return; } catch (Exception e) { Debug.LogWarning(e.Message); }
+            // Nothing of ours loaded. A profile that names a legacy save offers a one-time, read-only
+            // import from it, so a returning player's stones and Souls are not simply lost when a new
+            // scene starts with its own empty save file. Never written to.
+            if (!string.IsNullOrEmpty(BridgeProfile.Current.seedFromSaveFile))
+            {
+                string legacyPath = Path.Combine(Application.persistentDataPath, BridgeProfile.Current.seedFromSaveFile);
+                try
+                {
+                    if (File.Exists(legacyPath) && ImportSave(File.ReadAllText(legacyPath), offline: true, adopt: true))
+                    {
+                        Save(); // persists the import immediately so it only ever happens once
+                        Notify("THE RIFTS HAVE WIDENED\nYour stones and Souls carried over. Each crossing now needs " + Rows + " tiles.", false);
+                    }
+                }
+                catch (Exception e) { Debug.LogWarning(e.Message); }
+            }
         }
         public void NewJourney()
         {

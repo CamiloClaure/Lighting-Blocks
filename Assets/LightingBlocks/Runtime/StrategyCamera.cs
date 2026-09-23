@@ -13,6 +13,8 @@ namespace LightingBlocks
         public Vector2 minimumFocus = new Vector2(-16, -16);
         public float panSpeed = 12f;
         public float edgePixels = 12f;
+        // degrees per pixel of mouse movement; ~180 degree turn per 1100 px, suits a 1080p desktop.
+        public float orbitSpeed = .16f;
         public float distance = 18f;
         public float pitch = 42f;
         public float yaw = 45f;
@@ -25,6 +27,7 @@ namespace LightingBlocks
         Vector3 smoothedFocus;
         DepthOfField dof;
         bool dofResolved;
+        bool cursorLocked;
         public void CenterOnPlayer()
         {
             if (player == null) return;
@@ -33,7 +36,29 @@ namespace LightingBlocks
         void Start() { CenterOnPlayer(); smoothedFocus = Focus; Apply(1f); }
         void LateUpdate()
         {
+            UpdateCursorLock();
             if (GameHUD.GameplayBlocked) return;
+            if (BridgeProfile.Current.playerCamera)
+            {
+                // Player-centred camera: Focus tracks the player unconditionally (no free pan target),
+                // the mouse orbits instead of panning, and the scroll wheel still zooms.
+                CenterOnPlayer();
+                if (readInput && Application.isFocused)
+                {
+                    var mouse = Mouse.current;
+                    if (mouse != null)
+                    {
+                        Vector2 delta = mouse.delta.ReadValue();
+                        yaw = Mathf.Repeat(yaw + delta.x * orbitSpeed, 360f);
+                        pitch = Mathf.Clamp(pitch - delta.y * orbitSpeed, 12f, 78f);
+                        Vector2 position = mouse.position.ReadValue();
+                        bool inside = position.x >= 0 && position.x <= Screen.width && position.y >= 0 && position.y <= Screen.height && !GameHUD.PointerOverUI();
+                        if (inside) distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * .012f, 14f, 42f);
+                    }
+                }
+                Apply(1f - Mathf.Exp(-smoothing * Time.unscaledDeltaTime));
+                return;
+            }
             if (readInput && Application.isFocused)
             {
                 var mouse = Mouse.current;
@@ -62,6 +87,25 @@ namespace LightingBlocks
                 Pan(Vector2.ClampMagnitude(pan, 1) * panSpeed * Time.unscaledDeltaTime);
             }
             Apply(1f - Mathf.Exp(-smoothing * Time.unscaledDeltaTime));
+        }
+        // Locked+hidden only while the player camera is active and gameplay is actually live; a
+        // locked cursor still reports Mouse.current.delta, which is what the orbit above reads.
+        // Only touches the Cursor API when the state actually changes, never once per frame.
+        void UpdateCursorLock()
+        {
+            bool shouldLock = BridgeProfile.Current.playerCamera && !GameHUD.GameplayBlocked && Application.isFocused;
+            if (shouldLock == cursorLocked) return;
+            cursorLocked = shouldLock;
+            Cursor.lockState = shouldLock ? CursorLockMode.Locked : CursorLockMode.None;
+            Cursor.visible = !shouldLock;
+        }
+        void OnDisable()
+        {
+            // Leaving Play mode must never leave the editor cursor locked or hidden.
+            if (!cursorLocked) return;
+            cursorLocked = false;
+            Cursor.lockState = CursorLockMode.None;
+            Cursor.visible = true;
         }
         public void Pan(Vector2 amount)
         {

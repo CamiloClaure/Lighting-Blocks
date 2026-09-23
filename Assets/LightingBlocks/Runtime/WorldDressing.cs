@@ -14,11 +14,13 @@ namespace LightingBlocks
         // Both rifts are carved past the full width of the courts: a gap has to read as a chasm
         // splitting the world, not as a notch you could walk around. Full depth to 58, gone by 74.
         public const float RiftHalfWidth = 74f;
-        static readonly Vector2 Centre = new Vector2(0, 51);
+        // Follows the islands: 50.5 in the shipped layout, which is where the old literal 51 sat.
+        static Vector2 Centre => new Vector2(0, Landscape.CentreZ);
         // Shared with the editor bake so a baked scene and a runtime rebuild light the same way.
         // public static readonly Color PavingEmission = new Color(1.7f, 1.7f, 1.85f);
         static Texture2D halo;
         static Material seamNeon, additive;
+        static MaterialPropertyBlock glowProperties;
         static Mesh box, shaft;
 
         public static void Build(GameManager game)
@@ -41,7 +43,14 @@ namespace LightingBlocks
             // ForestWorld owns all vegetation and wildlife.
             Atmosphere(game);
             WorldLabels.Adopt();
-            Footlights.Attach(game.player);
+            // Occupancy lighting owns the crossing, and nothing lights up from a footfall on the islands.
+            if (!BridgeProfile.Current.occupancyLight) Footlights.Attach(game.player);
+            else
+            {
+                var steps = game.GetComponent<BridgeSteps>();
+                if (steps == null) steps = game.gameObject.AddComponent<BridgeSteps>();
+                steps.enabled = true;
+            }
             foreach (var block in game.Blocks) StepLight(block);
         }
 
@@ -207,12 +216,22 @@ namespace LightingBlocks
             var top = SceneMaterial(world, "ShoreFloor0"); var rock = SceneMaterial(world, "ShoreCliff0");
             for (int attempt = 0; attempt < 400 && islets.Count < 6; attempt++)
             {
-                float angle = (float)random.NextDouble() * Mathf.PI * 2, distance = 80 + (float)random.NextDouble() * 80;
+                // Scaled off the world's own length, not the shipped 80 + 80: a profile that pushes
+                // the islands apart would otherwise ring only the middle and leave the far court
+                // against empty void. Landscape.Span is 217 in the shipped layout, so this is the
+                // same 80.3 + 80.3 it always was.
+                float reach = Landscape.Span * .37f;
+                float angle = (float)random.NextDouble() * Mathf.PI * 2, distance = reach + (float)random.NextDouble() * reach;
                 float cx = Centre.x + Mathf.Cos(angle) * distance, cz = Centre.y + Mathf.Sin(angle) * distance;
                 float r = 10 + (float)random.NextDouble() * 12;
                 // Never crowd a court, never block the view down a rift, never overlap a sibling.
                 if (ShoreDistance(cx, cz) < r + 15) continue;
-                if (Mathf.Abs(cx) < RiftHalfWidth && (cz > 1 && cz < 27 || cz > 28 + Landscape.Expansion && cz < 54 + Landscape.Expansion)) continue;
+                // The no-islet band over each crossing, measured off the crossing itself. In the
+                // shipped layout this is exactly the old pair of literals: 1 to 27 and 80 to 106.
+                bool overRift = false;
+                for (int gap = 0; gap < 2 && !overRift; gap++)
+                    overRift = cz > Landscape.BridgeStart(gap) - 7 && cz < Landscape.BridgeStart(gap) + GameManager.Rows * 2 + 5;
+                if (Mathf.Abs(cx) < RiftHalfWidth && overRift) continue;
                 bool crowded = false;
                 for (int k = 0; k < islets.Count && !crowded; k++)
                     crowded = Vector2.Distance(new Vector2(cx, cz), new Vector2(islets[k].origin.x, islets[k].origin.z)) < r + radii[k] + 12;
@@ -274,8 +293,16 @@ namespace LightingBlocks
 
         // The bridge lanes have to stay clear of both, or the crossing you are aiming at is
         // hidden behind a boulder. Same band the background islands avoid.
-        static bool RiftLane(Vector2 p) =>
-            Mathf.Abs(p.x) < 8 && (p.y > 1 && p.y < 27 || p.y > 28 + Landscape.Expansion && p.y < 54 + Landscape.Expansion);
+        // Measured off the crossings themselves, so a profile that lengthens them keeps its landing
+        // approaches clear. In the shipped layout this is the old pair of literals: 1 to 27, 80 to 106.
+        static bool RiftLane(Vector2 p) => Mathf.Abs(p.x) < 8 && OverRift(p.y);
+        // True inside either crossing's band, with the metre or so of landing at each end.
+        public static bool OverRift(float z)
+        {
+            for (int gap = 0; gap < 2; gap++)
+                if (z > Landscape.BridgeStart(gap) - 7 && z < Landscape.BridgeStart(gap) + GameManager.Rows * 2 + 5) return true;
+            return false;
+        }
         static void RimRocks(Transform root, Transform world)
         {
             var random = new System.Random(4127);
@@ -715,14 +742,73 @@ namespace LightingBlocks
             float lift = Mathf.Max(.01f, block.transform.localScale.y);
             light.transform.localPosition = new Vector3(0, .85f / lift, 0);
             light.color = colour;
-            light.range = block.Connected ? 6.8f : 3.4f;
-            light.intensity = block.Connected ? 4.4f : 1f;
             var breath = light.GetComponent<Breath>();
             if (breath == null) breath = light.gameObject.AddComponent<Breath>();
-            breath.baseIntensity = light.intensity;
             // Phase off where the block sits, so the crossing ripples instead of pulsing as one.
             breath.phase = .7f * (block.transform.position.x + block.transform.position.z);
+            if (BridgeProfile.Current.occupancyLight)
+            {
+                // Occupancy owns the light level here: no connected/unconnected constants, only the fade.
+                StepGlow(block, block.lit);
+            }
+            else
+            {
+                light.range = block.Connected ? 6.8f : 3.4f;
+                light.intensity = block.Connected ? 4.4f : 1f;
+                breath.baseIntensity = light.intensity;
+            }
             Seams(block, colour);
+        }
+        // Scales the step light and the emission of a placed block by how lit it is (0 dark, 1 full).
+        // Occupancy lighting only; called from StepLight under the profile gate and from BridgeSteps
+        // every frame a block's lit amount changes.
+        public static void StepGlow(BridgeBlock block, float lit)
+        {
+            if (block == null) return;
+            var existing = block.transform.Find("Step light");
+            if (existing != null)
+            {
+                var light = existing.GetComponent<Light>();
+                if (light != null)
+                {
+                    float intensity = 4.4f * lit;
+                    var breath = light.GetComponent<Breath>();
+                    // Write through Breath when present, so the swell rides the fade instead of
+                    // fighting it. The direct write matters too: Breath skips any frame where the
+                    // live intensity is above baseIntensity * 1.13, and a block left at the top of
+                    // the swell would sit above every later, smaller base and freeze there, fully
+                    // lit, until the fade ended. Resetting the live value keeps that guard false.
+                    if (breath != null) breath.baseIntensity = intensity;
+                    light.intensity = intensity;
+                    light.range = 6.8f * lit;
+                }
+                // A dark crossing costs no lights.
+                existing.gameObject.SetActive(lit > 0f);
+            }
+            var colour = StepColor(block.gap, block.row);
+            var renderer = block.GetComponent<Renderer>();
+            // One shared block, reused: a crossing mid-fade calls this for every tile every frame,
+            // and a fresh MaterialPropertyBlock per call would be pure per-frame garbage.
+            if (glowProperties == null) glowProperties = new MaterialPropertyBlock();
+            if (renderer != null)
+            {
+                var properties = glowProperties;
+                renderer.GetPropertyBlock(properties);
+                properties.SetColor("_EmissionColor", colour * lit);
+                renderer.SetPropertyBlock(properties);
+            }
+            var art = block.GetComponent<BlockArt>();
+            var runes = art != null && art.placedVisual != null ? art.placedVisual.Find("Crystal runes") : null;
+            var runesRenderer = runes != null ? runes.GetComponent<Renderer>() : null;
+            if (runesRenderer != null)
+            {
+                // Only _EmissionColor, on a property block: _BaseColor stays white or the rune
+                // lines read as dark scratches instead of simply unlit. Same 2.4x Seams uses.
+                var properties = glowProperties;
+                runesRenderer.GetPropertyBlock(properties);
+                properties.SetColor("_EmissionColor", colour * 2.4f * lit);
+                runesRenderer.SetPropertyBlock(properties);
+            }
         }
         static void Seams(BridgeBlock block, Color colour)
         {

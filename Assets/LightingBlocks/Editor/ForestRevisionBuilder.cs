@@ -9,7 +9,7 @@ static Mesh Accent(string name,bool log){var root=new GameObject(name);var parts
 public static void Apply(){
  if(EditorApplication.isPlaying)throw new Exception("Stop Play mode before applying the forest revision");EditorSceneManager.OpenScene("Assets/Scenes/SampleScene.unity");
  var game=UnityEngine.Object.FindAnyObjectByType<GameManager>();var forest=ForestWorld.For(game);var config=forest.configuration;
- if(config.worldRevision<1){config.islands[1].treeCount=config.islands[0].treeCount;config.islands[1].animalCount=config.islands[0].animalCount;config.islands[1].rabbitCount=config.islands[0].rabbitCount;config.islands[1].birdCount=config.islands[0].birdCount;config.islands[1].wisdomPosition.z=53.5f;config.islands[2].wisdomPosition.z+=Landscape.Expansion;game.exit.position+=Vector3.forward*Landscape.Expansion;
+ if(config.worldRevision<1){config.islands[1].treeCount=config.islands[0].treeCount;config.islands[1].animalCount=config.islands[0].animalCount;config.islands[1].rabbitCount=config.islands[0].rabbitCount;config.islands[1].birdCount=config.islands[0].birdCount;config.islands[1].authoredWisdom.z=53.5f;config.islands[2].authoredWisdom.z+=Landscape.LegacyExpansion;game.exit.position+=Vector3.forward*Landscape.Expansion;
  // Relocate only authored third-island scenery, not the player's mutable save state.
  foreach(var t in game.blocksRoot.parent.GetComponentsInChildren<Transform>())if(t!=game.exit&&t.parent==game.blocksRoot.parent&&t!=game.blocksRoot&&t.name!="Spectral Forest"&&t.name!="Immersive Deeps"&&t.position.z>=48)t.position+=Vector3.forward*Landscape.Expansion;
  config.worldRevision=1;}

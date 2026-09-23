@@ -1,13 +1,20 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Serialization;
 namespace LightingBlocks
 {
     [Serializable] public sealed class IslandForestDefinition
     {
         public string id;
         public int polygonIndex, blockTier, treeCount=120, animalCount=6, particleCount=24, rabbitCount=4, birdCount=6;
-        public Vector3 wisdomPosition;
+        // Authored against the shipped island positions. Everything that consumes a wisdom position
+        // wants it where the island actually IS under the active profile, and there are a dozen such
+        // call paths (layout generation, navigation, the tree prefab, paving, audio) including
+        // [ExecuteAlways] editor ones that never touch ForestWorld. So the offset lives here, on the
+        // read, rather than being applied to a runtime copy that only some of those paths see.
+        [FormerlySerializedAs("wisdomPosition")] public Vector3 authoredWisdom;
+        public Vector3 wisdomPosition => authoredWisdom + Vector3.forward * Landscape.IslandOffset(polygonIndex);
         public Vector3[] outputOffsets=Outputs(), pathPoints;
         public static Vector3[] Outputs(){var p=new List<Vector3>();foreach(float x in new[]{3.5f,5.5f,7.5f})foreach(float z in new[]{-2f,0f,2f})p.Add(new Vector3(x,.26f,z));return p.ToArray();}
     }
@@ -59,7 +66,7 @@ namespace LightingBlocks
         }
         public static float Green(Vector3 p,IslandForestDefinition d){float path=Mathf.SmoothStep(0,1,Mathf.Clamp01((PathDistance(p,d)-1.1f)/2.8f));return Mathf.Clamp01(.2f+path*(.5f+Mathf.PerlinNoise(p.x*.065f+31,p.z*.065f+17)*.3f));}
         public static bool MainPath(Vector3 p,IslandForestDefinition d)=>PathDistance(p,d)<3;
-        public static bool Landing(Vector3 p,IslandForestDefinition d){if(Mathf.Abs(p.x-(d.wisdomPosition.x+12))>6)return false;return d.polygonIndex==0?p.z>3&&p.z<9:d.polygonIndex==1?(p.z<25||p.z>82):p.z<52+Landscape.Expansion;}
+        public static bool Landing(Vector3 p,IslandForestDefinition d){if(Mathf.Abs(p.x-(d.wisdomPosition.x+12))>6)return false;return d.polygonIndex==0?p.z>3&&p.z<9:d.polygonIndex==1?(p.z<25+Landscape.IslandOffset(1)||p.z>82+Landscape.IslandOffset(1)):p.z<52+Landscape.Expansion;}
     }
     public static class ForestLayoutGenerator
     {

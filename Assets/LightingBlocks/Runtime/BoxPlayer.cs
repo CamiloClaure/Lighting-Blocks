@@ -114,6 +114,14 @@ namespace LightingBlocks
                 else if(GameManager.Instance!=null) GameManager.Instance.Notify("NO STONES TO DROP\nClick near a loose stone. Soul Links unlocks floating carry.",false);
             }
             else if (Orbiting) { /* Floating carry persists until Q, a menu or focus loss. */ }
+            else if (BridgeProfile.Current.spaceGrab)
+            {
+                // Space replaces the left mouse button with the same hold-to-carry semantics. The
+                // cursor is locked to screen centre under this profile, so PointerOverUI cannot be
+                // hit by a key press and the check the mouse path needs is skipped here.
+                if (keyboard == null || !keyboard.spaceKey.isPressed) Release();
+                else if (keyboard.spaceKey.wasPressedThisFrame) TryGrab(NearbyBox);
+            }
             else if (mouse == null || !mouse.leftButton.isPressed) Release();
             else if (mouse.leftButton.wasPressedThisFrame && !GameHUD.PointerOverUI()) TryGrab(NearbyBox);
             Vector2 input = keyboard == null ? Vector2.zero : new Vector2(
@@ -129,7 +137,9 @@ namespace LightingBlocks
             float best = grabReach;
             Vector3 origin = transform.position + Vector3.up * .7f;
             PullableBox pointed = null;
-            if (viewCamera != null && Mouse.current != null && Physics.Raycast(viewCamera.ScreenPointToRay(Mouse.current.position.ReadValue()), out var cursorHit, 260f))
+            // Under spaceGrab the cursor is locked to screen centre, so the screen-point ray is not a
+            // pointing device any more; skip it and fall back to the proximity search alone.
+            if (!BridgeProfile.Current.spaceGrab && viewCamera != null && Mouse.current != null && Physics.Raycast(viewCamera.ScreenPointToRay(Mouse.current.position.ReadValue()), out var cursorHit, 260f))
                 pointed = cursorHit.collider.GetComponentInParent<PullableBox>();
             foreach (var hit in Physics.OverlapSphere(origin, grabReach, ~0, QueryTriggerInteraction.Ignore))
             {

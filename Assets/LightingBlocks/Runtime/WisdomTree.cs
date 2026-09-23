@@ -12,7 +12,7 @@ namespace LightingBlocks
         public IslandForestDefinition Definition {get;private set;}
         public bool Charging=>remaining>0;
         public float Remaining=>remaining;
-        ForestWorld forest;GameManager game;float remaining;
+        ForestWorld forest;GameManager game;float remaining;bool channelled;
         MaterialPropertyBlock properties;
         float baseIntensity=1.1f;
         // ---- inverted-tree tuning knobs --------------------------------------
@@ -36,13 +36,13 @@ namespace LightingBlocks
         static readonly Color CordInk=new Color(.12f,.1f,.16f,1);
         void Awake(){properties=new MaterialPropertyBlock();}
         public void Initialize(ForestWorld world,IslandForestDefinition definition){forest=world;game=world.GetComponent<GameManager>();Definition=definition;}
-        public bool BeginCharge()
+        public bool BeginCharge(bool silent=false)
         {
             if(GameHUD.GameplayBlocked||Charging)return false;
             if(forest.Nearby(game.player.transform.position)!=this)return false;
-            if(forest.Inventory(Definition.id).inventory<3){game.Notify("Collect 3 particles on this island",false);return false;}
-            if(!forest.FindOutput(Definition,out _)){game.Notify("Move blocks away from the Wisdom Tree",false);return false;}
-            remaining=.6f;ForestSoundscape.Play("charge",transform.position,.1f);game.Notify("Charging the Wisdom Tree...",false);return true;
+            if(forest.Inventory(Definition.id).inventory<3){if(!silent)game.Notify("Collect 3 particles on this island",false);return false;}
+            if(!forest.FindOutput(Definition,out _)){if(!silent)game.Notify("Move blocks away from the Wisdom Tree",false);return false;}
+            remaining=.6f;channelled=silent;ForestSoundscape.Play("charge",transform.position,.1f);if(!silent)game.Notify("Charging the Wisdom Tree...",false);return true;
         }
         public void Tick(float delta)
         {
@@ -55,7 +55,10 @@ namespace LightingBlocks
                 {
                     inventory.inventory-=3;ForestSoundscape.Play("release",block.transform.position,.12f);
                     if(release!=null){release.transform.position=block.transform.position+Vector3.up*.4f;release.Play();}
-                    game.Notify("A BLOCK ANSWERS\nIt waits beside the Wisdom Tree.");game.Save();
+                    // A held channel completes a charge every .6 s. Chiming and writing the whole
+                    // save that often turns the feature into a stutter, so a channelled stone is
+                    // announced quietly and left to the ten second autosave.
+                    game.Notify("A BLOCK ANSWERS\nIt waits beside the Wisdom Tree.",!channelled);if(!channelled)game.Save();
                 }
                 else game.Notify("Move blocks away from the Wisdom Tree",false);
             }

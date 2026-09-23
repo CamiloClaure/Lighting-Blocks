@@ -368,10 +368,10 @@ namespace LightingBlocks
             else if (game.player != null && game.player.NearbyBox != null)
             {
                 var b = game.player.NearbyBox.GetComponent<BridgeBlock>();
-                if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
+                if (b != null) hint = b.placed ? "CONNECTED BRIDGE TILE\nGrab loose blocks to extend the path" : !b.CanLift ? b.Title.ToUpper() + " · STRENGTH " + b.RequiredStrength + " REQUIRED\nYour Strength: " + game.strength + " · Open Skills [Tab]" + (BridgeProfile.Current.treeReturn ? " · R at the tree to return it" : "") : b.Title.ToUpper() + (game.links>0?" IN REACH\nClick to gather · Q to drop":" IN REACH\nHold left click to haul");
             }
             var wisdom = game.player == null ? null : forest?.Nearby(game.player.transform.position);
-            if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles";
+            if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles" + (BridgeProfile.Current.treeReturn ? " · R: Return stones" : "");
             contextText.text = diamond + "  " + hint;
             RefreshPlacePrompt();
             journalText.text = "I · They called it the end of the universe. But souls still wander between its broken shores.\n\n"

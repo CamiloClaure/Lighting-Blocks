@@ -1,0 +1,29 @@
+diff --git a/Assets/LightingBlocks/Runtime/BoxPlayer.cs b/Assets/LightingBlocks/Runtime/BoxPlayer.cs
+index f2fb350..8caabe3 100644
+--- a/Assets/LightingBlocks/Runtime/BoxPlayer.cs
++++ b/Assets/LightingBlocks/Runtime/BoxPlayer.cs
+@@ -318,7 +318,7 @@ bool FindDrop(PullableBox box, Vector3 origin, out Vector3 position)
+         {
+             for(int ring=1;ring<=10;ring++) for(int i=0;i<16;i++)
+             {
+-                float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=.26f;
++                float a=i*Mathf.PI*2/16; var candidate=origin+new Vector3(Mathf.Cos(a)*ring*.9f,0,Mathf.Sin(a)*ring*.9f);candidate.y=TerrainScene.TerrainGround.Height(candidate)+.26f;
+                 var game=GameManager.Instance;
+                 if(!game.CanStand(candidate) || !game.CanStand(candidate+new Vector3(.43f,0,.43f)) || !game.CanStand(candidate-new Vector3(.43f,0,.43f)))continue;
+                 bool occupied=false;
+diff --git a/Assets/LightingBlocks/Runtime/ForestSoundscape.cs b/Assets/LightingBlocks/Runtime/ForestSoundscape.cs
+index 650c7c0..c0ad2a9 100644
+--- a/Assets/LightingBlocks/Runtime/ForestSoundscape.cs
++++ b/Assets/LightingBlocks/Runtime/ForestSoundscape.cs
+@@ -42,7 +42,10 @@ public static AudioClip Footstep(Vector3 position)
+             int n=Random.Range(0,5);if(n>=current.lastStep[surface])n++;n%=6;current.lastStep[surface]=n;return current.steps[surface][n];
+         }
+         void LateUpdate(){if(game==null||listener==null)return;listener.position=game.player.transform.position+Vector3.up*1.2f;listener.rotation=game.cameraRig.transform.rotation;
+-            var forest=ForestWorld.For(game);var island=forest.IslandAt(game.player.transform.position);bool near=island!=null&&Vector3.Distance(game.player.transform.position,island.wisdomPosition)<9;
++            // wisdomPosition is layout data pinned at y=0, so measure from where the player would stand on
++            // a flat world. TerrainGround.Height returns 0 in a scene with no Terrain, so this is exact there.
++            var forest=ForestWorld.For(game);var stood=game.player.transform.position;stood.y-=TerrainScene.TerrainGround.Height(stood);
++            var island=forest.IslandAt(stood);bool near=island!=null&&Vector3.Distance(stood,island.wisdomPosition)<9;
+             if(near!=nearWisdom){nearWisdom=near;(near?wisdomSnapshot:forestSnapshot)?.TransitionTo(3);}
+             if(music!=null)music.volume=Mathf.MoveTowards(music.volume,GameAudio.MusicVolume*(near?.55f:.8f),Time.unscaledDeltaTime*.012f);
+             float amount=island==null?.06f:.10f;if(leaves!=null)leaves.volume=Mathf.MoveTowards(leaves.volume,amount,Time.unscaledDeltaTime*.02f);}

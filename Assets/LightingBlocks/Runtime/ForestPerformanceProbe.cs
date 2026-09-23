@@ -34,8 +34,8 @@ namespace LightingBlocks
             forest.Restore(forest.NewState(1907));game.strength=3;game.ApplyUpgrades();
             var camera=game.cameraRig.GetComponent<Camera>();camera.targetTexture=new RenderTexture(1920,1080,24,RenderTextureFormat.ARGB32);camera.enabled=false;foreach(var canvas in FindObjectsByType<Canvas>()){canvas.renderMode=RenderMode.ScreenSpaceCamera;canvas.worldCamera=camera;canvas.planeDistance=1;}
             // Completed bridge fixture exercises the existing placement, lighting and income paths.
-            for(int gap=0;gap<2;gap++)for(int row=0;row<7;row++)
-            {if(!game.TrySpawnAtWisdomTree(forest.configuration.islands[gap].id,out var block))throw new Exception("Profile fixture spawn failed");block.transform.position=GameManager.Cell(gap,0,row)+Vector3.up*.54f;block.Box.Body.position=block.transform.position;Physics.SyncTransforms();if(!game.TryPlace(block))throw new Exception("Profile fixture placement failed");}
+            for(int gap=0;gap<2;gap++)for(int row=0;row<GameManager.Rows;row++)
+            {if(!game.TrySpawnAtWisdomTree(forest.configuration.islands[gap].id,out var block,GameManager.RequiredTier(gap,0,row)))throw new Exception("Profile fixture spawn failed");block.transform.position=GameManager.Cell(gap,0,row)+Vector3.up*.54f;block.Box.Body.position=block.transform.position;Physics.SyncTransforms();if(!game.TryPlace(block))throw new Exception("Profile fixture placement failed");}
             if(stress)for(int n=0;n<35;n++){if(!game.TrySpawnAtWisdomTree("island-1",out var block))throw new Exception("Stress population failed");block.transform.position=new Vector3(-24+(n%7)*2,.26f,-20+(n/7)*2);block.Box.Body.position=block.transform.position;Physics.SyncTransforms();}
             var reactive=UnityEngine.Object.FindObjectsByType<ForestCreature>();
             Move(forest.configuration.islands[0].wisdomPosition+Vector3.right*2);game.cameraRig.distance=27;

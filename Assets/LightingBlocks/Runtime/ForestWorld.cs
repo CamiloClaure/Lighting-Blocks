@@ -19,7 +19,17 @@ namespace LightingBlocks
         readonly List<IslandForestLayout> pickupLayouts=new List<IslandForestLayout>();
         readonly List<float> pickupAppear=new List<float>();
         Transform visualRoot;
-        void Awake(){game=GetComponent<GameManager>();}
+        void Awake()
+        {
+            BridgeProfile.Select(gameObject.scene.name);
+            game=GetComponent<GameManager>();
+            // No island offset is applied here any more. It used to be written into a runtime clone
+            // of the configuration, which left every path that reads the asset directly (notably
+            // ForestCoverRenderer's [ExecuteAlways] regeneration) pairing a shifted polygon with an
+            // unshifted wisdom position: reachability was then seeded outside the island, nothing
+            // was reachable and particle placement threw. IslandForestDefinition.wisdomPosition now
+            // applies the offset on the read, so every caller gets it.
+        }
         public void BeginSession(){EnsureState();State=NewState(Environment.TickCount & int.MaxValue);}
         public static ForestWorld For(GameManager g)=>g==null?null:g.GetComponent<ForestWorld>();
         public void EnsureState()
@@ -61,6 +71,21 @@ namespace LightingBlocks
             if(version>=2)foreach(var target in next.islands){var source=old.islands.Find(i=>i.id==target.id);target.inventory=source.inventory;foreach(var slot in target.slots){var prior=source.slots.Find(p=>p.id==slot.id);slot.remaining=prior.remaining;if(version==3){slot.position=prior.position+(configuration.Find(target.id).polygonIndex==2?Vector3.forward*Landscape.Expansion:Vector3.zero);slot.generation=prior.generation;slot.pending=prior.pending;}}}
             if(version==3)foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,next.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=next.islands.Find(i=>i.id==d.id);foreach(var tree in layout.trees)foreach(var slot in island.slots)if((tree.position-slot.position).sqrMagnitude<2.25f){string id=d.id+"/"+tree.id;if(!next.suppressedTrees.Contains(id))next.suppressedTrees.Add(id);break;}layout.trees.RemoveAll(t=>next.suppressedTrees.Contains(d.id+"/"+t.id));layout.navigation.BuildReachability(d.wisdomPosition+Vector3.right*2);foreach(var slot in island.slots)if(!layout.navigation.InReachableArea(slot.position)){int index=island.slots.IndexOf(slot);slot.position=layout.particles[index];}}
             return next;
+        }
+        // One-time import only: the old save's positions are all invalid once the profile has
+        // shifted the islands (particle slots are validated against a regenerated layout, and every
+        // island 2/3 slot would now sit out of bounds), so this rebuilds the forest entirely in the
+        // current geometry and carries over only the collected-particle counts.
+        public ForestSave Adopt(ForestSave old)
+        {
+            var state=NewState(old!=null&&old.seed>0?old.seed:Environment.TickCount & int.MaxValue);
+            if(old!=null&&old.islands!=null)
+                foreach(var target in state.islands)
+                {
+                    var source=old.islands.Find(i=>i.id==target.id);
+                    if(source!=null)target.inventory=Mathf.Clamp(source.inventory,0,30);
+                }
+            return state;
         }
         public void Restore(ForestSave state)
         {
@@ -112,8 +137,10 @@ namespace LightingBlocks
             var bg=new GameObject("Background Forest").transform;bg.SetParent(visualRoot,false);
             for(int a=0;a<4000&&count<120;a++)
             {
-                float angle=(float)random.NextDouble()*Mathf.PI*2,radius=40+(float)random.NextDouble()*135;
-                float x=Mathf.Cos(angle)*radius,z=51+Mathf.Sin(angle)*radius;
+                // Centre and reach follow the islands. Landscape.Span is 217 in the shipped layout,
+                // so this stays the old 40 + 134.5 ring around z=50.5, where the literals sat.
+                float angle=(float)random.NextDouble()*Mathf.PI*2,radius=40+(float)random.NextDouble()*(Landscape.Span*.62f);
+                float x=Mathf.Cos(angle)*radius,z=Landscape.CentreZ+Mathf.Sin(angle)*radius;
                 if(WorldDressing.ShoreDistance(x,z)<12||!WorldDressing.BackgroundHeight(x,z,out float y))continue;
                 var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,y,z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
             }

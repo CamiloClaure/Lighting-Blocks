@@ -96,7 +96,10 @@ namespace LightingBlocks.Editor
             for(int n=0;n<5;n++)
             {
                 var polygon=Landscape.Shores[0].Select(p=>p+new Vector2(n*110,0)).ToArray();
-                var d=new IslandForestDefinition{id="synthetic-"+n,polygonIndex=n,wisdomPosition=new Vector3(n*110-12,0,-3),treeCount=6,animalCount=2};
+                // These synthetic islands are translated in x and carry polygonIndex purely as an
+                // index, so cancel the profile's per-island z offset: authoredWisdom is in shipped
+                // coordinates and wisdomPosition adds that offset back on the read.
+                var d=new IslandForestDefinition{id="synthetic-"+n,polygonIndex=n,authoredWisdom=new Vector3(n*110-12,0,-3)-Vector3.forward*Landscape.IslandOffset(n),treeCount=6,animalCount=2};
                 var layout=ForestLayoutGenerator.Generate(d,1907,polygon,6);Check(layout.particles.Count==24,"Five-island configuration supports index "+n);
             }
             CollectThree(0);int inventory=F.Inventory("island-1").inventory;F.TryCollect(0);Check(F.Inventory("island-1").inventory==inventory,"Collected particle cannot be counted twice");
@@ -111,11 +114,11 @@ namespace LightingBlocks.Editor
             var first=Charge(0);Check(first.tier==0&&first.GetComponent<BlockArt>()!=null,"Tree output preserves existing block art and tier");
             double souls=G.souls;Check(!G.Purchase("stone")&&!G.Purchase("grave")&&G.souls==souls,"Retired paid supply cannot create blocks or spend Souls");
             Place(first,0,0);Check(G.souls==25&&G.PathRate==1,"First bridge reward and Soul production unchanged");
-            for(int row=1;row<7;row++){CollectThree(0);Place(Charge(0),0,row);}
+            for(int row=1;row<GameManager.Rows;row++){CollectThree(0);Place(Charge(0),0,row);}
             Check(G.Bridges[0],"First bridge completes entirely from collected particles");
             G.Advance(30);double rate=G.Rate;Check(G.Purchase("generator")&&G.Rate>rate,"Soul Well still uses Souls and adds income");
             Check(G.Purchase("strength")&&G.strength==1,"Existing Strength upgrade still costs Souls");
-            for(int row=0;row<7;row++){CollectThree(1);Place(Charge(1),1,row);}
+            for(int row=0;row<GameManager.Rows;row++){CollectThree(1);Place(Charge(1),1,row);}
             Check(G.Bridges[1]&&G.ConnectedCount==14,"Second bridge completes with existing Grave blocks");
             Teleport(G.exit.position);G.Interact();Check(G.completed,"Exit beacon completes the current chapter");CollectThree(0);Charge(0);Check(G.completed,"Wisdom Trees still charge after chapter completion");
             saved=G.ExportSave();Check(G.ImportSave(saved)&&G.ConnectedCount==14&&G.generator==1&&G.strength==1,"Version 3 restores bridges, skills and forest state");
