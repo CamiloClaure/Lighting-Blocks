@@ -151,6 +151,58 @@ namespace LightingBlocks.Editor
             // Hub ownership follows PlatformSupport.hubId under Lighting.
             Check(forest.IslandAt(island.wisdomPosition)?.id == island.id, "IslandAt resolves hub ownership via PlatformSupport.hubId under Lighting");
             Check(forest.IslandAt(island.wisdomPosition + new Vector3(0, 0, 500)) == null, "IslandAt returns no hub for a point off every platform");
+
+            // Receiver placement (phase 2): spacing, support, clearance, reachability and particle
+            // reservations, on all three islands - island-1 reuses the platform/layout built above;
+            // island-2 and island-3 get their own synthetic platform over their real footprint.
+            var receiverLayouts = new List<IslandForestLayout> { layout };
+            var extraPlatforms = new List<GameObject>();
+            for (int i = 1; i < config.islands.Length; i++)
+            {
+                var otherIsland = config.islands[i];
+                var otherPolygon = Landscape.Shores[otherIsland.polygonIndex];
+                Vector2 oMin = otherPolygon[0], oMax = otherPolygon[0];
+                foreach (var v in otherPolygon) { oMin = Vector2.Min(oMin, v); oMax = Vector2.Max(oMax, v); }
+                var otherGO = new GameObject("Check platform " + otherIsland.id);
+                otherGO.transform.position = new Vector3((oMin.x + oMax.x) * .5f, 0, (oMin.y + oMax.y) * .5f);
+                var otherBox = otherGO.AddComponent<BoxCollider>();
+                otherBox.size = new Vector3(oMax.x - oMin.x + .4f, 1, oMax.y - oMin.y + .4f);
+                var otherSupport = otherGO.AddComponent<PlatformSupport>();
+                otherSupport.hubId = otherIsland.id;
+                Register(otherSupport);
+                extraPlatforms.Add(otherGO);
+                Physics.SyncTransforms();
+                receiverLayouts.Add(ForestLayoutGenerator.Generate(otherIsland, 1907, otherPolygon, config.trees.Length));
+            }
+            for (int i = 0; i < config.islands.Length; i++)
+            {
+                var checkIsland = config.islands[i];
+                var checkLayout = receiverLayouts[i];
+                var checkPolygon = Landscape.Shores[checkIsland.polygonIndex];
+                Check(checkLayout.receivers.Count == 3, checkIsland.id + ": three receiver sites placed (" + checkLayout.receivers.Count + "/3)");
+                for (int a = 0; a < checkLayout.receivers.Count; a++)
+                {
+                    var r = checkLayout.receivers[a];
+                    Check(PlatformSupport.Supports(r), checkIsland.id + ": receiver " + a + " sits on supported platform ground");
+                    Check(checkLayout.navigation.InReachableArea(r), checkIsland.id + ": receiver " + a + " is reachable from the Wisdom Tree");
+                    Check(ForestLayoutGenerator.Inside(r, checkPolygon, 3), checkIsland.id + ": receiver " + a + " is clear of the island edge");
+                    Check(!ForestHabitat.MainPath(r, checkIsland), checkIsland.id + ": receiver " + a + " is clear of the main walking route");
+                    Check(!ForestHabitat.Landing(r, checkIsland), checkIsland.id + ": receiver " + a + " is clear of any bridge landing");
+                    for (int b = a + 1; b < checkLayout.receivers.Count; b++)
+                    {
+                        float measured = Vector3.Distance(r, checkLayout.receivers[b]);
+                        Check(measured >= LightingParticles.ReceiverSpacing,
+                            checkIsland.id + ": receivers " + a + "/" + b + " are " + measured.ToString("0.0") + "m apart (>= " + LightingParticles.ReceiverSpacing + "m)");
+                    }
+                }
+                Check(checkLayout.particles.All(p => checkLayout.receivers.All(r => Vector3.Distance(p, r) >= LightingParticles.ReceiverClearance)),
+                    checkIsland.id + ": every particle position keeps clear of every receiver's interaction area");
+                Check(checkLayout.candidates.All(p => checkLayout.receivers.All(r => Vector3.Distance(p, r) >= LightingParticles.ReceiverClearance)),
+                    checkIsland.id + ": every respawn candidate keeps clear of every receiver's interaction area");
+                Check(checkLayout.animals.All(PlatformSupport.Supports), checkIsland.id + ": every creature spawn point still sits on supported platform ground");
+            }
+            foreach (var go in extraPlatforms) UnityEngine.Object.DestroyImmediate(go);
+            Physics.SyncTransforms();
         }
 
         // ---------------------------------------------------------------------------------------

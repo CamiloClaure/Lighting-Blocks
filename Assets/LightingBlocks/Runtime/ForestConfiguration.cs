@@ -61,6 +61,12 @@ namespace LightingBlocks
         public IslandForestDefinition definition;
         public readonly List<ForestPlacement> trees=new List<ForestPlacement>(),cover=new List<ForestPlacement>();
         public readonly List<Vector3> particles=new List<Vector3>(),animals=new List<Vector3>(),candidates=new List<Vector3>(),habitats=new List<Vector3>();
+        // Lighting only: one blue/violet/amber receiver site per island (index = ColorReceiver.ColorIndex),
+        // farthest-point selected - see ForestLayoutGenerator.Generate. candidates already excludes every
+        // point within LightingParticles.ReceiverClearance of one of these, so particle placement and
+        // respawning (ForestWorld.Respawn, which draws straight from candidates) never surface inside a
+        // receiver's interaction area.
+        public readonly List<Vector3> receivers=new List<Vector3>();
         public ForestNavigation navigation;
     }
     public static class ForestHabitat
@@ -119,6 +125,14 @@ namespace LightingBlocks
             }
             if(BridgeProfile.Current.isLighting)
             {
+                // Receivers first: farthest-point selection, >= ReceiverSpacing apart, over the
+                // subset of candidates clear of edges, the main walking route and bridge landings
+                // (tree outputs are already excluded from candidates by Reserved(.,6) above).
+                PlaceReceivers(layout,d,polygon);
+                // Then drop every candidate inside a receiver's interaction clearance, so particle
+                // placement (below) and later respawning (ForestWorld.Respawn - same candidates list)
+                // both honour the same reservation for free.
+                RemoveReceiverClearance(layout);
                 layout.particles.Clear();
                 // Farthest-point sampling spreads a fixed population across the whole supported hub.
                 while(layout.particles.Count<d.particleCount)
@@ -171,6 +185,41 @@ namespace LightingBlocks
             }
             if(layout.particles.Count!=d.particleCount)throw new InvalidOperationException("Cannot safely place all particles on "+d.id);
             if(layout.animals.Count!=total)throw new InvalidOperationException("Cannot safely place wildlife on "+d.id);return layout;
+        }
+        // Farthest-point receiver placement, deterministic given the seed (candidates was built from
+        // a seeded rng above). Sites are candidates that are also well clear of the island edge, the
+        // main walking route and any bridge landing - tree-output clearance is already baked into
+        // candidates via Reserved(.,6). Stops (rather than crowding a third site closer than
+        // ReceiverSpacing) and reports a generation error if fewer than 3 sites qualify, instead of
+        // ever placing an unsupported or overlapping receiver.
+        static void PlaceReceivers(IslandForestLayout layout,IslandForestDefinition d,Vector2[] polygon)
+        {
+            layout.receivers.Clear();
+            var sites=new List<Vector3>();
+            foreach(var p in layout.candidates)
+                if(Inside(p,polygon,3)&&!ForestHabitat.MainPath(p,d)&&!ForestHabitat.Landing(p,d))sites.Add(p);
+            float spacing=LightingParticles.ReceiverSpacing*LightingParticles.ReceiverSpacing;
+            while(layout.receivers.Count<3&&sites.Count>0)
+            {
+                float best=-1;int chosen=-1;
+                for(int i=0;i<sites.Count;i++)
+                {
+                    float distance=layout.receivers.Count==0?1:float.MaxValue;
+                    foreach(var placed in layout.receivers)distance=Mathf.Min(distance,(sites[i]-placed).sqrMagnitude);
+                    if(distance>best){best=distance;chosen=i;}
+                }
+                if(layout.receivers.Count>0&&best<spacing)break;
+                layout.receivers.Add(sites[chosen]);sites.RemoveAt(chosen);
+            }
+            if(layout.receivers.Count<3)Debug.LogError("Lighting: "+d.id+" has room for only "+layout.receivers.Count+"/3 receivers at least "+LightingParticles.ReceiverSpacing+"m apart, clear of edges, the main path and bridge landings.");
+        }
+        // The reservation particle placement and respawning share: candidates is used by both (see
+        // Generate's particle farthest-point loop above and ForestWorld.Respawn), so filtering it once
+        // here is the single source both draw from.
+        static void RemoveReceiverClearance(IslandForestLayout layout)
+        {
+            float clearance=LightingParticles.ReceiverClearance*LightingParticles.ReceiverClearance;
+            layout.candidates.RemoveAll(p=>{foreach(var r in layout.receivers)if((p-r).sqrMagnitude<clearance)return true;return false;});
         }
     }
 }

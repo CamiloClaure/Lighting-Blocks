@@ -222,11 +222,16 @@ namespace LightingBlocks
                 var component=wisdom.GetComponent<WisdomTree>();component.Initialize(this,d);WisdomTrees.Add(component);
                 var owner=Inventory(d.id);
                 var particles=BridgeProfile.Current.isLighting&&enableLightingParticles?(GetComponent<LightingParticles>()??gameObject.AddComponent<LightingParticles>()):null;
-                if(particles!=null)particles.AddTree(this,component,root);
+                if(particles!=null)particles.AddTree(this,component,root,layout);
                 for(int i=0;ParticlesEnabled&&i<layout.particles.Count;i++)
                 {
-                    var pickup=new GameObject("Particle "+owner.slots[i].id,typeof(MeshFilter),typeof(MeshRenderer));pickup.GetComponent<MeshFilter>().sharedMesh=configuration.particleMesh;
-                    pickup.transform.SetParent(root,false);layout.particles[i]=owner.slots[i].position;pickup.transform.position=owner.slots[i].position+Vector3.up*.7f;pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
+                    var slot=owner.slots[i];
+                    // A slot saved before receivers moved (or moved farther) can now sit inside one's
+                    // interaction clearance; relocate only that slot, onto the same reservation-aware
+                    // candidate pool respawning already draws from, keeping id/colour/timer/pending as-is.
+                    if(BridgeProfile.Current.isLighting)RelocateIfReserved(owner,slot,layout);
+                    var pickup=new GameObject("Particle "+slot.id,typeof(MeshFilter),typeof(MeshRenderer));pickup.GetComponent<MeshFilter>().sharedMesh=configuration.particleMesh;
+                    pickup.transform.SetParent(root,false);layout.particles[i]=slot.position;pickup.transform.position=slot.position+Vector3.up*.7f;pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
                     var pickupRenderer=pickup.GetComponent<Renderer>();pickupRenderer.sharedMaterial=configuration.particleMaterial;pickupRenderer.shadowCastingMode=ShadowCastingMode.Off;
                     if(particles!=null)
                     {
@@ -234,7 +239,7 @@ namespace LightingBlocks
                         // carries any meaning (receivers are matched by proximity, not by colour).
                         var block=new MaterialPropertyBlock();block.SetColor("_BaseColor",LightingParticles.ParticleColor);block.SetColor("_EmissionColor",LightingParticles.ParticleColor*1.6f);pickupRenderer.SetPropertyBlock(block);
                     }
-                    pickupVisuals.Add(pickup.transform);pickupStates.Add(owner.slots[i]);pickupOwners.Add(owner);pickupLayouts.Add(layout);pickupAppear.Add(1);pickup.SetActive(owner.slots[i].remaining<=0&&!owner.slots[i].pending);
+                    pickupVisuals.Add(pickup.transform);pickupStates.Add(slot);pickupOwners.Add(owner);pickupLayouts.Add(layout);pickupAppear.Add(1);pickup.SetActive(slot.remaining<=0&&!slot.pending);
                 }
                 for(int i=0;i<layout.animals.Count;i++)
                 {
@@ -334,6 +339,25 @@ namespace LightingBlocks
                 foreach(var other in pickupOwners[index].slots)if(other!=slot&&other.remaining<=0&&!other.pending&&(other.position-p).sqrMagnitude<(BridgeProfile.Current.isLighting?16f:6.25f)){blocked=true;break;}
                 if(blocked)continue;slot.position=p;slot.generation++;slot.pending=false;pickupAppear[index]=0;int local=pickupOwners[index].slots.IndexOf(slot);layout.particles[local]=p;return true;
             }return false;
+        }
+        // Migration for the receiver reservation itself: a slot's saved position predates receivers
+        // moving (or moving farther apart) and now overlaps one's interaction clearance. layout.candidates
+        // is already filtered clear of every receiver (ForestLayoutGenerator.RemoveReceiverClearance),
+        // so any candidate found here is a valid new spot - only .position changes; id, colour, timer
+        // and pending/generation (respawn state) are left exactly as saved.
+        void RelocateIfReserved(IslandParticleSave owner,ParticleSlotSave slot,IslandForestLayout layout)
+        {
+            float clearance=LightingParticles.ReceiverClearance*LightingParticles.ReceiverClearance;
+            bool reserved=false;foreach(var r in layout.receivers)if((slot.position-r).sqrMagnitude<clearance){reserved=true;break;}
+            if(!reserved||layout.candidates.Count==0)return;
+            int start=ForestLayoutGenerator.Hash(State.seed,slot.id+"/receiver-clear")%layout.candidates.Count;
+            for(int n=0;n<layout.candidates.Count;n++)
+            {
+                var p=layout.candidates[(start+n)%layout.candidates.Count];
+                bool clear=true;foreach(var other in owner.slots)if(other!=slot&&(other.position-p).sqrMagnitude<2.25f){clear=false;break;}
+                if(clear){slot.position=p;return;}
+            }
+            Debug.LogError("Lighting: "+owner.id+" could not relocate particle "+slot.id+" clear of a receiver - no free candidate.");
         }
         void Update()
         {

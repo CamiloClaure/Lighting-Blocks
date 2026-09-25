@@ -179,8 +179,6 @@ namespace LightingBlocks
                 visual.SetActive(tier == 0);
             }
             if (string.IsNullOrEmpty(Notice)) Notify(BridgeProfile.Current.isLighting?LightingCarryHint:"THE WISDOM TREE\nCollect the bright particles. Press E beside the violet tree to charge it and release a bridge block.", false);
-            if (BridgeProfile.Current.isLighting && ghost.childCount > 0)
-                gameObject.AddComponent<LightingPlaceholderFloor>().Build(ghost.GetChild(Mathf.Min(2, ghost.childCount - 1)));
             cameraRig.CenterOnPlayer();
             WorldDressing.Build(this);
             if (forest != null) { forest.Build(); if (safeToSave) Save(); }

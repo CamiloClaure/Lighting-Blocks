@@ -54,6 +54,13 @@ namespace LightingBlocks.Editor
 
             var game = UnityEngine.Object.FindAnyObjectByType<GameManager>();
             if (game == null) throw new Exception("No GameManager found in " + TerrainScenePath + " to clone controls from.");
+            // ForestWorld is cloned from SampleSceneTerrain.unity, which never serializes this field
+            // (it is missing from that scene's YAML entirely, so it loads at its C# default: false).
+            // The shipped Lighting.unity has always carried it as 1 - a fresh build must reproduce
+            // that, not silently turn off every particle, receiver and canopy firefly.
+            var forestWorld = game.GetComponent<ForestWorld>();
+            if (forestWorld == null) throw new Exception("No ForestWorld found alongside GameManager in " + TerrainScenePath + ".");
+            forestWorld.enableLightingParticles = true;
 
             var world = new GameObject("Lighting World").transform;
             var blocksRoot = new GameObject("Bridge Stones").transform; blocksRoot.SetParent(world, false);
@@ -176,19 +183,24 @@ namespace LightingBlocks.Editor
         // ---- dedicated Lighting materials ---------------------------------------------------
 
         static Color Hex(string h) { ColorUtility.TryParseHtmlString(h, out var c); return c; }
+        // Opaque, depth-writing floor: the batched hub tile meshes themselves are now the visible
+        // island surface (see LightingWorldCheck's removal note) - no more transparent near-invisible
+        // face with a separately-duplicated white dashed outline on top (LightingPlaceholderFloor,
+        // deleted). Plain URP Lit, unlit-dark charcoal, catches only the player and tree lights.
         static Material PlatformMaterial(int tier)
         {
             string path = Art + "/Materials/Platform" + tier + ".mat";
-            var shader = Shader.Find("LightingBlocks/Lighting Floor");
+            var shader = Shader.Find("Universal Render Pipeline/Lit");
             var material = AssetDatabase.LoadAssetAtPath<Material>(path);
             if (material == null) { material = new Material(shader); AssetDatabase.CreateAsset(material, path); }
             material.shader = shader;
             material.renderQueue = -1;
-            material.SetColor("_BaseColor", Color.white);
-            material.SetFloat("_Opacity", .015f);
-            material.SetFloat("_EdgeBrightness", .48f);
-            material.SetFloat("_EdgeWidth", .003f);
-            material.SetFloat("_EdgeGlow", .035f);
+            material.SetColor("_BaseColor", Hex("#14161B"));
+            material.SetFloat("_Metallic", 0f);
+            material.SetFloat("_Smoothness", .15f);
+            material.SetColor("_EmissionColor", Color.black);
+            material.DisableKeyword("_EMISSION");
+            material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;
             material.enableInstancing = true;
             EditorUtility.SetDirty(material);
             return material;

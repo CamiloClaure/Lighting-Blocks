@@ -10,6 +10,12 @@ namespace LightingBlocks
     {
         // How close a receiver must be, straight-line and unobstructed, for E to reach it.
         public const float DepositRange = 1.5f;
+        // Receiver placement (ForestLayoutGenerator.PlaceReceivers/RemoveReceiverClearance): the
+        // minimum distance kept between two receivers on the same island, and the radius around each
+        // one kept clear of particle placement/respawning so a pickup can never surface inside a
+        // receiver's interaction area.
+        public const float ReceiverSpacing = 8f;
+        public const float ReceiverClearance = 2.2f;
         public readonly List<ColorReceiver> Receivers = new List<ColorReceiver>();
         // Receiver/tile colours: blue, violet, amber - matches BridgeBlock's tier 0/1/2 exactly, so a
         // receiver's ColorIndex can be passed straight through as TrySpawnAtWisdomTree's forced tier.
@@ -17,12 +23,17 @@ namespace LightingBlocks
         // Every fundamental particle: warm yellow #FFD66B, regardless of the receiver it will end up in.
         public static readonly Color ParticleColor = new Color(1f, .839f, .420f);
         public void ResetWorld() { Receivers.Clear(); }
-        public void AddTree(ForestWorld world, WisdomTree tree, Transform parent)
+        // layout.receivers holds up to 3 farthest-point-selected sites for this island (see
+        // ForestLayoutGenerator.PlaceReceivers) - index order matches ColorReceiver.ColorIndex
+        // (blue/violet/amber). A site missing here means placement could not clear ReceiverSpacing on
+        // this island; PlaceReceivers already logged that generation error, so this just skips the cube
+        // rather than placing one somewhere unsupported or overlapping.
+        public void AddTree(ForestWorld world, WisdomTree tree, Transform parent, IslandForestLayout layout)
         {
-            for (int color = 0; color < 3; color++)
+            for (int color = 0; color < 3 && color < layout.receivers.Count; color++)
             {
                 var cube = GameObject.CreatePrimitive(PrimitiveType.Cube); cube.name = "Color receiver " + color; cube.transform.SetParent(parent, false);
-                cube.transform.position = tree.Definition.wisdomPosition + new Vector3(-3.2f, .55f, (color - 1) * 2.1f); cube.transform.localScale = Vector3.one * .8f;
+                cube.transform.position = layout.receivers[color] + Vector3.up * .55f; cube.transform.localScale = Vector3.one * .8f;
                 // Trigger volume accepts deposits but never blocks the player or the tree's output.
                 cube.GetComponent<Collider>().isTrigger = true;
                 var receiver = cube.AddComponent<ColorReceiver>(); receiver.Tree = tree; receiver.World = world; receiver.ColorIndex = color;

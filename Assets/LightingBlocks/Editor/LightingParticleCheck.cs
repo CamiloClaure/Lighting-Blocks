@@ -186,12 +186,22 @@ namespace LightingBlocks.Editor
             Assert(game.player.TryGrab(looseBlock.Box)&&game.player.HeldBox==looseBlock.Box,"Space (BoxPlayer.TryGrab) still picks up a nearby bridge block directly");
             game.player.Release();
 
+            // ---- a saved particle sitting on a receiver relocates on reload, id/respawn state intact --
+            var relocSlot=forest.Inventory(island.id).slots[5];
+            string relocId=relocSlot.id;float relocRemaining=relocSlot.remaining;bool relocPending=relocSlot.pending;int relocGeneration=relocSlot.generation;
+            var relocSite=forest.Layouts[0].receivers[0];
+            relocSlot.position=relocSite; // sit it exactly on the blue receiver's site
+
             // Real complete bridge placements; verifies all three tiers on gap two round-trip.
             foreach(var b in game.Blocks){b.gameObject.SetActive(false);UnityEngine.Object.Destroy(b.gameObject);}game.Blocks.Clear();game.Recalculate();
             var place=typeof(LightingIntegrationCheck).GetMethod("PlaceAt",BindingFlags.Static|BindingFlags.NonPublic);
             for(int gap=0;gap<2;gap++)for(int row=0;row<GameManager.Rows;row++)place.Invoke(null,new object[]{game,forest.configuration.islands[gap].id,gap,0,row});
             Assert(game.Bridges[0]&&game.Bridges[1],"Both full mixed-color bridges complete");Assert(game.Blocks.Any(b=>b.gap==1&&b.tier==0),"Second bridge includes blue tiles");
+            // ImportSave -> Restore -> Build() is exactly the production path RelocateIfReserved runs on.
             Assert(game.ImportSave(game.ExportSave()),"Complete bridges reload with all permitted colors");
+            var relocReloaded=forest.Inventory(island.id).slots.First(s=>s.id==relocId);
+            Assert(Vector3.Distance(relocReloaded.position,relocSite)>=LightingParticles.ReceiverClearance,"A saved particle sitting on a receiver's site relocates clear of its interaction area on reload");
+            Assert(relocReloaded.remaining==relocRemaining&&relocReloaded.pending==relocPending&&relocReloaded.generation==relocGeneration,"Relocation preserves the particle's id and respawn state (timer/pending/generation untouched)");
             game.player.readInput=false;game.cameraRig.readInput=false;
         }
         static void Capture(GameManager game)
