@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.IO;
+using System.Linq;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -61,6 +62,9 @@ namespace LightingBlocks.Editor
             var forestWorld = game.GetComponent<ForestWorld>();
             if (forestWorld == null) throw new Exception("No ForestWorld found alongside GameManager in " + TerrainScenePath + ".");
             forestWorld.enableLightingParticles = true;
+            // Lighting-only visibility limiter (world + particle fade) - see LightingFog.cs and the
+            // matching render pass built below. Defaults match the spec (world 6/12, particles 4/6).
+            if (game.GetComponent<LightingFog>() == null) game.gameObject.AddComponent<LightingFog>();
 
             var world = new GameObject("Lighting World").transform;
             var blocksRoot = new GameObject("Bridge Stones").transform; blocksRoot.SetParent(world, false);
@@ -345,11 +349,44 @@ namespace LightingBlocks.Editor
             const string rendererPath="Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset";
             var existing=AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rendererPath);
             if(existing==null){AssetDatabase.CreateAsset(renderer,rendererPath);existing=renderer;}else {EditorUtility.CopySerialized(renderer,existing);UnityEngine.Object.DestroyImmediate(renderer);}
+            AddFogFeature(existing,rendererPath);
             var pipeline=UnityEngine.Object.Instantiate(source);pipeline.name="Lighting Pipeline";pipeline.renderScale=1;
             var serialized=new SerializedObject(pipeline);var list=serialized.FindProperty("m_RendererDataList");list.arraySize=1;list.GetArrayElementAtIndex(0).objectReferenceValue=existing;serialized.ApplyModifiedPropertiesWithoutUndo();
             const string pipelinePath=folder+"/LightingPipeline.asset";var old=AssetDatabase.LoadAssetAtPath<UniversalRenderPipelineAsset>(pipelinePath);
             if(old==null)AssetDatabase.CreateAsset(pipeline,pipelinePath);else {EditorUtility.CopySerialized(pipeline,old);UnityEngine.Object.DestroyImmediate(pipeline);EditorUtility.SetDirty(old);}
             EditorUtility.SetDirty(existing);AssetDatabase.SaveAssets();
+        }
+        // Opaque-world fog pass (spec: "after opaques/skybox and before transparents and post-
+        // processing"): the built-in FullScreenPassRendererFeature, injected BeforeRenderingTransparents,
+        // running M_LightingFog (LightingFog.shader - reconstructs world position from the depth
+        // texture, fades to black by XZ distance from LightingFog.cs's _LightingFogCenter global).
+        // Scoped to Lighting by construction: this feature only ever gets added to LightingRenderer.asset,
+        // never to PC_Renderer/Mobile_Renderer, so legacy scenes' renderers never carry it.
+        static void AddFogFeature(UniversalRendererData renderer,string rendererPath)
+        {
+            // CopySerialized above just overwrote rendererFeatures with PC_Renderer's own list (which
+            // never included this one), so any feature object a previous rebuild added is now an
+            // orphaned subasset of this same file - destroy it before adding a fresh one, same
+            // idempotency concern as VoidProfile()'s volume components below.
+            foreach(var stale in AssetDatabase.LoadAllAssetsAtPath(rendererPath).OfType<FullScreenPassRendererFeature>().Where(f=>f.name=="Lighting Fog").ToArray())
+                UnityEngine.Object.DestroyImmediate(stale,true);
+            var feature=ScriptableObject.CreateInstance<FullScreenPassRendererFeature>();
+            feature.name="Lighting Fog";
+            feature.passMaterial=FogMaterial();
+            feature.injectionPoint=FullScreenPassRendererFeature.InjectionPoint.BeforeRenderingTransparents;
+            feature.requirements=ScriptableRenderPassInput.Depth;
+            AssetDatabase.AddObjectToAsset(feature,renderer);
+            renderer.rendererFeatures.Add(feature);
+        }
+        static Material FogMaterial()
+        {
+            string path=Art+"/Materials/M_LightingFog.mat";
+            var shader=Shader.Find("LightingBlocks/Lighting Fog");
+            var material=AssetDatabase.LoadAssetAtPath<Material>(path);
+            if(material==null){material=new Material(shader);AssetDatabase.CreateAsset(material,path);}
+            material.shader=shader;
+            EditorUtility.SetDirty(material);
+            return material;
         }
 
         // ---- captures --------------------------------------------------------------------------

@@ -179,7 +179,7 @@ namespace LightingBlocks
         }
         public IslandParticleSave Inventory(string id){foreach(var i in State.islands)if(i.id==id)return i;return null;}
         // Read-only: active/inactive pickup transforms, in the same order as pickupStates. Lighting's
-        // dark-floor glow (LightingGlassLights) is the only external reader.
+        // visibility fade (LightingFog) is the only external reader.
         public IReadOnlyList<Transform> PickupVisuals=>pickupVisuals;
         public IslandForestDefinition IslandAt(Vector3 p)
         {

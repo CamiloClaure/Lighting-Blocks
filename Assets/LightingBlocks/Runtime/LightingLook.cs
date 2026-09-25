@@ -11,7 +11,6 @@ namespace LightingBlocks
             previous=QualitySettings.renderPipeline;selected=Resources.Load<UniversalRenderPipelineAsset>("LightingPipeline");if(selected!=null)QualitySettings.renderPipeline=selected;
             var camera=GetComponent<Camera>();camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=Color.black;RenderSettings.skybox=null;
             camera.allowDynamicResolution=false;
-            if(GetComponent<LightingGlassLights>()==null)gameObject.AddComponent<LightingGlassLights>();
             var volume=gameObject.AddComponent<Volume>();volume.isGlobal=true;volume.priority=100;
             owned=ScriptableObject.CreateInstance<VolumeProfile>();volume.sharedProfile=owned;
             var bloom=owned.Add<Bloom>(true);bloom.intensity.Override(.10f);bloom.scatter.Override(.15f);bloom.threshold.Override(1.3f);

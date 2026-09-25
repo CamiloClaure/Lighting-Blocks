@@ -23,9 +23,13 @@ Shader "LightingBlocks/Crystal Filaments"
             CBUFFER_START(UnityPerMaterial)
             float4 _EmissionColor; float _Glow,_Highlight;
             CBUFFER_END
+            // Lighting-only world fade (see LightingFog.cs). _LightingFogActive is 0 outside
+            // Lighting, so worldFade always evaluates to 1 there - legacy scenes are unaffected.
+            float4 _LightingFogCenter;
+            float _LightingFogActive, _LightingWorldClear, _LightingWorldBlack;
             struct A { float4 p:POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; };
-            struct V { float4 p:SV_POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; float fog:TEXCOORD1; };
-            V vert(A i) { V o; o.p=TransformObjectToHClip(i.p.xyz); o.color=i.color; o.uv=i.uv; o.fog=ComputeFogFactor(o.p.z); return o; }
+            struct V { float4 p:SV_POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; float fog:TEXCOORD1; float3 world:TEXCOORD2; };
+            V vert(A i) { V o; o.p=TransformObjectToHClip(i.p.xyz); o.world=TransformObjectToWorld(i.p.xyz); o.color=i.color; o.uv=i.uv; o.fog=ComputeFogFactor(o.p.z); return o; }
             half4 frag(V i):SV_Target
             {
                 float transverse=abs(i.uv.x*2-1);
@@ -37,6 +41,8 @@ Shader "LightingBlocks/Crystal Filaments"
                 float3 hue=lerp(_EmissionColor.rgb,sqrt(max(_EmissionColor.rgb,0))*1.5,i.color.r);
                 // A faint resting rim marks the footprint; full step brightness is unchanged.
                 float3 light=hue*i.color.a*across*(lerp(.04,1.003,glow)+_Highlight*.12);
+                float worldT=saturate((length(i.world.xz-_LightingFogCenter.xz)-_LightingWorldClear)/max(_LightingWorldBlack-_LightingWorldClear,1e-4));
+                light*=1-_LightingFogActive*(worldT*worldT*(3-2*worldT));
                 return half4(MixFogColor(light,float3(0,0,0),i.fog),0);
             }
             ENDHLSL

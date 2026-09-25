@@ -32,6 +32,10 @@ Shader "LightingBlocks/Twilight Crystal"
             CBUFFER_END
             // Zero outside Lighting. A bounded pool lets this stylized glass catch the player lamp.
             float4 _LightingCharacterPosition, _LightingCharacterColor;
+            // Lighting-only world fade (see LightingFog.cs). _LightingFogActive is 0 outside
+            // Lighting, so worldFade always evaluates to 1 there - legacy scenes are unaffected.
+            float4 _LightingFogCenter;
+            float _LightingFogActive, _LightingWorldClear, _LightingWorldBlack;
             struct A { float4 p:POSITION; float3 n:NORMAL; float2 uv:TEXCOORD0; };
             struct V { float4 p:SV_POSITION; float3 w:TEXCOORD0; float3 n:TEXCOORD1; float2 uv:TEXCOORD2; float fog:TEXCOORD3; float top:TEXCOORD4; };
             V vert(A i)
@@ -107,6 +111,8 @@ Shader "LightingBlocks/Twilight Crystal"
                 falloff*=falloff;
                 float facing=saturate(dot(n,toLamp*rsqrt(max(distanceSquared,.001))));
                 glass+=sqrt(saturate(tint))*_LightingCharacterColor.rgb*falloff*facing/(1+distanceSquared);
+                float worldT=saturate((length(i.w.xz-_LightingFogCenter.xz)-_LightingWorldClear)/max(_LightingWorldBlack-_LightingWorldClear,1e-4));
+                opacity*=1-_LightingFogActive*(worldT*worldT*(3-2*worldT));
                 return half4(MixFog(glass,i.fog)*opacity,opacity);
             }
             ENDHLSL
