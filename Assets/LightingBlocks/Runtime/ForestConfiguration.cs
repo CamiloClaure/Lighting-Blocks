@@ -40,12 +40,13 @@ namespace LightingBlocks
     }
     [Serializable] public sealed class ForestSave
     {
+        public int particleVersion;
         public int seed,layoutVersion=ForestConfiguration.LayoutVersion;
         public List<IslandParticleSave> islands=new List<IslandParticleSave>();
         public List<string> suppressedTrees=new List<string>();
     }
-    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory;public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
-    [Serializable] public sealed class ParticleSlotSave{public string id;public float remaining;public Vector3 position;public int generation;public bool positioned,pending;}
+    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory,treeCharge;public int chargeColor;public bool hasChargeColor;public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
+    [Serializable] public sealed class ParticleSlotSave{public string id;public int color;public float remaining;public Vector3 position;public int generation;public bool positioned,pending;}
     public struct ForestPlacement{public Vector3 position;public float yaw,scale;public int variant,id;}
     public sealed class IslandForestLayout
     {
@@ -100,13 +101,30 @@ namespace LightingBlocks
             }
             var nav=new ForestNavigation(polygon,layout,false);layout.navigation=nav;nav.BuildReachability(d.wisdomPosition+Vector3.right*2);
             rng=new System.Random(Hash(seed,d.id+"/particles-v2"));
-            if(d.polygonIndex==0)foreach(var p in new[]{new Vector3(-2,0,1),new Vector3(-4,0,0),new Vector3(-6,0,-1)})if(nav.Walkable(p))layout.particles.Add(p);
+            if(!BridgeProfile.Current.isLighting&&d.polygonIndex==0)foreach(var p in new[]{new Vector3(-2,0,1),new Vector3(-4,0,0),new Vector3(-6,0,-1)})if(nav.Walkable(p))layout.particles.Add(p);
             for(int a=0;a<12000&&layout.candidates.Count<192;a++)
             {
                 var p=Sample(rng);if(!nav.Walkable(p)||Reserved(p,d,6)||!nav.InReachableArea(p))continue;
                 bool clear=true;foreach(var prior in layout.candidates)if((prior-p).sqrMagnitude<2.25f){clear=false;break;}
                 if(!clear)continue;layout.candidates.Add(p);clear=true;foreach(var prior in layout.particles)if((prior-p).sqrMagnitude<6.25f){clear=false;break;}
                 if(clear&&layout.particles.Count<d.particleCount)layout.particles.Add(p);
+            }
+            if(BridgeProfile.Current.isLighting)
+            {
+                layout.particles.Clear();
+                // Farthest-point sampling spreads a fixed population across the whole supported hub.
+                while(layout.particles.Count<d.particleCount)
+                {
+                    float best=-1; Vector3 chosen=default;
+                    foreach(var candidate in layout.candidates)
+                    {
+                        float distance=layout.particles.Count==0?1:float.MaxValue;
+                        foreach(var placed in layout.particles)distance=Mathf.Min(distance,(candidate-placed).sqrMagnitude);
+                        if(distance>best){best=distance;chosen=candidate;}
+                    }
+                    if(best<=0)throw new InvalidOperationException("Not enough particle positions on "+d.id);
+                    layout.particles.Add(chosen);
+                }
             }
             rng=new System.Random(Hash(seed,d.id+"/animals-v2"));int total=d.animalCount+d.rabbitCount+d.birdCount;
             for(int a=0;a<8000&&layout.animals.Count<total;a++)
@@ -116,6 +134,7 @@ namespace LightingBlocks
                 if(layout.animals.Count>=d.animalCount+d.rabbitCount)foreach(var tree in layout.trees)if((tree.position-p).sqrMagnitude<12*tree.scale*tree.scale){clear=false;break;}
                 if(clear){layout.animals.Add(p);layout.habitats.Add(p);}
             }
+            if(BridgeProfile.Current.skipScenery){if(layout.particles.Count!=d.particleCount||layout.animals.Count!=total)throw new InvalidOperationException("Incomplete hub layout");return layout;}
             rng=new System.Random(Hash(seed,d.id+"/cover-v2"));
             for(float x=min.x;x<max.x;x+=1.05f)for(float z=min.y;z<max.y;z+=1.05f)
             {

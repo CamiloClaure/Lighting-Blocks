@@ -72,7 +72,12 @@ namespace LightingBlocks
                 var p=layout.habitats[random.Next(layout.habitats.Count)];float dist=Vector3.Distance(transform.position,p);
                 if(dist<7||dist>30||!ClearGround(p,8))continue;
                 bool safe=true;float height=3.5f;
-                for(int k=0;k<=24;k++){float t=k/24f;var sample=Vector3.Lerp(transform.position,p,t);if(!ForestLayoutGenerator.Inside(sample,polygon,.6f)){safe=false;break;}
+                for(int k=0;k<=24;k++){float t=k/24f;var sample=Vector3.Lerp(transform.position,p,t);
+                    // Lighting: the overhead safety corridor must stay above supported crystal, not the
+                    // legacy island polygon (see PlatformSupport.cs). Landing itself is already gated via
+                    // ClearGround->nav.Walkable; this only covers the arc in between.
+                    bool corridorSafe=BridgeProfile.Current.platformGround?PlatformSupport.Supports(sample):ForestLayoutGenerator.Inside(sample,polygon,.6f);
+                    if(!corridorSafe){safe=false;break;}
                     foreach(var tree in layout.trees)if((new Vector3(sample.x,0,sample.z)-tree.position).sqrMagnitude<9*tree.scale*tree.scale){if(t<.16f||t>.84f){safe=false;break;}height=Mathf.Max(height,(7.5f*tree.scale)/Mathf.Sin(Mathf.PI*t));}
                     if((sample-layout.definition.wisdomPosition).sqrMagnitude<25){safe=false;break;}
                     if(!safe)break;}

@@ -8,7 +8,7 @@ namespace LightingBlocks
     // profile never adds this component, so SampleScene is unaffected.
     public sealed class BridgeSteps : MonoBehaviour
     {
-        static readonly string[] NoteFiles = { "01LB F", "02LB G", "03LB G#", "04LB A#", "05LB C", "06LB D", "07LB D#" };
+        static readonly string[] NoteFiles = { "07LB D#" };
         const float NoteCooldown = .12f;
         GameManager game;
         BridgeBlock current;
@@ -68,6 +68,8 @@ namespace LightingBlocks
         // Position, not chance, picks the note: a crossing plays a rising line as you walk it.
         void PlayNote(BridgeBlock block)
         {
+            // Lighting already plays a dry impact on each physical stride.
+            if (BridgeProfile.Current.isLighting) return;
             var clip = notes[(block.gap * GameManager.Rows + block.row) % notes.Length];
             if (clip == null) return;
             source.PlayOneShot(clip);

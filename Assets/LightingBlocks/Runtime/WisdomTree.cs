@@ -14,7 +14,7 @@ namespace LightingBlocks
         public float Remaining=>remaining;
         ForestWorld forest;GameManager game;float remaining;bool channelled;
         MaterialPropertyBlock properties;
-        float baseIntensity=1.1f;
+        float baseIntensity=1.1f,displayedStrength=1f;
         // ---- inverted-tree tuning knobs --------------------------------------
         // Concept art reads as a glowing white-lavender trunk under a deep blue-violet canopy,
         // the opposite of the authored materials. Everything a tuning pass touches lives here.
@@ -23,6 +23,12 @@ namespace LightingBlocks
         Color trunkEmission=new Color(1.6f,1.35f,2.4f,1);   // HDR, bark and filaments
         Color leafEmission=new Color(.05f,.03f,.16f,1);     // canopy, almost out
         Color leafBase=new Color(.16f,.13f,.30f,1);         // canopy albedo, pushed to blue-violet
+        // Lighting only (see Repaint): LuminousPlants ("Living lavender canopy") has _VertexTint on,
+        // so this multiplies against the mesh's own baked-in colour rather than replacing it outright
+        // like leafBase does on Wisdom_Leaves (_VertexTint off there) - it needs a brighter number to
+        // land in the same "bright violet-blue foliage" place instead of compounding into near-black.
+        Color canopyEmission=new Color(.4f,.3f,1f,1);
+        Color canopyBase=new Color(.55f,.45f,1.1f,1);
         Color lanternColour=new Color(2.6f,1.7f,.7f,1);     // HDR warm, unlit glass
         float uplightIntensity=1.2f;
         int stringCount=12;                                 // ForestVerification asserts 12 strings and 12 lanterns: move both together
@@ -38,7 +44,7 @@ namespace LightingBlocks
         public void Initialize(ForestWorld world,IslandForestDefinition definition){forest=world;game=world.GetComponent<GameManager>();Definition=definition;}
         public bool BeginCharge(bool silent=false)
         {
-            if(GameHUD.GameplayBlocked||Charging)return false;
+            if(BridgeProfile.Current.isLighting||GameHUD.GameplayBlocked||Charging)return false;
             if(forest.Nearby(game.player.transform.position)!=this)return false;
             if(forest.Inventory(Definition.id).inventory<3){if(!silent)game.Notify("Collect 3 particles on this island",false);return false;}
             if(!forest.FindOutput(Definition,out _)){if(!silent)game.Notify("Move blocks away from the Wisdom Tree",false);return false;}
@@ -46,14 +52,16 @@ namespace LightingBlocks
         }
         public void Tick(float delta)
         {
-            if(GameHUD.SimulationPaused||remaining<=0||delta<=0)return;
+            if(GameHUD.SimulationPaused||delta<=0)return;
+            if(BridgeProfile.Current.isLighting&&remaining<=0&&forest.Inventory(Definition.id).treeCharge>=3&&forest.FindOutput(Definition,out _))remaining=.6f;
+            if(remaining<=0)return;
             remaining=Mathf.Max(0,remaining-delta);
             if(remaining==0)
             {
                 var inventory=forest.Inventory(Definition.id);
-                if(inventory.inventory>=3&&game.TrySpawnAtWisdomTree(Definition.id,out var block))
+                if((BridgeProfile.Current.isLighting?inventory.treeCharge:inventory.inventory)>=3&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting&&inventory.hasChargeColor?inventory.chargeColor:-1))
                 {
-                    inventory.inventory-=3;ForestSoundscape.Play("release",block.transform.position,.12f);
+                    if(BridgeProfile.Current.isLighting){inventory.treeCharge-=3;if(inventory.treeCharge==0)inventory.hasChargeColor=false;}else inventory.inventory-=3;ForestSoundscape.Play("release",block.transform.position,.12f);
                     if(release!=null){release.transform.position=block.transform.position+Vector3.up*.4f;release.Play();}
                     // A held channel completes a charge every .6 s. Chiming and writing the whole
                     // save that often turns the feature into a stutter, so a channelled stone is
@@ -67,7 +75,9 @@ namespace LightingBlocks
         {
             if(forest==null)return;
             if(game.autoTick)Tick(Time.deltaTime);
-            float strength=Charging?1+Mathf.Sin((.6f-remaining)/.6f*Mathf.PI)*2:1;
+            float bank=BridgeProfile.Current.isLighting?Mathf.Min(3,forest.Inventory(Definition.id).treeCharge):0;
+            float strength=1+bank*.4f+(Charging?Mathf.Sin((.6f-remaining)/.6f*Mathf.PI)*1.2f:0);
+            if(BridgeProfile.Current.isLighting){displayedStrength=Mathf.Lerp(displayedStrength,strength,1-Mathf.Exp(-8*Time.deltaTime));strength=displayedStrength;}
             if(glowLight!=null)glowLight.intensity=baseIntensity*strength;
             if(rune!=null){float glow=Mathf.Max(.35f,strength);runeProperties.SetColor("_BaseColor",new Color(RuneInk.r*glow,RuneInk.g*glow,RuneInk.b*glow,1));rune.SetPropertyBlock(runeProperties);}
             if(glowRenderers!=null)foreach(var r in glowRenderers){properties.SetFloat("_Charge",strength);r.SetPropertyBlock(properties);}
@@ -123,11 +133,21 @@ namespace LightingBlocks
                     var m=materials[i];if(m==null)continue;
                     // Wisdom_Pods is deliberately left out: those are the HDR gold pods, the one
                     // warm accent in the canopy, and darkening them puts the tree's lights out.
-                    bool leaf=m.name.Contains("Leaves");
+                    // LuminousPlants ("Living lavender canopy") is a separate always-present canopy
+                    // renderer outside the LOD group's own Bark/Pods/Leaves submeshes - its authored
+                    // _BaseColor is plain white with _VertexTint on, so with nothing here to tint it
+                    // it reads as a pale, washed-out lavender/pink blob regardless of every other
+                    // tuning pass (bloom, tonemapping, the Leaves/Bark override above already
+                    // working correctly on the LOD meshes). Gated to Lighting only: every legacy
+                    // profile leaves this renderer exactly as SpiritPathLook authored it, matching
+                    // "never recolor shared legacy assets" - this is a per-instance property block,
+                    // not an edit to LuminousPlants.mat itself, and only takes effect for Lighting.
+                    bool luminous=BridgeProfile.Current.isLighting&&m.name.Contains("LuminousPlants");
+                    bool leaf=m.name.Contains("Leaves")||luminous;
                     if(!leaf&&!m.name.Contains("Bark")&&!m.name.Contains("Filament"))continue;
                     var block=new MaterialPropertyBlock();
-                    block.SetColor("_EmissionColor",leaf?leafEmission:trunkEmission);
-                    if(leaf&&m.HasProperty("_BaseColor"))block.SetColor("_BaseColor",leafBase);
+                    block.SetColor("_EmissionColor",leaf?(luminous?canopyEmission:leafEmission):trunkEmission);
+                    if(leaf&&m.HasProperty("_BaseColor"))block.SetColor("_BaseColor",luminous?canopyBase:leafBase);
                     r.SetPropertyBlock(block,i);found.Add((r,i,block));
                 }
             }

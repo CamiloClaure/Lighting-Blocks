@@ -1,0 +1,39 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: VoidSky
+  m_Shader: {fileID: 4800000, guid: 3877dc038c5cda44a89a5e68636a5386, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs: []
+    m_Ints: []
+    m_Floats:
+    - _StarBrightness: 9
+    - _StarCells: 140
+    - _StarDensity: 0.5
+    - _StarSize: 6
+    m_Colors:
+    - _Nebula: {r: 0.01, g: 0.008, b: 0.016, a: 1}
+    - _SkyBottom: {r: 0.0009, g: 0.0009, b: 0.0025, a: 1}
+    - _SkyHorizon: {r: 0.0009, g: 0.0009, b: 0.0025, a: 1}
+    - _SkyTop: {r: 0.0009, g: 0.0009, b: 0.0025, a: 1}
+    - _StarTint: {r: 0.85, g: 0.9, b: 1, a: 1}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

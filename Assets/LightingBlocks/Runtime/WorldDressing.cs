@@ -31,18 +31,28 @@ namespace LightingBlocks
             if (existing != null) ForestWorld.Remove(existing.gameObject);
             var root = new GameObject("Immersive Deeps").transform;
             root.SetParent(world, false);
-            Reshape(world);
-            BuildBackgroundIslands(root, world);
-            RimRocks(root, world);
-            var configuration = ForestWorld.For(game)?.configuration;
-            SpiritPaving(root, world, configuration);
-            RimSteps(root, world);
-            SpiritRuins(root, world, configuration);
-            VoidShafts(root);
-            Lanterns(root, world);
-            // ForestWorld owns all vegetation and wildlife.
-            Atmosphere(game);
-            WorldLabels.Adopt();
+            if (BridgeProfile.Current.skipScenery)
+            {
+                // Lighting: no terrain/rock/paving/ruin dressing at all - the courts are Agent B's
+                // hub platform tiles (built once by LightingSceneBuilder), everything else is void.
+                // "Immersive Deeps" stays as an (empty) marker so the find-and-clear above still works.
+                AtmosphereVoid(game);
+            }
+            else
+            {
+                Reshape(world);
+                BuildBackgroundIslands(root, world);
+                RimRocks(root, world);
+                var configuration = ForestWorld.For(game)?.configuration;
+                SpiritPaving(root, world, configuration);
+                RimSteps(root, world);
+                SpiritRuins(root, world, configuration);
+                VoidShafts(root);
+                Lanterns(root, world);
+                // ForestWorld owns all vegetation and wildlife.
+                Atmosphere(game);
+                WorldLabels.Adopt();
+            }
             // Occupancy lighting owns the crossing, and nothing lights up from a footfall on the islands.
             if (!BridgeProfile.Current.occupancyLight) Footlights.Attach(game.player);
             else
@@ -51,7 +61,36 @@ namespace LightingBlocks
                 if (steps == null) steps = game.gameObject.AddComponent<BridgeSteps>();
                 steps.enabled = true;
             }
+            // Bridge glow keeps working whether or not the legacy dressing pass ran.
             foreach (var block in game.Blocks) StepLight(block);
+        }
+
+        // ---- the Lighting void -------------------------------------------------------------
+
+        // No terrain, no haze to hide a horizon that does not exist: the Night Sky skybox (already
+        // wired to the Esc menu's star toggle) supplies the near-black backdrop, so this only has to
+        // strip the forest's sunlit-daytime signals (fog, ambient, a "moon") and keep the camera rig
+        // able to pan across every hub.
+        static void AtmosphereVoid(GameManager game)
+        {
+            RenderSettings.fog = false;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(.02f, .025f, .045f);
+            foreach (var light in Object.FindObjectsByType<Light>())
+                if (light.type == LightType.Directional) light.intensity = 0f;
+            if (game.cameraRig == null) return;
+            game.cameraRig.distance = 20f;
+            var bounds = CourtBounds();
+            game.cameraRig.minimumFocus = new Vector2(bounds.min.x + 2, bounds.min.z + 2);
+            game.cameraRig.bounds = new Vector2(bounds.max.x - 2, bounds.max.z - 2);
+            var camera = game.cameraRig.GetComponent<Camera>();
+            if (camera == null) return;
+            // Fallback colour only (clearFlags stays Skybox, inherited from the cloned camera): the
+            // void is the Night Sky shader, not a solid-colour override.
+            if(camera.GetComponent<LightingLook>()==null)camera.gameObject.AddComponent<LightingLook>();
+            camera.clearFlags=CameraClearFlags.SolidColor;camera.backgroundColor=Color.black;RenderSettings.skybox=null;
+            foreach(var label in Object.FindObjectsByType<TextMesh>())label.gameObject.SetActive(false);
+            camera.farClipPlane = 420;
         }
 
         // ---- the courts ------------------------------------------------------
@@ -798,17 +837,7 @@ namespace LightingBlocks
                 renderer.SetPropertyBlock(properties);
             }
             var art = block.GetComponent<BlockArt>();
-            var runes = art != null && art.placedVisual != null ? art.placedVisual.Find("Crystal runes") : null;
-            var runesRenderer = runes != null ? runes.GetComponent<Renderer>() : null;
-            if (runesRenderer != null)
-            {
-                // Only _EmissionColor, on a property block: _BaseColor stays white or the rune
-                // lines read as dark scratches instead of simply unlit. Same 2.4x Seams uses.
-                var properties = glowProperties;
-                runesRenderer.GetPropertyBlock(properties);
-                properties.SetColor("_EmissionColor", colour * 2.4f * lit);
-                runesRenderer.SetPropertyBlock(properties);
-            }
+            if (art != null) art.SetGlow(lit);
         }
         static void Seams(BridgeBlock block, Color colour)
         {

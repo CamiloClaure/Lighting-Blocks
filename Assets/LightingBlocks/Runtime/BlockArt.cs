@@ -7,6 +7,7 @@ namespace LightingBlocks
     {
         public Transform looseVisual, placedVisual;
         public Renderer[] bodies, seams;
+        public Renderer[] lightDetails;
         BridgeBlock block;
         MaterialPropertyBlock properties;
         bool nearby;
@@ -32,6 +33,23 @@ namespace LightingBlocks
                 properties.SetFloat("_Highlight",held?1:nearby?.5f:0);
                 properties.SetFloat("_Connected",block.Connected?1:0);
                 body.SetPropertyBlock(properties);
+            }
+            SetGlow(block.placed && BridgeProfile.Current.occupancyLight ? block.lit : 1f);
+        }
+        public void SetGlow(float value)
+        {
+            if(properties==null) properties=new MaterialPropertyBlock();
+            ApplyGlow(bodies,value); ApplyGlow(lightDetails,value);
+        }
+        void ApplyGlow(Renderer[] renderers,float value)
+        {
+            if(renderers==null) return;
+            foreach(var renderer in renderers)
+            {
+                if(renderer==null) continue;
+                renderer.GetPropertyBlock(properties);
+                properties.SetFloat("_Glow",Mathf.Clamp01(value));
+                renderer.SetPropertyBlock(properties);
             }
         }
     }

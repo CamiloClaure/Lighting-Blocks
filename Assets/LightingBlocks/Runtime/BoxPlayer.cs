@@ -104,10 +104,11 @@ namespace LightingBlocks
 
         void Update()
         {
-            if (!readInput || GameHUD.GameplayBlocked) return;
+            var particles=BridgeProfile.Current.isLighting?GameManager.Instance?.GetComponent<LightingParticles>():null;
+            if (!readInput || GameHUD.GameplayBlocked){particles?.Cancel();return;}
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
-            if (!Application.isFocused) { Release(); return; }
+            if (!Application.isFocused) { particles?.Cancel(); Release(); return; }
             UpdateNearby();
             if (keyboard != null && keyboard.qKey.wasPressedThisFrame) {
                 if (Orbiting) DropOrbit(true); else if(HeldBox!=null) Release();
@@ -119,8 +120,11 @@ namespace LightingBlocks
                 // Space replaces the left mouse button with the same hold-to-carry semantics. The
                 // cursor is locked to screen centre under this profile, so PointerOverUI cannot be
                 // hit by a key press and the check the mouse path needs is skipped here.
-                if (keyboard == null || !keyboard.spaceKey.isPressed) Release();
-                else if (keyboard.spaceKey.wasPressedThisFrame) TryGrab(NearbyBox);
+                if (keyboard == null || !keyboard.spaceKey.isPressed){particles?.Drop();Release();}
+                else if (keyboard.spaceKey.wasPressedThisFrame)
+                {
+                    if(particles==null||!particles.TryGrab(this,NearbyBox))TryGrab(NearbyBox);
+                }
             }
             else if (mouse == null || !mouse.leftButton.isPressed) Release();
             else if (mouse.leftButton.wasPressedThisFrame && !GameHUD.PointerOverUI()) TryGrab(NearbyBox);
@@ -174,7 +178,7 @@ namespace LightingBlocks
                 soul.Notify(stone.placed ? "BRIDGE BLOCK ANCHORED\nConnected blocks become the walkable bridge. Grab a loose block to extend it." : stone.Title.ToUpper() + " IS TOO HEAVY\nRequires Strength " + stone.RequiredStrength + "; yours is " + soul.strength + ". Upgrade in Skills [Tab].", false);
                 return false;
             }
-            if (box == null || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
+            if (box == null || (GameManager.Instance?.GetComponent<LightingParticles>()?.Held!=null) || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
             HeldBox = box;
             HeldBoxes.Clear(); HeldBoxes.Add(box);
             if (soul != null)
@@ -225,7 +229,19 @@ namespace LightingBlocks
             {
                 // Stop at an unsupported edge, including while hauling a group.
                 string edgeReason = null;
-                if (motion.sqrMagnitude > .00001f && !soul.CanStand(before + motion)) edgeReason = "THE PATH ENDS HERE\nBuild at the glowing edge: release a dragged stone, or press Q with orbiting stones.";
+                if (motion.sqrMagnitude > .00001f && !soul.CanStand(before + motion))
+                {
+                    // Bridge borders are support limits, not walls. Keep the supported component
+                    // of a diagonal input so running along an edge never cancels forward movement.
+                    Vector3 alongX = new Vector3(motion.x, 0, 0);
+                    Vector3 alongZ = new Vector3(0, 0, motion.z);
+                    bool canX = alongX.sqrMagnitude > .00001f && soul.CanStand(before + alongX);
+                    bool canZ = alongZ.sqrMagnitude > .00001f && soul.CanStand(before + alongZ);
+                    motion = canX && (!canZ || alongX.sqrMagnitude > alongZ.sqrMagnitude) ? alongX
+                        : canZ ? alongZ : Vector3.zero;
+                    if (motion.sqrMagnitude <= .00001f)
+                        edgeReason = "THE PATH ENDS HERE\nBuild at the glowing edge: release a dragged stone, or press Q with orbiting stones.";
+                }
                 foreach (var held in HeldBoxes) if (!Orbiting && motion.sqrMagnitude > .00001f && !soul.CanDragAt(held.transform.position + motion)) edgeReason = "YOUR HAUL NEEDS MORE ROOM\nExtend or widen the connected bridge, or move fewer blocks together.";
                 if (edgeReason != null)
                 {
@@ -368,6 +384,13 @@ namespace LightingBlocks
         {
             // Fire before the audio guard: a missing clip must not also swallow the visual.
             if (Stepped != null) Stepped(transform.position);
+            if (BridgeProfile.Current.isLighting)
+            {
+                var drySteps = GetComponent<LightingFootsteps>();
+                if (drySteps == null) drySteps = gameObject.AddComponent<LightingFootsteps>();
+                drySteps.PlayStep();
+                return;
+            }
             var clip = ForestSoundscape.Footstep(transform.position);
             if (sfx == null || clip == null) return;
             sfx.pitch = 1; sfx.PlayOneShot(clip);

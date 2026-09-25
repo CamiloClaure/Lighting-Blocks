@@ -7,6 +7,9 @@ namespace LightingBlocks
     public sealed class ForestWorld : MonoBehaviour
     {
         public ForestConfiguration configuration;
+        [Tooltip("Lighting only. Enable before Play to restore colored pickups, receivers, and canopy fireflies. Saved particle state is retained while disabled.")]
+        public bool enableLightingParticles = false;
+        public bool ParticlesEnabled => !BridgeProfile.Current.isLighting || enableLightingParticles;
         [field: NonSerialized] public ForestSave State {get;private set;}
         public readonly List<IslandForestLayout> Layouts=new List<IslandForestLayout>();
         public readonly List<WisdomTree> WisdomTrees=new List<WisdomTree>();
@@ -18,6 +21,7 @@ namespace LightingBlocks
         float collectionTimer,fxTime,respawnTimer;
         readonly List<IslandForestLayout> pickupLayouts=new List<IslandForestLayout>();
         readonly List<float> pickupAppear=new List<float>();
+        [SerializeField,HideInInspector] List<GameObject> sceneryRoots=new List<GameObject>();
         Transform visualRoot;
         void Awake()
         {
@@ -40,22 +44,22 @@ namespace LightingBlocks
         }
         public ForestSave NewState(int seed)
         {
-            var state=new ForestSave{seed=seed};
-            foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=new IslandParticleSave{id=d.id};for(int i=0;i<d.particleCount;i++)island.slots.Add(new ParticleSlotSave{id=d.id+":"+i,position=layout.particles[i],positioned=true});state.islands.Add(island);}
+            var state=new ForestSave{seed=seed,particleVersion=BridgeProfile.Current.isLighting?1:0};
+            foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=new IslandParticleSave{id=d.id};for(int i=0;i<d.particleCount;i++)island.slots.Add(new ParticleSlotSave{id=d.id+":"+i,color=i%3,position=layout.particles[i],positioned=true});state.islands.Add(island);}
             return state;
         }
         public bool Valid(ForestSave state,bool legacy=false)
         {
-            if(state==null||state.seed<0||(legacy?(state.layoutVersion!=1&&state.layoutVersion!=2):state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
+            if(state==null||state.particleVersion<0||state.particleVersion>1||state.seed<0||(legacy?(state.layoutVersion!=1&&state.layoutVersion!=2):state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
             if(!legacy && (state.suppressedTrees==null||state.suppressedTrees.Count>1000))return false;
             if(!legacy){var unique=new HashSet<string>();foreach(var suppression in state.suppressedTrees){if(string.IsNullOrEmpty(suppression)||!unique.Add(suppression))return false;int slash=suppression.LastIndexOf('/');if(slash<0||configuration.Find(suppression.Substring(0,slash))==null||!int.TryParse(suppression.Substring(slash+1),out int index)||index<0||index>1000)return false;}}
             var ids=new HashSet<string>();
             foreach(var i in state.islands)
             {
-                if(i==null||i.id==null||!ids.Add(i.id)||i.inventory<0||i.inventory>30)return false;
+                if(i==null||i.id==null||!ids.Add(i.id)||i.inventory<0||i.inventory>30||i.treeCharge<0||i.treeCharge>30||(i.hasChargeColor&&(i.chargeColor<0||i.chargeColor>2)))return false;
                 var d=configuration.Find(i.id);if(d==null||i.slots==null||i.slots.Count!=d.particleCount)return false;
                 var slots=new HashSet<string>();
-                foreach(var s in i.slots){if(s==null||!slots.Add(s.id)||float.IsNaN(s.remaining)||float.IsInfinity(s.remaining)||s.remaining<0||s.remaining>30)return false;}
+                foreach(var s in i.slots){if(s==null||!slots.Add(s.id)||float.IsNaN(s.remaining)||float.IsInfinity(s.remaining)||s.remaining<0||s.remaining>30||s.color<0||s.color>2)return false;}
                 for(int n=0;n<d.particleCount;n++)if(!slots.Contains(d.id+":"+n))return false;
                 if(!legacy){var layout=ForestLayoutGenerator.Generate(d,state.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);layout.trees.RemoveAll(t=>state.suppressedTrees.Contains(d.id+"/"+t.id));layout.navigation.BuildReachability(d.wisdomPosition+Vector3.right*2);foreach(var slot in i.slots)if(!slot.positioned||slot.generation<0||slot.generation==int.MaxValue||!float.IsFinite(slot.position.x)||!float.IsFinite(slot.position.y)||!float.IsFinite(slot.position.z)||Mathf.Abs(slot.position.y)>.01f||!layout.navigation.InReachableArea(slot.position))return false;}
             }
@@ -63,7 +67,22 @@ namespace LightingBlocks
         }
         public ForestSave Migrate(ForestSave old,int version,List<GameManager.BlockSave> blocks,Vector3 player)
         {
-            if(version==4)return Valid(old)?old:null;
+            if(version==4)
+            {
+                if(!Valid(old))return null;
+                if(BridgeProfile.Current.isLighting&&old.particleVersion==0)
+                {
+                    foreach(var island in old.islands)
+                    {
+                        var d=configuration.Find(island.id);
+                        var layout=ForestLayoutGenerator.Generate(d,old.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);
+                        island.treeCharge=island.inventory;island.inventory=0;
+                        foreach(var slot in island.slots){int n=int.Parse(slot.id.Substring(slot.id.LastIndexOf(':')+1));slot.color=n%3;slot.position=layout.particles[n];}
+                    }
+                    old.particleVersion=1;
+                }
+                return old;
+            }
             if(version>=2&&!Valid(old,true))return null;
             if(version==3){if(old.layoutVersion!=2)return null;foreach(var island in old.islands)foreach(var slot in island.slots)if(!slot.positioned||slot.generation<0||slot.generation==int.MaxValue||!float.IsFinite(slot.position.x)||!float.IsFinite(slot.position.y)||!float.IsFinite(slot.position.z)||Mathf.Abs(slot.position.y)>.01f||Mathf.Abs(slot.position.x)>60||slot.position.z<-70||slot.position.z>120)return null;}
             var next=NewState(version==1?1907:old.seed);
@@ -95,7 +114,12 @@ namespace LightingBlocks
         }
         public IslandParticleSave Inventory(string id){foreach(var i in State.islands)if(i.id==id)return i;return null;}
         public IslandForestDefinition IslandAt(Vector3 p)
-        {foreach(var d in configuration.islands)if(Landscape.Inside(new Vector2(p.x,p.z),Landscape.Shores[d.polygonIndex]))return d;return null;}
+        {
+            // Lighting: hub ownership comes from whichever PlatformSupport the point sits over, by
+            // hubId, not the island polygon - see PlatformSupport.cs.
+            if(BridgeProfile.Current.platformGround){var hubId=PlatformSupport.At(p)?.hubId;return hubId==null?null:configuration.Find(hubId);}
+            foreach(var d in configuration.islands)if(Landscape.Inside(new Vector2(p.x,p.z),Landscape.Shores[d.polygonIndex]))return d;return null;
+        }
         public WisdomTree Nearby(Vector3 p)
         {foreach(var t in WisdomTrees)if(t!=null&&(new Vector2(p.x-t.transform.position.x,p.z-t.transform.position.z)).sqrMagnitude<=9)return t;return null;}
         public string InventoryLabel
@@ -103,28 +127,40 @@ namespace LightingBlocks
         public void Build()
         {
             EnsureState();
+            if(BridgeProfile.Current.isLighting)GetComponent<LightingParticles>()?.ResetWorld();
             if(visualRoot!=null)Remove(visualRoot.gameObject);
             var old=game.blocksRoot.parent.Find("Spectral Forest");if(old!=null)Remove(old.gameObject);
             visualRoot=new GameObject("Spectral Forest").transform;visualRoot.SetParent(game.blocksRoot.parent,false);
+            sceneryRoots.Clear();
             Layouts.Clear();WisdomTrees.Clear();pickupVisuals.Clear();pickupStates.Clear();pickupOwners.Clear();pickupLayouts.Clear();pickupAppear.Clear();
             foreach(var d in configuration.islands)
             {
                 var layout=ForestLayoutGenerator.Generate(d,State.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);layout.trees.RemoveAll(t=>State.suppressedTrees.Contains(d.id+"/"+t.id));layout.navigation.BuildReachability(d.wisdomPosition+Vector3.right*2);Layouts.Add(layout);
                 var root=new GameObject(d.id).transform;root.SetParent(visualRoot,false);
-                foreach(var p in layout.trees)
+                // Lighting: skip tree/undergrowth generation outright - no GameObjects are ever
+                // created, not merely hidden after the fact (EnvironmentVisibility.SetForestVisible
+                // stays a legacy-only toggle over what this loop built).
+                if(!BridgeProfile.Current.skipScenery)
                 {
-                    var t=Instantiate(configuration.trees[p.variant],p.position,Quaternion.Euler(0,p.yaw,0),root);t.transform.localScale*=p.scale;
-                    var trunk=t.AddComponent<CapsuleCollider>();trunk.radius=.32f;trunk.height=1.8f;trunk.center=new Vector3(0,.9f,0);
+                    foreach(var p in layout.trees)
+                    {
+                        var t=Instantiate(configuration.trees[p.variant],p.position,Quaternion.Euler(0,p.yaw,0),root);t.transform.localScale*=p.scale;
+                        var trunk=t.AddComponent<CapsuleCollider>();trunk.radius=.32f;trunk.height=1.8f;trunk.center=new Vector3(0,.9f,0);
+                        sceneryRoots.Add(t);
+                    }
+                    if(configuration.coverMeshes!=null&&configuration.coverMeshes.Length>0){var cover=root.gameObject.AddComponent<ForestCoverRenderer>();cover.Initialize(configuration,layout,game.player.transform);}
                 }
-                if(configuration.coverMeshes!=null&&configuration.coverMeshes.Length>0){var cover=root.gameObject.AddComponent<ForestCoverRenderer>();cover.Initialize(configuration,layout,game.player.transform);}
                 var wisdom=Instantiate(configuration.wisdomPrefab,d.wisdomPosition,Quaternion.identity,root);wisdom.name="Wisdom Tree - "+d.id;
                 var component=wisdom.GetComponent<WisdomTree>();component.Initialize(this,d);WisdomTrees.Add(component);
                 var owner=Inventory(d.id);
-                for(int i=0;i<layout.particles.Count;i++)
+                var particles=BridgeProfile.Current.isLighting&&enableLightingParticles?(GetComponent<LightingParticles>()??gameObject.AddComponent<LightingParticles>()):null;
+                if(particles!=null)particles.AddTree(this,component,root);
+                for(int i=0;ParticlesEnabled&&i<layout.particles.Count;i++)
                 {
                     var pickup=new GameObject("Particle "+owner.slots[i].id,typeof(MeshFilter),typeof(MeshRenderer));pickup.GetComponent<MeshFilter>().sharedMesh=configuration.particleMesh;
                     pickup.transform.SetParent(root,false);layout.particles[i]=owner.slots[i].position;pickup.transform.position=owner.slots[i].position+Vector3.up*.7f;pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
                     pickup.GetComponent<Renderer>().sharedMaterial=configuration.particleMaterial;pickup.GetComponent<Renderer>().shadowCastingMode=ShadowCastingMode.Off;
+                    if(particles!=null)particles.AddParticle(this,pickup,owner,owner.slots[i]);
                     pickupVisuals.Add(pickup.transform);pickupStates.Add(owner.slots[i]);pickupOwners.Add(owner);pickupLayouts.Add(layout);pickupAppear.Add(1);pickup.SetActive(owner.slots[i].remaining<=0&&!owner.slots[i].pending);
                 }
                 for(int i=0;i<layout.animals.Count;i++)
@@ -133,19 +169,31 @@ namespace LightingBlocks
                     else if(configuration.species!=null&&configuration.species.Length>=2){var species=configuration.species[i<d.animalCount+d.rabbitCount?0:1];var animal=Instantiate(species.prefab,layout.animals[i],Quaternion.identity,root);animal.GetComponent<ForestCreature>().Initialize(game,layout,species,ForestLayoutGenerator.Hash(State.seed,d.id+"/creature/"+i));}
                 }
             }
-            var random=new System.Random(ForestLayoutGenerator.Hash(State.seed,"valley"));int count=0;
-            var bg=new GameObject("Background Forest").transform;bg.SetParent(visualRoot,false);
-            for(int a=0;a<4000&&count<120;a++)
+            if(!BridgeProfile.Current.skipScenery)
             {
-                // Centre and reach follow the islands. Landscape.Span is 217 in the shipped layout,
-                // so this stays the old 40 + 134.5 ring around z=50.5, where the literals sat.
-                float angle=(float)random.NextDouble()*Mathf.PI*2,radius=40+(float)random.NextDouble()*(Landscape.Span*.62f);
-                float x=Mathf.Cos(angle)*radius,z=Landscape.CentreZ+Mathf.Sin(angle)*radius;
-                if(WorldDressing.ShoreDistance(x,z)<12||!WorldDressing.BackgroundHeight(x,z,out float y))continue;
-                var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,y,z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
+                var random=new System.Random(ForestLayoutGenerator.Hash(State.seed,"valley"));int count=0;
+                var bg=new GameObject("Background Forest").transform;bg.SetParent(visualRoot,false);
+                sceneryRoots.Add(bg.gameObject);
+                for(int a=0;a<4000&&count<120;a++)
+                {
+                    // Centre and reach follow the islands. Landscape.Span is 217 in the shipped layout,
+                    // so this stays the old 40 + 134.5 ring around z=50.5, where the literals sat.
+                    float angle=(float)random.NextDouble()*Mathf.PI*2,radius=40+(float)random.NextDouble()*(Landscape.Span*.62f);
+                    float x=Mathf.Cos(angle)*radius,z=Landscape.CentreZ+Mathf.Sin(angle)*radius;
+                    if(WorldDressing.ShoreDistance(x,z)<12||!WorldDressing.BackgroundHeight(x,z,out float y))continue;
+                    var t=Instantiate(configuration.trees[random.Next(configuration.trees.Length)],new Vector3(x,y,z),Quaternion.Euler(0,random.Next(360),0),bg);t.transform.localScale*=1+(float)random.NextDouble();count++;
+                }
             }
-            var ambience=visualRoot.gameObject.AddComponent<ForestAmbience>();ambience.Initialize(configuration,this,game);
+            if(!BridgeProfile.Current.isLighting){var ambience=visualRoot.gameObject.AddComponent<ForestAmbience>();ambience.Initialize(configuration,this,game);}
             if(game.GetComponent<ForestSoundscape>()==null)game.gameObject.AddComponent<ForestSoundscape>();
+            if(Application.isPlaying)SetSceneryVisible(EnvironmentVisibility.ForestVisible);
+            Physics.SyncTransforms();
+        }
+        public void SetSceneryVisible(bool visible)
+        {
+            // Only decorative trees: Wisdom Trees, pickups, creatures and the terrain stay active.
+            // Hide tree colliders with their meshes so invisible trunks cannot trap the player.
+            foreach(var root in sceneryRoots)if(root!=null)root.SetActive(visible);
             Physics.SyncTransforms();
         }
         public static void Remove(UnityEngine.Object obj)
@@ -155,7 +203,7 @@ namespace LightingBlocks
             int count=Physics.OverlapBoxNonAlloc(p,half,hits,Quaternion.identity,~0,QueryTriggerInteraction.Ignore);
             if(count==hits.Length)return true;
             for(int i=0;i<count;i++)
-            {var c=hits[i];if(!c.enabled||!c.gameObject.activeInHierarchy)continue;if(c.name.StartsWith("ShoreFloor"))continue;if(ignorePlayer&&c.GetComponentInParent<BoxPlayer>()!=null)continue;if(c.GetComponentInParent<SpectralAnimal>()!=null)continue;return true;}
+            {var c=hits[i];if(!c.enabled||!c.gameObject.activeInHierarchy)continue;if(c.name.StartsWith("ShoreFloor"))continue;if(c.GetComponent<PlatformSupport>()!=null)continue;if(ignorePlayer&&c.GetComponentInParent<BoxPlayer>()!=null)continue;if(c.GetComponentInParent<SpectralAnimal>()!=null)continue;return true;}
             return false;
         }
         public bool FindOutput(IslandForestDefinition d,out Vector3 point)
@@ -164,13 +212,21 @@ namespace LightingBlocks
             foreach(var offset in d.outputOffsets)
             {
                 var p=d.wisdomPosition+offset;bool valid=true;
-                foreach(float x in new[]{-.45f,.45f})foreach(float z in new[]{-.45f,.45f})if(!ForestLayoutGenerator.Inside(p+new Vector3(x,0,z),Landscape.Shores[d.polygonIndex],.05f))valid=false;
+                // Lighting: an output slot must sit on supported platform ground, corner to corner,
+                // same as the legacy island-polygon inset test it replaces.
+                foreach(float x in new[]{-.45f,.45f})foreach(float z in new[]{-.45f,.45f})
+                {
+                    var corner=p+new Vector3(x,0,z);
+                    bool grounded=BridgeProfile.Current.platformGround?PlatformSupport.Supports(corner):ForestLayoutGenerator.Inside(corner,Landscape.Shores[d.polygonIndex],.05f);
+                    if(!grounded)valid=false;
+                }
                 if(valid&&!Occupied(p,new Vector3(.46f,.24f,.46f))){point=p;return true;}
             }
             return false;
         }
         public bool TryCollect(int index)
         {
+            if(BridgeProfile.Current.isLighting)return false;
             if(index<0||index>=pickupStates.Count||GameHUD.GameplayBlocked||pickupStates[index].remaining>0||pickupStates[index].pending||pickupOwners[index].inventory>=30)return false;
             var t=pickupVisuals[index];var delta=game.player.transform.position-t.position;
             if(new Vector2(delta.x,delta.z).sqrMagnitude>1.21f||Mathf.Abs(delta.y)>1.5f||Occupied(t.position,new Vector3(.15f,.12f,.15f),true))return false;
@@ -184,7 +240,7 @@ namespace LightingBlocks
             for(int i=0;i<pickupVisuals.Count;i++)
             {
                 var t=pickupVisuals[i];var slot=pickupStates[i];if(slot.pending&&respawnTimer<=0)Respawn(i);bool active=slot.remaining<=0&&!slot.pending;t.gameObject.SetActive(active);
-                if(!active)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
+                if(!active||t.GetComponent<ParticleDrag>()?.Held==true)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
                 if(collect&&collectionTimer<=0)TryCollect(i);
             }
             if(collectionTimer<=0)collectionTimer=.1f;if(respawnTimer<=0)respawnTimer=.5f;
@@ -197,7 +253,7 @@ namespace LightingBlocks
                 var p=layout.candidates[(start+n)%layout.candidates.Count];var delta=game.player.transform.position-p;delta.y=0;
                 if(delta.sqrMagnitude<9||(p-slot.position).sqrMagnitude<4||Occupied(p+Vector3.up*.7f,new Vector3(.2f,.15f,.2f),true))continue;
                 bool blocked=false;foreach(var b in game.Blocks)if((new Vector3(b.transform.position.x,0,b.transform.position.z)-p).sqrMagnitude<1.44f){blocked=true;break;}
-                foreach(var other in pickupOwners[index].slots)if(other!=slot&&other.remaining<=0&&!other.pending&&(other.position-p).sqrMagnitude<6.25f){blocked=true;break;}
+                foreach(var other in pickupOwners[index].slots)if(other!=slot&&other.remaining<=0&&!other.pending&&(other.position-p).sqrMagnitude<(BridgeProfile.Current.isLighting?16f:6.25f)){blocked=true;break;}
                 if(blocked)continue;slot.position=p;slot.generation++;slot.pending=false;pickupAppear[index]=0;int local=pickupOwners[index].slots.IndexOf(slot);layout.particles[local]=p;return true;
             }return false;
         }

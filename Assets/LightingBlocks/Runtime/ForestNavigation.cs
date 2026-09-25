@@ -21,7 +21,11 @@ namespace LightingBlocks
         public bool InReachableArea(Vector3 p)=>reachable.Contains(Cell(p))&&Segment(p,Point(Cell(p)));
         public bool Walkable(Vector3 p)
         {
-            if(!ForestLayoutGenerator.Inside(p,polygon,Mathf.Max(.8f,clearance)))return false;
+            // Lighting: ground is whatever a registered PlatformSupport collider covers, not the
+            // island polygon - see PlatformSupport.cs. Legacy scenes (platformGround false) keep the
+            // polygon-inset test unchanged.
+            bool grounded=BridgeProfile.Current.platformGround?PlatformSupport.Supports(p):ForestLayoutGenerator.Inside(p,polygon,Mathf.Max(.8f,clearance));
+            if(!grounded)return false;
             if((p-layout.definition.wisdomPosition).sqrMagnitude<1.5f*1.5f)return false;
             foreach(var t in layout.trees)if((p-t.position).sqrMagnitude<Mathf.Pow(.65f+clearance,2))return false;
             if(wildlife && ForestLayoutGenerator.Reserved(p,layout.definition,4))return false;

@@ -77,10 +77,11 @@ namespace LightingBlocks
         {
             BuildUI(); SetView(ScreenView.Title);
         }
-        void OnEnable() { Current = this; }
+        void OnEnable() { Current = this; EnvironmentVisibility.ApplyStars(); }
         void OnDisable()
         {
             if (Current != this) return;
+            EnvironmentVisibility.RestoreEditorSky();
             Current = null; Time.timeScale = previousTimeScale; AudioListener.pause = previousAudioPause;
 #if UNITY_EDITOR
             if (fullscreenView != null) fullscreenView.maximized = wasMaximized;
@@ -125,7 +126,7 @@ namespace LightingBlocks
         public void BeginJourney()
         {
             SetView(ScreenView.Playing);
-            if (game != null && !(game.ConnectedCount > 0)) game.Notify("Collect 3 particles, then press E beside the Wisdom Tree. Haul its block to the glowing bridge edge.", false);
+            if (game != null && !(game.ConnectedCount > 0)) game.Notify(BridgeProfile.Current.isLighting?game.LightingCarryHint:"Collect 3 particles, then press E beside the Wisdom Tree. Haul its block to the glowing bridge edge.", false);
         }
         public void ShowPause() { if (View != ScreenView.Title) { if (game != null) game.Save(); SetView(ScreenView.Pause); } }
         public void ShowTitle() { if (game != null) game.Save(); SetView(ScreenView.Title); }
@@ -252,6 +253,11 @@ namespace LightingBlocks
             feedback.anchorMin = feedback.anchorMax = new Vector2(.5f, 1); feedback.pivot = new Vector2(.5f, 1); feedback.anchoredPosition = new Vector2(0, -58);
             feedback.GetComponent<Image>().raycastTarget = false; feedbackPanel = feedback.gameObject;
             noticeText = Label("Action Feedback Text", feedback, "", 16, 8, 588, 68, 17, Mint, TextAnchor.MiddleCenter);
+            if(BridgeProfile.Current.isLighting)
+            {
+                WorldLabelRoot.gameObject.SetActive(false);location.gameObject.SetActive(false);
+                calls.gameObject.SetActive(false);mission.gameObject.SetActive(false);keycaps.gameObject.SetActive(false);
+            }
         }
         void BuildTitle()
         {
@@ -267,13 +273,30 @@ namespace LightingBlocks
         }
         void BuildPause()
         {
-            var panel = CenterPanel("Pause Menu", 540, 620); pausePanel = panel.gameObject;
-            Heading("Pause Title", panel, "PAUSED", 30, 28, 480, 48, 38, White, TextAnchor.MiddleCenter);
+            var panel = CenterPanel("Pause Menu", 540, 724); pausePanel = panel.gameObject;
+            Heading("Pause Title", panel, "PAUSED", 30, 16, 480, 64, 38, White, TextAnchor.MiddleCenter);
             Label("Pause Description", panel, "Your soul paths are resting.", 30, 84, 480, 32, 20, Muted, TextAnchor.MiddleCenter);
             resumeButton = Button("Resume", panel, "RESUME  [ESC]", 40, 137, 460, 56, () => SetView(ScreenView.Playing));
             Button("Pause Controls", panel, "CONTROLS", 40, 205, 460, 56, ShowControls);
             AudioSlider(panel,"Master",272);AudioSlider(panel,"Music",326);AudioSlider(panel,"Ambience",380);AudioSlider(panel,"Effects",434);
-            Button("Return To Title", panel, "SAVE & RETURN TO TITLE", 40, 522, 460, 56, ShowTitle);
+            // Lighting has no decorative forest to toggle (BridgeProfile.hasForestToggle is false
+            // there); the Stars row just moves up into the Forest row's slot instead of leaving a gap.
+            bool showForest = BridgeProfile.Current.hasForestToggle;
+            if (showForest) VisibilityToggle(panel,"Forest",490,EnvironmentVisibility.ForestVisible,EnvironmentVisibility.SetForestVisible);
+            if(!BridgeProfile.Current.isLighting)VisibilityToggle(panel,"Stars",showForest ? 548 : 490,EnvironmentVisibility.StarsVisible,EnvironmentVisibility.SetStarsVisible);
+            Button("Return To Title", panel, "SAVE & RETURN TO TITLE", 40, 628, 460, 56, ShowTitle);
+        }
+        void VisibilityToggle(RectTransform panel,string name,float y,bool visible,UnityAction<bool> changed)
+        {
+            var row=Panel(name+" Visibility",panel,40,y,460,44,Card);
+            var toggle=row.gameObject.AddComponent<Toggle>(); toggle.targetGraphic=row.GetComponent<Image>();
+            Label(name+" Label",row,name=="Forest"?"FOREST":"STAR BACKGROUND",14,0,320,44,17,White,TextAnchor.MiddleLeft);
+            var box=Rect("Checkbox",row,418,10,24,24).gameObject.AddComponent<Image>();
+            box.sprite=Fill(); box.type=Image.Type.Sliced; box.color=Ink;
+            var mark=Rect("Check",box.transform,5,5,14,14).gameObject.AddComponent<Image>(); mark.color=Mint;
+            toggle.graphic=mark; toggle.SetIsOnWithoutNotify(visible);
+            var state=Label("State",row,visible?"ON":"OFF",338,0,68,44,15,visible?Mint:Muted,TextAnchor.MiddleCenter);
+            toggle.onValueChanged.AddListener(value=>{changed(value);state.text=value?"ON":"OFF";state.color=value?Mint:Muted;});
         }
         void AudioSlider(RectTransform panel,string group,float y)
         {
@@ -289,7 +312,16 @@ namespace LightingBlocks
             var panel = CenterPanel("Controls View", 850, 730); controlsPanel = panel.gameObject;
             Heading("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
             Label("Controls Subtitle", panel, "Keyboard and mouse", 32, 82, 786, 26, 18, Muted, TextAnchor.MiddleCenter);
-            string[,] rows = {
+            // Lighting keeps only Speed and Soul Gain (hotkeys 1/2); the other three legacy powers,
+            // and Soul Links' click-to-gather grab mode, do not exist there.
+            string[,] rows = BridgeProfile.Current.isLighting ? new[,] {
+                {"Move", "W / A / S / D"}, {ForestWorld.For(game)?.enableLightingParticles==true?"Carry particle / block":"Carry block", "Hold Space"},
+                {ForestWorld.For(game)?.enableLightingParticles==true?"Deliver particle / place tile":"Place tile", "Release Space"}, {"Rotate camera", "Move mouse"},
+                {"Zoom", "Mouse wheel"}, {"Return unused blocks", "R near a Wisdom Tree"},
+                {"Open / close skill tree", "Tab or K"}, {"Pause / resume / go back", "Esc"},
+                {"Speed", "1"}, {"Soul Gain", "2"},
+                {"Show objective / enter next area", "E"}, {"Fullscreen / expand Game view", "F1"}
+            } : new[,] {
                 {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
                 {"Drop / build bridge tiles", "Q in orbit; release mouse when dragging"}, {"Move the camera", "Arrow keys / screen edges / middle drag"},
                 {"Zoom", "Mouse wheel"}, {"Center camera on player", "Hold Space"},
@@ -372,7 +404,7 @@ namespace LightingBlocks
             }
             var wisdom = game.player == null ? null : forest?.Nearby(game.player.transform.position);
             if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles" + (BridgeProfile.Current.treeReturn ? " · R: Return stones" : "");
-            contextText.text = diamond + "  " + hint;
+            contextText.text = BridgeProfile.Current.isLighting ? (game.player.HeldBox!=null?"Release SPACE at the glowing bridge edge":game.GetComponent<LightingParticles>()?.Held!=null?"Release SPACE into a matching cube":game.LightingCarryHint) : diamond + "  " + hint;
             RefreshPlacePrompt();
             journalText.text = "I · They called it the end of the universe. But souls still wander between its broken shores.\n\n"
                 + (game.Bridges[0] ? "II · Your first bridge did more than carry you. It gave the lost a path home." : "II · A memory waits across the first rift.") + "\n\n"
@@ -407,6 +439,7 @@ namespace LightingBlocks
                         Mathf.Clamp(point.y, half.y + 6, Screen.height - half.y - 6), 0);
                 }
             }
+            if(BridgeProfile.Current.isLighting)show=false;
             if (placeChip.gameObject.activeSelf != show) placeChip.gameObject.SetActive(show);
         }
         void UpdatePurchase(PurchaseBinding b)

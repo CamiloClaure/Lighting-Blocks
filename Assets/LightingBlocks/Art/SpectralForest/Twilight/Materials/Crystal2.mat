@@ -26,10 +26,12 @@ Material:
     m_Ints: []
     m_Floats:
     - _Connected: 0
+    - _FacetSeed: 14.26
+    - _Glow: 1
     - _Highlight: 0
-    - _Opacity: 0.7
+    - _Opacity: 0.66
     - _Refraction: 0.003
     m_Colors:
-    - _BaseColor: {r: 2.2, g: 1.7082354, b: 0.9576471, a: 1}
+    - _BaseColor: {r: 1, g: 0.68235296, b: 0.21960784, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

@@ -69,16 +69,28 @@ namespace LightingBlocks
                 30, 112, 700, 24, 17, Muted);
             closeButton = Button("Skills Close", root, "CLOSE  [TAB]", PanelWidth - 190, 24, 160, 44, close);
 
-            Add("strength", "ASTRAL STRENGTH", "Haul heavier stones from the deeper rift.", new Vector2(430, 200), 112);
-            Add("links", "SOUL LINKS", "Gather orbiting stones with one click. Q drops or builds.", new Vector2(215, 375), 104);
-            Add("radiance", "LIGHTING SOUL", "Reveal more of the dark around you.", new Vector2(645, 375), 104);
-            Add("speed", "SWIFT STRIDE", "Move faster throughout the forest, with or without stones.", new Vector2(295, 550), 104);
-            Add("generator", "SOUL WELL", "A second source of Souls, independent of the bridge.", new Vector2(560, 550), 104);
-            Add("root", "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
+            // Lighting keeps only Speed and Soul Gain; Strength/Links/Radiance/Soul Well do not
+            // exist there (removed from both the tree and the purchase routes - see GameManager).
+            if (BridgeProfile.Current.isLighting)
+            {
+                Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(295, 550), 104);
+                Add("soulgain", "SOUL GAIN", "Every level adds 25% more Souls to your connected path.", new Vector2(560, 550), 104);
+                Add("root", "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
+                Connect("root", "speed"); Connect("root", "soulgain");
+            }
+            else
+            {
+                Add("strength", "ASTRAL STRENGTH", "Haul heavier stones from the deeper rift.", new Vector2(430, 200), 112);
+                Add("links", "SOUL LINKS", "Gather orbiting stones with one click. Q drops or builds.", new Vector2(215, 375), 104);
+                Add("radiance", "LIGHTING SOUL", "Reveal more of the dark around you.", new Vector2(645, 375), 104);
+                Add("speed", "SWIFT STRIDE", "Move faster throughout the forest, with or without stones.", new Vector2(295, 550), 104);
+                Add("generator", "SOUL WELL", "A second source of Souls, independent of the bridge.", new Vector2(560, 550), 104);
+                Add("root", "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
 
-            Connect("root", "speed"); Connect("root", "generator");
-            Connect("speed", "links"); Connect("generator", "radiance");
-            Connect("links", "strength"); Connect("radiance", "strength");
+                Connect("root", "speed"); Connect("root", "generator");
+                Connect("speed", "links"); Connect("generator", "radiance");
+                Connect("links", "strength"); Connect("radiance", "strength");
+            }
 
             // Branches are drawn first so the nodes always sit on top of them.
             foreach (var edge in edges) BuildEdge(edge);
@@ -274,6 +286,8 @@ namespace LightingBlocks
             switch (id)
             {
                 case "speed": return "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
+                case "soulgain": return "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
+                    + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";

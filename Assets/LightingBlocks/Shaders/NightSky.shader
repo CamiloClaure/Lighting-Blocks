@@ -23,6 +23,7 @@ Shader "LightingBlocks/Night Sky"
  CBUFFER_START(UnityPerMaterial)
  float4 _SkyTop,_SkyHorizon,_SkyBottom,_StarTint,_Nebula;float _StarDensity,_StarBrightness,_StarCells,_StarSize;
  CBUFFER_END
+ float _LightingBlocksHideStars;
  struct Attributes{float4 positionOS:POSITION;};
  struct Varyings{float4 positionCS:SV_POSITION;float3 dir:TEXCOORD0;};
  Varyings Vert(Attributes v){Varyings o;o.positionCS=TransformObjectToHClip(v.positionOS.xyz);o.dir=v.positionOS.xyz;return o;}
@@ -32,6 +33,7 @@ Shader "LightingBlocks/Night Sky"
  float3 col=d.y>=0?lerp(_SkyHorizon.rgb,_SkyTop.rgb,smoothstep(0,0.6,d.y)):lerp(_SkyHorizon.rgb,_SkyBottom.rgb,smoothstep(0,0.5,-d.y));
  // ponytail: one smooth band (two smoothsteps), no noise octaves; add shape noise if a flat band reads too uniform.
  float nebula=smoothstep(-0.6,-0.4,d.y)*(1-smoothstep(-0.4,-0.2,d.y));col+=_Nebula.rgb*nebula*0.12;
+ if(_LightingBlocksHideStars>0.5)return half4(col,1);
  float3 cell=floor(d*_StarCells);float3 f=frac(d*_StarCells);
  float r0=Hash3(cell,float3(12.9898,78.233,37.719));
  float r1=Hash3(cell,float3(39.346,11.135,83.155));

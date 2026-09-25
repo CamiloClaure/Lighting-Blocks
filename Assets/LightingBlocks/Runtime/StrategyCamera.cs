@@ -121,7 +121,7 @@ namespace LightingBlocks
             transform.position = smoothedFocus - transform.forward * distance * lensScale;
             // Gaussian depth of field is far-only and metre based: keep the focus plane on the smoothed
             // focus point and let everything more than ~8 m behind it soften toward the void.
-            if (!dofResolved && Application.isPlaying)
+            if (!BridgeProfile.Current.isLighting && !dofResolved && Application.isPlaying)
             {
                 dofResolved = true;
                 var volume = FindAnyObjectByType<Volume>();
