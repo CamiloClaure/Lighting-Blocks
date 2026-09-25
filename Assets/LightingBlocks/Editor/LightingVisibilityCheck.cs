@@ -151,18 +151,33 @@ namespace LightingBlocks.Editor
             try { CaptureZoomLevels(game, fog, lateUpdate); report.AppendLine("PASS: Zoom-level captures written to Logs/lighting-captures/"); }
             catch (Exception e) { report.AppendLine("NOTE: zoom-level captures could not be produced (" + e.Message + ") - not a check failure, see report."); }
         }
-        // Same view (Wisdom Tree, fixed pitch/yaw) at several zoom (distance) values, so the fade
-        // band and any distant emission leak are directly comparable frame to frame.
+        // Same view (fixed pitch/yaw) at several zoom (camera distance) values, so the fade band and
+        // any distant emission leak are directly comparable frame to frame. Three real particles are
+        // pulled onto the camera's own forward line, directly ahead of the player, at the spec's own
+        // reference distances (~3/~5/~7 units) - clear, mid-fade and hidden - instead of relying on
+        // wherever the generated layout happens to scatter them (most were out of frame or occluded
+        // behind the player). This only moves each particle's visual Transform for the screenshot;
+        // ParticleSlotSave.position (the saved/respawn state) is untouched.
         static void CaptureZoomLevels(GameManager game, LightingFog fog, MethodInfo lateUpdate)
         {
             string folder = "Logs/lighting-captures"; Directory.CreateDirectory(folder);
             var forest = ForestWorld.For(game);
             var treePosition = forest.configuration.islands[0].wisdomPosition;
-            Teleport(game, treePosition + new Vector3(4, 0, -3));
+            var playerPosition = treePosition + new Vector3(4, 0, -3);
+            Teleport(game, playerPosition);
+
+            const float pitch = 24f, yaw = 35f;
+            var forward = Quaternion.Euler(pitch, yaw, 0) * Vector3.forward; // same formula as StrategyCamera.Apply
+            var flatForward = new Vector3(forward.x, 0, forward.z).normalized;
+            var markers = forest.PickupVisuals.Take(3).ToArray();
+            var markerDistances = new[] { 3f, 5f, 7f };
+            for (int i = 0; i < markers.Length; i++) markers[i].position = playerPosition + flatForward * markerDistances[i] + Vector3.up * .7f;
+            Physics.SyncTransforms();
             lateUpdate.Invoke(fog, null);
+
             var rig = game.cameraRig; rig.readInput = false; game.player.readInput = false;
             var apply = typeof(StrategyCamera).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
-            rig.CenterOnPlayer(); rig.pitch = 24; rig.yaw = 35;
+            rig.CenterOnPlayer(); rig.pitch = pitch; rig.yaw = yaw;
             foreach (var distance in new[] { 3f, 6f, 9f, 14f })
             {
                 rig.distance = distance;

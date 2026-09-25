@@ -76,6 +76,16 @@ namespace LightingBlocks.Editor
             Assert(!forest.TryCollect(1)&&secondSlot.remaining==0,"A full shared inventory (30/30) refuses a pickup and leaves the world particle uncollected");
             forest.State.inventory=0;
 
+            // ---- focus loss blocks pickup: ForestWorld.Update passes collect=Application.isFocused,
+            // Tick(delta,collect) is the actual gate - exercise it directly, since a batch process has
+            // no real OS window to unfocus. ------------------------------------------------------------
+            var focusSlot=owner.slots[2];focusSlot.remaining=0;focusSlot.pending=false;Teleport(game,focusSlot.position+Vector3.right*.7f);
+            forest.Tick(1f,false);
+            Assert(forest.SharedInventory==0&&focusSlot.remaining==0,"Tick(collect:false) - the focus-loss path - does not collect a walked-over particle");
+            forest.Tick(1f,true);
+            Assert(forest.SharedInventory==1&&focusSlot.remaining>0,"Tick(collect:true) collects it once focus (or the equivalent gate) returns");
+            forest.State.inventory=0;
+
             // ---- E-key deposit targeting: range, unobstructed path, nearest-of-several -------------
             forest.State.inventory=10;
             var blue=system.Receivers[0];var violet=system.Receivers[1];var amber=system.Receivers[2];
@@ -124,6 +134,20 @@ namespace LightingBlocks.Editor
             Assert(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==1&&owner.queue.SequenceEqual(new[]{2}),"The earlier (violet) completion produces first");
             blue.Tree.Tick(1);
             Assert(game.Blocks.Count==blocksBefore+2&&game.Blocks.Last().tier==2&&owner.queue.Count==0,"The later (amber) completion produces second, queue now empty");
+
+            // ---- reload while a completed receiver's reward is still queued (mid-charge): no lost or
+            // duplicate tile. Only charge/queue are saved - WisdomTree's own 0.6s animation timer is
+            // not, so a reload simply restarts that countdown once Tick sees the queue again. -----------
+            forest.State.inventory=3;
+            Assert(blue.Deposit()&&blue.Deposit()&&blue.Deposit()&&blue.Charge==3&&owner.queue.SequenceEqual(new[]{0}),"Blue fills to 3/3 and queues a reward again, for the reload check");
+            blue.Tree.Tick(.3f); // partial tick: Charging (remaining>0), no tile created yet
+            Assert(blue.Tree.Charging&&owner.queue.SequenceEqual(new[]{0})&&blue.Charge==3,"Mid-charge: queue entry and charge both still held, no tile created yet");
+            string midCharge=game.ExportSave();int blocksBeforeReload=game.Blocks.Count;
+            Assert(game.ImportSave(midCharge),"A save taken mid-charge (queued reward, receiver still full) reloads");
+            var reloadedOwner=forest.Inventory(island.id);var reloadedBlue=system.Receivers[0];
+            Assert(reloadedOwner.charge[0]==3&&reloadedOwner.queue.SequenceEqual(new[]{0})&&!reloadedBlue.Tree.Charging,"Charge and queue survive the reload exactly - only the un-saved charge timer resets");
+            reloadedBlue.Tree.Tick(1f);
+            Assert(game.Blocks.Count==blocksBeforeReload+1&&reloadedOwner.charge[0]==0&&reloadedOwner.queue.Count==0,"Completing the reward after reload releases exactly one tile - no loss, no duplicate");
 
             // ---- migration: particleVersion 1 -> 2, coloured + uncoloured banked rewards and leftovers --
             string fresh=game.ExportSave();
