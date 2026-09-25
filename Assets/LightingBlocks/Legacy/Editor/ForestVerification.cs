@@ -20,14 +20,14 @@ namespace LightingBlocks.Editor
         static ForestVerification()
         {
             EditorApplication.update+=Poll;
-            EditorApplication.playModeStateChanged+=s=>{if(s==PlayModeStateChange.EnteredPlayMode&&SessionState.GetBool("Forest.Test",false)){running=true;frames=0;start=EditorApplication.timeSinceStartup;}if(s==PlayModeStateChange.EnteredEditMode){running=false;SessionState.SetBool("Forest.Test",false);if(File.Exists("Library/LightingBlocks.test-active"))File.Delete("Library/LightingBlocks.test-active");}};
+            EditorApplication.playModeStateChanged+=s=>{if(s==PlayModeStateChange.EnteredPlayMode&&SessionState.GetBool("Forest.Test",false)){running=true;frames=0;start=EditorApplication.timeSinceStartup;}if(s==PlayModeStateChange.EnteredEditMode){running=false;SessionState.SetBool("Forest.Test",false);}};
         }
         static void Poll()
         {
             if(!running)
             {
                 if(EditorApplication.isPlayingOrWillChangePlaymode||EditorApplication.isCompiling||!File.Exists("Library/SpectralForest.test-request"))return;
-                File.Delete("Library/SpectralForest.test-request");File.WriteAllText("Library/LightingBlocks.test-active","forest tests isolate saves");report.Clear();EditorSceneManager.OpenScene("Assets/Scenes/SampleScene.unity");SessionState.SetBool("Forest.Test",true);EditorApplication.isPlaying=true;return;
+                File.Delete("Library/SpectralForest.test-request");report.Clear();EditorSceneManager.OpenScene("Assets/Scenes/SampleScene.unity");SessionState.SetBool("Forest.Test",true);EditorApplication.isPlaying=true;return;
             }
             var game=GameManager.Instance;
             if(game!=null){game.persistenceEnabled=false;game.autoTick=false;game.player.readInput=false;game.cameraRig.readInput=false;}
@@ -111,7 +111,7 @@ namespace LightingBlocks.Editor
             var obstacles=new List<GameObject>();foreach(var offset in F.configuration.islands[0].outputOffsets){var cube=GameObject.CreatePrimitive(PrimitiveType.Cube);cube.transform.position=F.configuration.islands[0].wisdomPosition+offset;obstacles.Add(cube);}Physics.SyncTransforms();
             Check(!F.WisdomTrees[0].BeginCharge()&&F.Inventory("island-1").inventory==3,"Blocked output consumes no particles");foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();
             GameHUD.Current.ShowPause();float cooldown=F.Inventory("island-1").slots[0].remaining;F.Tick(10,false);Check(F.Inventory("island-1").slots[0].remaining==cooldown,"Pause freezes particle cooldowns");GameHUD.Current.HandleEscape();
-            var first=Charge(0);Check(first.tier==0&&first.GetComponent<BlockArt>()!=null,"Tree output preserves existing block art and tier");
+            var first=Charge(0);Check(first.tier>=0&&first.tier<G.blockPrefabs.Length&&first.GetComponent<BlockArt>()!=null&&first.GetComponent<BlockArt>().looseVisual!=null&&first.GetComponent<BlockArt>().placedVisual!=null,"Tree output preserves authored art and a permitted tier (legacy Terrain profile uses weighted random colours)");
             double souls=G.souls;Check(!G.Purchase("stone")&&!G.Purchase("grave")&&G.souls==souls,"Retired paid supply cannot create blocks or spend Souls");
             Place(first,0,0);Check(G.souls==25&&G.PathRate==1,"First bridge reward and Soul production unchanged");
             for(int row=1;row<GameManager.Rows;row++){CollectThree(0);Place(Charge(0),0,row);}
@@ -123,8 +123,8 @@ namespace LightingBlocks.Editor
             Teleport(G.exit.position);G.Interact();Check(G.completed,"Exit beacon completes the current chapter");CollectThree(0);Charge(0);Check(G.completed,"Wisdom Trees still charge after chapter completion");
             saved=G.ExportSave();Check(G.ImportSave(saved)&&G.ConnectedCount==14&&G.generator==1&&G.strength==1,"Version 3 restores bridges, skills and forest state");
             var legacy=JsonUtility.FromJson<GameManager.SaveData>(saved);legacy.version=1;legacy.forest=null;var oldSouls=legacy.souls;Check(G.ImportSave(JsonUtility.ToJson(legacy))&&G.ConnectedCount==14&&G.souls==oldSouls&&F.State.seed==1907&&F.State.islands.All(i=>i.inventory==0),"Version 1 migration preserves economy and blocks");
-            G.savePathOverride=Path.GetFullPath("Library/Forest-test-save.json");G.persistenceEnabled=true;
-            try{Check(G.Save(),"Version 3 save writes atomically");G.souls+=1;Check(G.Save()&&File.Exists(G.SavePath+".bak"),"Recovery backup retained");File.WriteAllText(G.SavePath,"corrupt");G.Load();Check(G.ConnectedCount==14,"Corrupt primary recovers from backup");}finally{G.persistenceEnabled=false;G.savePathOverride=null;}
+            G.savePathOverride=Path.Combine(Application.temporaryCachePath,"Forest-check-"+Guid.NewGuid().ToString("N")+".json");G.persistenceEnabled=true;
+            try{Check(G.Save(),"Version 3 save writes atomically");G.souls+=1;Check(G.Save()&&File.Exists(G.SavePath+".bak"),"Recovery backup retained");File.WriteAllText(G.SavePath,"corrupt");G.Load();Check(G.ConnectedCount==14,"Corrupt primary recovers from backup");}finally{G.persistenceEnabled=false;foreach(var suffix in new[]{"",".bak",".tmp"})if(File.Exists(G.SavePath+suffix))File.Delete(G.SavePath+suffix);}
             Check(G.ImportSave(pristine),"Restore clean scene for visual captures");
             Regression(pristine);
             foreach(var animal in UnityEngine.Object.FindObjectsByType<SpectralAnimal>())

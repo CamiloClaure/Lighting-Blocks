@@ -27,14 +27,15 @@ namespace LightingBlocks
         [Min(0)] public float particleClearDistance = 4f;
         [Tooltip("Lighting only. Particle renderers switch off beyond this many metres.")]
         [Min(0)] public float particleHiddenDistance = 6f;
-        [Tooltip("Lighting only. Colour particles fade toward as they leave clear range.")]
-        public Color particleTint = Color.black;
+        [Tooltip("Lighting only. Visible base colour of fundamental particles; fades toward black.")]
+        public Color particleColor = LightingParticles.ParticleColor;
 
         static readonly int FogActiveId = Shader.PropertyToID("_LightingFogActive");
         static readonly int FogCenterId = Shader.PropertyToID("_LightingFogCenter");
         static readonly int WorldClearId = Shader.PropertyToID("_LightingWorldClear");
         static readonly int WorldBlackId = Shader.PropertyToID("_LightingWorldBlack");
 
+        ForestWorld cachedWorld; uint cachedRevision;
         readonly List<Renderer> renderers = new List<Renderer>();
         readonly List<MaterialPropertyBlock> blocks = new List<MaterialPropertyBlock>();
 
@@ -57,7 +58,8 @@ namespace LightingBlocks
             var forest = ForestWorld.For(game);
             if (forest == null) return;
             var visuals = forest.PickupVisuals;
-            if (renderers.Count != visuals.Count) Resync(visuals);
+            if (cachedWorld != forest || cachedRevision != forest.VisualRevision || renderers.Count != visuals.Count)
+            { Resync(visuals); cachedWorld=forest; cachedRevision=forest.VisualRevision; }
 
             float clear = particleClearDistance, hidden = Mathf.Max(particleHiddenDistance, clear + .01f);
             for (int i = 0; i < visuals.Count; i++)
@@ -70,8 +72,8 @@ namespace LightingBlocks
                 if (!r.enabled) continue;
                 float t = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(clear, hidden, distance));
                 var block = blocks[i];
-                block.SetColor("_BaseColor", Color.Lerp(LightingParticles.ParticleColor, particleTint, t));
-                block.SetColor("_EmissionColor", LightingParticles.ParticleColor * 1.6f * (1 - t));
+                block.SetColor("_BaseColor", Color.Lerp(particleColor, Color.black, t));
+                block.SetColor("_EmissionColor", particleColor * 1.6f * (1 - t));
                 r.SetPropertyBlock(block);
             }
         }

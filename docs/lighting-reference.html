@@ -1,141 +1,52 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<title>Lighting Reference</title>
-<style>
-  body { font-family: -apple-system, Segoe UI, Helvetica, Arial, sans-serif; max-width: 880px; margin: 40px auto; padding: 0 20px; color: #1a1a1a; line-height: 1.5; }
-  h1 { font-size: 1.7em; margin-bottom: .1em; }
-  h2 { font-size: 1.25em; margin-top: 2em; border-bottom: 1px solid #ddd; padding-bottom: .2em; }
-  p.subtitle { color: #666; margin-top: 0; }
-  code { background: #f2f2f2; padding: .1em .35em; border-radius: 3px; font-size: .92em; }
-  table { border-collapse: collapse; width: 100%; margin: .8em 0; }
-  th, td { text-align: left; padding: .4em .6em; border-bottom: 1px solid #e2e2e2; vertical-align: top; }
-  th { background: #f7f7f7; }
-  .swatch { display: inline-block; width: .9em; height: .9em; border-radius: 2px; vertical-align: middle; margin-right: .4em; border: 1px solid rgba(0,0,0,.2); }
-  ul { margin: .4em 0; }
-  .note { color: #666; font-size: .95em; }
-</style>
-</head>
-<body>
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Lighting Reference</title>
+<style>body{font:16px/1.6 system-ui;max-width:940px;margin:40px auto;padding:0 24px;background:#111318;color:#e4e7ef}h1,h2{color:#f5d995}code{color:#abc8ff}table{border-collapse:collapse;width:100%}td,th{padding:10px;text-align:left;border-bottom:1px solid #3c4049}</style><body>
+<h1>Lighting Reference</h1><p>Current controls and tuning locations — 25 September 2026.</p>
+<h2>Controls and collection</h2><p>WASD moves, mouse/wheel controls the camera, Space carries bridge blocks,
+E deposits one particle into the nearest unobstructed receiver within 1.5m, R returns loose tiles near their tree,
+Tab/K opens upgrades, and Esc opens settings. Walk within 1.1m of yellow particles to collect them.
+Inventory is shared across islands, capacity 30. Pause and focus loss prevent collection. Respawns take 30 simulation seconds.</p>
+<h2>Receiver rewards</h2><p>Each tree has blue, violet and amber receivers. Three yellow particles deposited
+into one receiver produce a tile of that receiver's color. Charges are independent. Output is FIFO, and full
+receivers retain charge until a tile can appear. Returning a tile refunds three particles only if all three fit.</p>
+<h2>Dark opaque floor</h2><p>Edit <code>Assets/LightingBlocks/Art/Lighting/Materials/Platform0.mat</code>,
+<code>Platform1.mat</code> and <code>Platform2.mat</code>. Shader: URP Lit; base color #14161B;
+metallic 0; smoothness 0.15; emission off; opaque, depth-writing surface. Player/tree lights illuminate it.
+Persist regenerated defaults in <code>LightingSceneBuilder.PlatformMaterial</code>.</p>
+<h2>Visibility</h2><p>Select <strong>Soul Bridge Systems → Lighting Fog</strong>. World Clear/Black Distance
+defaults to 6/12m; Particle Clear/Hidden Distance to 4/6m. Particle Color defaults to #FFD66B and controls both
+base color and emission, fading to black. Distances are horizontal from the player; zoom cannot reveal distant particles.</p>
+<h2>Receiver placement and particle count</h2><p><code>LightingParticles.cs</code> defines ReceiverSpacing=8,
+ReceiverClearance=2.2 and DepositRange=1.5. <code>ForestWorld</code>'s configuration controls island particle counts;
+Enable Lighting Particles controls generation. <code>ForestWorld.InventoryCapacity</code> is 30.</p>
+<h2>Scene regeneration</h2><p><strong>Tools → Lighting Blocks → Build Lighting Scene</strong> recreates Lighting
+from authored assets and builder defaults. Save manual tuning separately before rebuilding.</p>
+<h2>Particle pickup chime</h2>
+<p>Select <strong>Soul Bridge Systems → Lighting Pickup Audio</strong> in Lighting, outside Play Mode.
+The four <strong>Clips</strong> slots hold the original short crystal chimes. Drag a replacement WAV into
+a slot to change its sound. Files live in <code>Assets/LightingBlocks/Resources/Audio/LightingPickups</code>.
+Keep replacements short, with a gentle attack and no long echo; use Decompress On Load, PCM and Preload Audio Data.</p>
+<table><tr><th>Inspector control</th><th>Default</th><th>Effect</th></tr>
+<tr><td>Volume</td><td>0.22</td><td>Pickup loudness, additionally controlled by Esc → Effects and Master.</td></tr>
+<tr><td>Pitch Variation</td><td>0.012</td><td>Small variation between pickups.</td></tr>
+<tr><td>Sequence Reset Time</td><td>1.2 seconds</td><td>Nearby successive pickups climb four pentatonic steps, then stay capped.</td></tr></table>
+<p>Only successful collection plays the new sound. Full inventory, duplicate pickups, deposits, loading and
+respawning are silent on this channel. Four pooled voices cap overlap; pause and focus loss reset the sequence.
+The supplied WAVs peak at 0.36, leaving headroom for overlapping pickups. Recreate them with
+<code>python Tools/audio/build_pickup_audio.py</code>. Rebuilding the scene restores the four resource clips;
+keep permanent custom replacements in those files or update the builder's clip assignments.</p>
+<h2>Save compatibility and charge fixes</h2>
+<p>Lighting particle schema <strong>version 3</strong> stores each reward's color and whether it consumes
+receiver charge. Migrated, already-earned tiles never consume new or partial charge. Full receivers retain
+charge while outputs are blocked and dim immediately after their own tile is created. Reloads rebuild the
+particle fog cache even when particle counts are unchanged.</p>
+<p>Unspent old inventory becomes shared inventory, including balances above 30. Extra collection resumes
+after spending below the cap. Older colored deposits retain their color. Legacy scenes retain their own
+inventory, collection sound and save format. Previously lost resources cannot be reconstructed reliably.</p>
+<h2>Verification</h2>
+<p>See <code>Library/LightingParticleCheck.txt</code>, <code>Library/LightingVisibilityCheck.txt</code> and
+<code>Library/LightingLegacyCompatibilityCheck.txt</code> for current run results. Fixtures isolate saves
+before Awake/Start. Visibility captures use camera distances 14, 18, 28 and 42 in
+<code>Logs/lighting-captures</code>. The older SpectralForest suite contains historical Default-profile
+expectations; current legacy scenes use the Terrain profile. Their compatibility is checked separately.</p>
 
-<h1>Lighting Reference</h1>
-<p class="subtitle">Controls, collection loop, and Inspector locations for the Lighting scene.</p>
-
-<h2>Controls</h2>
-<table>
-<tr><th>Action</th><th>Binding</th></tr>
-<tr><td>Move</td><td><code>W / A / S / D</code></td></tr>
-<tr><td>Carry block</td><td>Hold <code>Space</code></td></tr>
-<tr><td>Place tile</td><td>Release <code>Space</code></td></tr>
-<tr><td>Rotate / zoom camera</td><td>Move mouse / wheel</td></tr>
-<tr><td>Collect particles</td><td>Walk over them</td></tr>
-<tr><td>Deposit particle / enter next area</td><td><code>E</code></td></tr>
-<tr><td>Return unused blocks</td><td><code>R</code> near a Wisdom Tree</td></tr>
-<tr><td>Open / close skill tree</td><td><code>Tab</code> or <code>K</code></td></tr>
-<tr><td>Pause / resume / go back</td><td><code>Esc</code></td></tr>
-<tr><td>Speed</td><td><code>1</code></td></tr>
-<tr><td>Soul Gain</td><td><code>2</code></td></tr>
-<tr><td>Fullscreen / expand Game view</td><td><code>F1</code></td></tr>
-</table>
-
-<h2>Collection loop</h2>
-<p>Every fundamental particle is warm yellow (<code>#FFD66B</code>) and picked up by walking
-over it, within a 1.1 unit radius. A pickup is consumed once and adds one particle to a
-single <strong>shared inventory</strong> (not per island), capacity <code>30</code>. Pause,
-losing window focus, and any blocked-gameplay state (menus, dialogs) all prevent collection.
-Collecting never happens if the shared inventory is already full - the world pickup stays put.</p>
-<p><code>Space</code> is only for carrying and placing bridge blocks. There is no particle
-dragging and no particle/block grab arbitration.</p>
-<p>Pressing <code>E</code> deposits <strong>one</strong> particle into the nearest receiver
-within 1.5 units that has an unobstructed line to the player. One press affects one
-receiver; holding <code>E</code> does not repeat the deposit.</p>
-
-<h2>Receivers and rewards</h2>
-<p>Each Wisdom Tree has three color receivers, one per color, each charging independently
-from 0/3 to 3/3:</p>
-<table>
-<tr><th>Color</th><th>Tier</th></tr>
-<tr><td><span class="swatch" style="background:#246DFF"></span>Blue</td><td>0</td></tr>
-<tr><td><span class="swatch" style="background:#B03DFF"></span>Violet</td><td>1</td></tr>
-<tr><td><span class="swatch" style="background:#FFAE38"></span>Amber</td><td>2</td></tr>
-</table>
-<p>Depositing two blue particles and one amber particle leaves that tree's receivers at
-blue 2/3 and amber 1/3 - the receivers do not share a bank. At 3/3, a receiver queues one
-tile of its own color at its tree. Multiple receivers that complete at the same time are
-processed in the order they completed, through the tree's existing charge animation and
-output slots.</p>
-<p>A full receiver (3/3, awaiting its tile) rejects further deposits until the tile
-actually appears. If the tree has nowhere to place a tile (output slots blocked), the
-charge and the queue entry are both kept exactly as they are - a receiver's charge is only
-spent once its tile is successfully created, so nothing is lost while blocked.</p>
-<p>Returning a loose, unplaced tile (<code>R</code> near its Wisdom Tree) refunds three
-yellow particles into the shared inventory, subject to the same 30 cap: the tile is not
-destroyed if its full refund cannot fit.</p>
-
-<h2>Islands and floor</h2>
-<p>Island tiles are opaque, depth-writing URP Lit - no placeholder outlines, filaments, or
-emission. Only the player's and the trees' own lights illuminate the surface.</p>
-<table>
-<tr><th>Asset</th><th>Path</th></tr>
-<tr><td>Floor materials (one per hub tier)</td>
-<td><code>Assets/LightingBlocks/Art/Lighting/Materials/Platform0.mat</code>,
-<code>Platform1.mat</code>, <code>Platform2.mat</code></td></tr>
-</table>
-<table>
-<tr><th>Property</th><th>Value</th></tr>
-<tr><td>Shader</td><td>Universal Render Pipeline/Lit</td></tr>
-<tr><td>Base Color</td><td><span class="swatch" style="background:#14161B"></span><code>#14161B</code></td></tr>
-<tr><td>Metallic</td><td><code>0</code></td></tr>
-<tr><td>Smoothness</td><td><code>0.15</code></td></tr>
-<tr><td>Emission</td><td>Off</td></tr>
-</table>
-<p>Receivers place deterministically per island by farthest-point selection over reachable
-supported ground, kept clear of edges, bridge landings, tree outputs and main walking
-routes. The tunables live as consts in code, not Inspector fields, in
-<code>Assets/LightingBlocks/Runtime/LightingParticles.cs</code>:</p>
-<table>
-<tr><th>Const</th><th>Value</th><th>Meaning</th></tr>
-<tr><td><code>ReceiverSpacing</code></td><td><code>8f</code></td><td>Minimum distance kept between two receivers on the same island.</td></tr>
-<tr><td><code>ReceiverClearance</code></td><td><code>2.2f</code></td><td>Radius around each receiver kept clear of particle placement/respawning.</td></tr>
-<tr><td><code>DepositRange</code></td><td><code>1.5f</code></td><td>How close (unobstructed) a receiver must be for <code>E</code> to reach it.</td></tr>
-</table>
-<p>Shared inventory capacity is also a code constant, not an Inspector field:
-<code>ForestWorld.InventoryCapacity = 30</code> in
-<code>Assets/LightingBlocks/Runtime/ForestWorld.cs</code>.</p>
-
-<h2>Visibility</h2>
-<p>Visibility is limited by horizontal (XZ) distance from the player, not the camera, so
-zooming or orbiting out never reveals anything farther away. Set on the
-<strong>LightingFog</strong> component, on the GameManager object:</p>
-<table>
-<tr><th>Field</th><th>Default</th><th>Meaning</th></tr>
-<tr><td>World Clear Distance</td><td><code>6</code></td><td>World reads at full brightness within this many meters.</td></tr>
-<tr><td>World Black Distance</td><td><code>12</code></td><td>World is completely black at this many meters.</td></tr>
-<tr><td>Particle Clear Distance</td><td><code>4</code></td><td>Particles read at full color within this many meters.</td></tr>
-<tr><td>Particle Hidden Distance</td><td><code>6</code></td><td>Particle renderers switch off beyond this many meters (about three floor tiles).</td></tr>
-<tr><td>Particle Tint</td><td>black</td><td>Color particles fade toward as they leave clear range.</td></tr>
-</table>
-<p>The opaque-world fade is a render pass, not a component setting:
-<code>FullScreenPassRendererFeature</code> named "Lighting Fog" on
-<code>Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset</code>, using material
-<code>M_LightingFog.mat</code> and shader
-<code>Assets/LightingBlocks/Shaders/LightingFog.shader</code>. It runs after opaques/skybox
-and before transparents and post-processing. Transparent crystal, filament, edge and effect
-shaders fade the same way, gated by the global shader property <code>_LightingFogActive</code>
-(0 outside Lighting, so legacy scenes that share those shaders are unaffected).</p>
-
-<h2>Inspector locations</h2>
-<table>
-<tr><th>Setting</th><th>Component</th><th>Where</th></tr>
-<tr><td>Floor material</td><td>Renderer on the hub tile meshes</td><td><code>Platform0/1/2.mat</code>, see above</td></tr>
-<tr><td>Particles/receivers enabled</td><td><code>ForestWorld</code></td><td>GameManager object, <em>Enable Lighting Particles</em> checkbox (the scene builder always forces this on)</td></tr>
-<tr><td>World / particle fade distances</td><td><code>LightingFog</code></td><td>GameManager object</td></tr>
-<tr><td>Opaque fog pass</td><td><code>FullScreenPassRendererFeature</code> "Lighting Fog"</td><td><code>LightingRenderer.asset</code></td></tr>
-</table>
-
-<p class="note">Regenerate the scene with <code>Tools &gt; Lighting Blocks &gt; Build Lighting Scene</code>
-(<code>LightingSceneBuilder.Build</code>).</p>
-
-</body>
-</html>
+</body></html>

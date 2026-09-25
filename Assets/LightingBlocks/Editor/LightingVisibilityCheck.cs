@@ -70,7 +70,7 @@ namespace LightingBlocks.Editor
             Assert(fog != null, "LightingFog controller present in the Lighting scene");
             Assert(fog.worldClearDistance == 6f && fog.worldBlackDistance == 12f, "World fade defaults are 6/12 units");
             Assert(fog.particleClearDistance == 4f && fog.particleHiddenDistance == 6f, "Particle fade defaults are 4/6 units");
-            Assert(fog.particleTint == Color.black, "Particle tint has its default value");
+            Assert(fog.particleColor == LightingParticles.ParticleColor, "Particle tint has its default value");
 
             var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset");
             Assert(renderer != null, "LightingRenderer.asset exists");
@@ -123,7 +123,7 @@ namespace LightingBlocks.Editor
         {
             var game = GameManager.Instance;
             Assert(game != null && BridgeProfile.Current.isLighting, "Lighting profile is active for Assets/Scenes/Lighting.unity");
-            game.persistenceEnabled = false; game.autoTick = false;
+            Assert(!game.persistenceEnabled && game.savePathOverride != null, "Save isolation active before startup"); game.autoTick = false;
             var forest = ForestWorld.For(game);
             Assert(forest != null && forest.PickupVisuals.Count > 0, "At least one particle exists to test visibility against");
             var fog = UnityEngine.Object.FindAnyObjectByType<LightingFog>();
@@ -141,6 +141,18 @@ namespace LightingBlocks.Editor
             Teleport(game, visual.position + new Vector3(2, 0, 0));
             lateUpdate.Invoke(fog, null);
             Assert(visualRenderer.enabled, "Particle renderer stays enabled within the " + fog.particleClearDistance + "-unit clear distance");
+
+            var originalVisual=visual;uint originalRevision=forest.VisualRevision;
+            GameHUD.Current.BeginJourney();
+            Assert(game.ImportSave(game.ExportSave()),"Save reload rebuilds the particle world");
+            visual=forest.PickupVisuals[0];visualRenderer=visual.GetComponent<Renderer>();
+            Assert(visual!=originalVisual&&forest.VisualRevision!=originalRevision,"Same-count reload changes visual identity and revision");
+            Teleport(game,visual.position+Vector3.right*8);lateUpdate.Invoke(fog,null);
+            Assert(!visualRenderer.enabled,"Replacement particle is hidden at 8m after same-count reload");
+            Teleport(game,visual.position+Vector3.right*2);fog.particleColor=Color.cyan;lateUpdate.Invoke(fog,null);
+            var tint=new MaterialPropertyBlock();visualRenderer.GetPropertyBlock(tint);
+            Assert(tint.GetColor("_BaseColor")==Color.cyan,"Inspector particle colour controls visible colour");
+            fog.particleColor=LightingParticles.ParticleColor;lateUpdate.Invoke(fog,null);
 
             foreach (var v in forest.PickupVisuals)
             {
@@ -178,7 +190,7 @@ namespace LightingBlocks.Editor
             var rig = game.cameraRig; rig.readInput = false; game.player.readInput = false;
             var apply = typeof(StrategyCamera).GetMethod("Apply", BindingFlags.Instance | BindingFlags.NonPublic);
             rig.CenterOnPlayer(); rig.pitch = pitch; rig.yaw = yaw;
-            foreach (var distance in new[] { 3f, 6f, 9f, 14f })
+            foreach (var distance in new[] { 14f, 18f, 28f, 42f })
             {
                 rig.distance = distance;
                 for (int i = 0; i < 10; i++) apply.Invoke(rig, new object[] { 1f });

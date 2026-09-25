@@ -57,23 +57,24 @@ namespace LightingBlocks
             // Lighting: the queue drives its own charging pass (no BeginCharge call needed - see
             // ForestWorld.Deposit for how an entry gets queued). Legacy: unchanged, driven by
             // BeginCharge/the held-channel key.
-            if(BridgeProfile.Current.isLighting&&remaining<=0&&inventory.queue.Count>0&&forest.FindOutput(Definition,out _))remaining=.6f;
+            if(BridgeProfile.Current.isLighting&&remaining<=0&&inventory.rewards.Count>0&&forest.FindOutput(Definition,out _))remaining=.6f;
             if(remaining<=0)return;
             remaining=Mathf.Max(0,remaining-delta);
             if(remaining==0)
             {
-                bool ready=BridgeProfile.Current.isLighting?inventory.queue.Count>0:inventory.inventory>=3;
+                bool ready=BridgeProfile.Current.isLighting?inventory.rewards.Count>0:inventory.inventory>=3;
                 // Lighting: the queued colour IS the required tile tier (queue holds -1 for an
                 // uncoloured legacy-migrated reward, which falls back to the usual weighted draw).
-                if(ready&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting?inventory.queue[0]:-1))
+                if(ready&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting?inventory.rewards[0].color:-1))
                 {
                     if(BridgeProfile.Current.isLighting)
                     {
                         // Charge is only ever consumed here, once the tile actually exists - a
                         // blocked output (TrySpawnAtWisdomTree above fails) leaves both the charge
                         // and the queue entry untouched, so it simply retries next Tick.
-                        int color=inventory.queue[0];inventory.queue.RemoveAt(0);
-                        if(color>=0)inventory.charge[color]=Mathf.Max(0,inventory.charge[color]-3);
+                        var reward=inventory.rewards[0];inventory.rewards.RemoveAt(0);
+                        if(reward.consumesCharge)inventory.charge[reward.color]-=3;
+                        forest.RefreshReceivers(Definition.id);
                     }
                     else inventory.inventory-=3;
                     ForestSoundscape.Play("release",block.transform.position,.12f);

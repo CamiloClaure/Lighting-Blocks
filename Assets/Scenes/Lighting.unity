@@ -22689,6 +22689,7 @@ GameObject:
   - component: {fileID: 1430005267}
   - component: {fileID: 1430005268}
   - component: {fileID: 1430005269}
+  - component: {fileID: 1430005270}
   m_Layer: 0
   m_Name: Soul Bridge Systems
   m_TagString: Untagged
@@ -22807,7 +22808,27 @@ MonoBehaviour:
   worldBlackDistance: 12
   particleClearDistance: 4
   particleHiddenDistance: 6
-  particleTint: {r: 0, g: 0, b: 0, a: 1}
+  particleColor: {r: 1, g: 0.839, b: 0.42, a: 1}
+--- !u!114 &1430005270
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1430005263}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fb9b213f342d1db4c9153c02186de571, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LightingBlocks.LightingPickupAudio
+  clips:
+  - {fileID: 8300000, guid: 0c6ac4a25697bbf44bcb9bbb62425011, type: 3}
+  - {fileID: 8300000, guid: 765d898ee83cd294a9728dce5afa68df, type: 3}
+  - {fileID: 8300000, guid: 73daed4dfc7d6674daaf7a5a80e2d4a4, type: 3}
+  - {fileID: 8300000, guid: 4c5c120696f2a554b986c12bacca4fda, type: 3}
+  volume: 0.22
+  pitchVariation: 0.012
+  sequenceResetTime: 1.2
 --- !u!43 &1449796259
 Mesh:
   m_ObjectHideFlags: 0

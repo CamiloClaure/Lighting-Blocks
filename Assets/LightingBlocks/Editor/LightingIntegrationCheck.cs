@@ -155,9 +155,12 @@ namespace LightingBlocks.Editor
             // Poll() above sets persistenceEnabled=false every frame (so the running check never
             // touches a real player save file); redirect to a throwaway path and flip it on just for
             // this round trip, same isolation ForestVerification.cs uses for its own save checks.
-            game.savePathOverride = Path.Combine(Application.temporaryCachePath, "LightingIntegrationCheck-save.json");
+            game.savePathOverride = Path.Combine(Application.temporaryCachePath, "LightingIntegrationCheck-"+Guid.NewGuid().ToString("N")+".json");
             game.persistenceEnabled = true;
             double rateAtSave = game.Rate; long utcBefore = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            bool loaded;long utcAfter;
+            try
+            {
             Check(game.Save(), "Save() writes the current state");
             // Mutate everything away from the saved values before reloading - a match afterward
             // proves Load() actually restored from disk, not that the fields were untouched.
@@ -165,12 +168,17 @@ namespace LightingBlocks.Editor
             forest.State.inventory = 0; slot.pending = false;
             placedBlock.tier = 2;
 
-            bool loaded = game.Load();
-            long utcAfter = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            loaded = game.Load();
+            utcAfter = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            }
+            finally
+            {
             game.persistenceEnabled = false;
             if (File.Exists(game.SavePath)) File.Delete(game.SavePath);
             if (File.Exists(game.SavePath + ".bak")) File.Delete(game.SavePath + ".bak");
-            game.savePathOverride = null;
+            if(File.Exists(game.SavePath+".tmp"))File.Delete(game.SavePath+".tmp");
+            }
+            // Keep the isolated path even after the temporary save has been deleted.
             Check(loaded, "Load() reports success reading the just-written save");
             // Load() always imports with offline:true, so real wall-clock seconds between Save() and
             // Load() legitimately earn offline income on top of the saved souls (see ImportSave) -

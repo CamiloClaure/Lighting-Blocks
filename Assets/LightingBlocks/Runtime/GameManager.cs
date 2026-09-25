@@ -106,8 +106,8 @@ namespace LightingBlocks
             if(ForestPerformanceProbe.Requested||TwilightEvidence.Requested)persistenceEnabled=false;
 #if UNITY_EDITOR
             if (File.Exists(Path.Combine(Application.dataPath, "../Library/LightingBlocks.test-active"))) persistenceEnabled = false;
-            if(UnityEditor.SessionState.GetBool("LightingIntegrationCheck.Play",false)||UnityEditor.SessionState.GetBool("LightingParticleCheck.Play",false))
-            {persistenceEnabled=false;savePathOverride=Path.Combine(Application.temporaryCachePath,"lighting-check-isolated.json");}
+            if(UnityEditor.SessionState.GetBool("LightingIntegrationCheck.Play",false)||UnityEditor.SessionState.GetBool("LightingParticleCheck.Play",false)||UnityEditor.SessionState.GetBool("LightingVisibilityCheck.Play",false)||UnityEditor.SessionState.GetBool("LightingWorldCheck.Play",false)||UnityEditor.SessionState.GetBool("Forest.Test",false)||UnityEditor.SessionState.GetBool("LightingLegacyCompatibilityCheck.Play",false))
+            {persistenceEnabled=false;savePathOverride=Path.Combine(Application.temporaryCachePath,"lighting-check-"+Guid.NewGuid().ToString("N")+".json");}
 #endif
             audioSource = gameObject.AddComponent<AudioSource>(); audioSource.volume = .18f;
             chime = AudioClip.Create("Placeholder soul connection", 11025, 1, 44100, false);
@@ -310,7 +310,7 @@ namespace LightingBlocks
             Save(); return true;
         }
         public string LightingCarryHint => ForestWorld.For(this)?.enableLightingParticles == true
-            ? "Walk over particles to collect them. Press E near a receiver to deposit one - three of a colour release a bridge tile."
+            ? "Walk over particles to collect them. Press E near a receiver to deposit one - three deposits into one receiver release a tile of its colour."
             : "Hold SPACE to carry a nearby bridge block.";
         public void ApplyUpgrades()
         {

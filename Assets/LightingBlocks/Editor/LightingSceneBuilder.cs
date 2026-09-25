@@ -65,6 +65,8 @@ namespace LightingBlocks.Editor
             // Lighting-only visibility limiter (world + particle fade) - see LightingFog.cs and the
             // matching render pass built below. Defaults match the spec (world 6/12, particles 4/6).
             if (game.GetComponent<LightingFog>() == null) game.gameObject.AddComponent<LightingFog>();
+            var pickupAudio=game.GetComponent<LightingPickupAudio>() ?? game.gameObject.AddComponent<LightingPickupAudio>();
+            pickupAudio.clips=Enumerable.Range(1,4).Select(i=>Resources.Load<AudioClip>("Audio/LightingPickups/pickup_"+i.ToString("00"))).ToArray();
 
             var world = new GameObject("Lighting World").transform;
             var blocksRoot = new GameObject("Bridge Stones").transform; blocksRoot.SetParent(world, false);

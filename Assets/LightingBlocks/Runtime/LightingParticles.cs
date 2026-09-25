@@ -108,7 +108,7 @@ namespace LightingBlocks
             if (result == ForestWorld.DepositResult.Full) rejection = .25f;
             Refresh(); return false;
         }
-        void Refresh()
+        public void Refresh()
         {
             if (surface == null) return;
             var c = rejection > 0 ? Color.red : LightingParticles.Colors[ColorIndex];
