@@ -215,7 +215,9 @@ namespace LightingBlocks
             var calls = Panel("Fragment Calls", playRoot.transform, 22, 162, 350, 152, Ink);
             Label("Call Heading", calls, diamond + "  RESOURCES", 18, 12, 314, 22, 15, Mint).fontStyle = FontStyle.Bold;
             particleText = Label("Particle Inventory", calls, "", 18, 40, 314, 52, 17, White);
-            Label("Particle Help", calls, "Walk over particles to collect them.\nE near a wisdom tree: 3 particles = 1 block.", 18, 96, 314, 46, 14, Muted);
+            Label("Particle Help", calls, BridgeProfile.Current.isLighting
+                ? "Walk over particles to collect them.\nE near a receiver: 3 of a colour = 1 tile."
+                : "Walk over particles to collect them.\nE near a wisdom tree: 3 particles = 1 block.", 18, 96, 314, 46, 14, Muted);
             var mission = Panel("Current Objective", playRoot.transform, 22, 0, 430, 118, Ink);
             Bottom(mission, 22, 24, false);
             Label("Objective Heading", mission, diamond + "  YOUR NEXT DISCOVERY", 16, 12, 398, 22, 15, Mint).fontStyle = FontStyle.Bold;
@@ -255,8 +257,10 @@ namespace LightingBlocks
             noticeText = Label("Action Feedback Text", feedback, "", 16, 8, 588, 68, 17, Mint, TextAnchor.MiddleCenter);
             if(BridgeProfile.Current.isLighting)
             {
+                // No floating world labels; the resources panel stays (it now shows the shared
+                // inventory and the nearest receiver instead of the legacy per-island count).
                 WorldLabelRoot.gameObject.SetActive(false);location.gameObject.SetActive(false);
-                calls.gameObject.SetActive(false);mission.gameObject.SetActive(false);keycaps.gameObject.SetActive(false);
+                mission.gameObject.SetActive(false);keycaps.gameObject.SetActive(false);
             }
         }
         void BuildTitle()
@@ -315,12 +319,12 @@ namespace LightingBlocks
             // Lighting keeps only Speed and Soul Gain (hotkeys 1/2); the other three legacy powers,
             // and Soul Links' click-to-gather grab mode, do not exist there.
             string[,] rows = BridgeProfile.Current.isLighting ? new[,] {
-                {"Move", "W / A / S / D"}, {ForestWorld.For(game)?.enableLightingParticles==true?"Carry particle / block":"Carry block", "Hold Space"},
-                {ForestWorld.For(game)?.enableLightingParticles==true?"Deliver particle / place tile":"Place tile", "Release Space"}, {"Rotate camera", "Move mouse"},
-                {"Zoom", "Mouse wheel"}, {"Return unused blocks", "R near a Wisdom Tree"},
-                {"Open / close skill tree", "Tab or K"}, {"Pause / resume / go back", "Esc"},
-                {"Speed", "1"}, {"Soul Gain", "2"},
-                {"Show objective / enter next area", "E"}, {"Fullscreen / expand Game view", "F1"}
+                {"Move", "W / A / S / D"}, {"Carry block", "Hold Space"},
+                {"Place tile", "Release Space"}, {"Rotate / zoom camera", "Move mouse / wheel"},
+                {"Collect particles", "Walk over them"}, {"Deposit particle / enter next area", "E"},
+                {"Return unused blocks", "R near a Wisdom Tree"}, {"Open / close skill tree", "Tab or K"},
+                {"Pause / resume / go back", "Esc"}, {"Speed", "1"}, {"Soul Gain", "2"},
+                {"Fullscreen / expand Game view", "F1"}
             } : new[,] {
                 {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
                 {"Drop / build bridge tiles", "Q in orbit; release mouse when dragging"}, {"Move the camera", "Arrow keys / screen edges / middle drag"},
@@ -383,7 +387,12 @@ namespace LightingBlocks
             incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
             objectiveText.text = game.Objective;
             var forest = ForestWorld.For(game);
-            if (particleText != null && forest != null && forest.State != null) particleText.text = forest.InventoryLabel + "\n" + game.ConnectedCount + " path blocks";
+            if (particleText != null && forest != null && forest.State != null)
+            {
+                particleText.text = BridgeProfile.Current.isLighting
+                    ? "Particles: " + forest.SharedInventory + " / " + ForestWorld.InventoryCapacity + "\n" + NearbyReceiverLabel(game)
+                    : forest.InventoryLabel + "\n" + game.ConnectedCount + " path blocks";
+            }
             bool journey = game.ConnectedCount > 0 || game.souls > 0 || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
@@ -404,13 +413,31 @@ namespace LightingBlocks
             }
             var wisdom = game.player == null ? null : forest?.Nearby(game.player.transform.position);
             if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles" + (BridgeProfile.Current.treeReturn ? " · R: Return stones" : "");
-            contextText.text = BridgeProfile.Current.isLighting ? (game.player.HeldBox!=null?"Release SPACE at the glowing bridge edge":game.GetComponent<LightingParticles>()?.Held!=null?"Release SPACE into a matching cube":game.LightingCarryHint) : diamond + "  " + hint;
+            contextText.text = BridgeProfile.Current.isLighting ? (game.player.HeldBox!=null?"Release SPACE at the glowing bridge edge":LightingDepositHint(game)) : diamond + "  " + hint;
             RefreshPlacePrompt();
             journalText.text = "I · They called it the end of the universe. But souls still wander between its broken shores.\n\n"
                 + (game.Bridges[0] ? "II · Your first bridge did more than carry you. It gave the lost a path home." : "II · A memory waits across the first rift.") + "\n\n"
                 + (game.completed ? "III · The light you carried was never yours alone. Every soul you guided became part of the next dawn." : "III · Build through the darkness to reach the next dawn.");
             foreach (var binding in purchases) UpdatePurchase(binding);
             if (skillTree != null) skillTree.Refresh();
+        }
+        // Lighting only: the nearest deposit-reachable receiver's colour/charge, or a fallback when
+        // none is in range. Shared by the resources panel and the E-key context hint below.
+        static string NearbyReceiverLabel(GameManager game)
+        {
+            var receiver = NearestReceiver(game);
+            return receiver != null ? BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " receiver " + receiver.Charge + " / 3" : "No receiver in reach";
+        }
+        static string LightingDepositHint(GameManager game)
+        {
+            var receiver = NearestReceiver(game);
+            return receiver != null ? "E TO DEPOSIT\n" + BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " receiver " + receiver.Charge + " / 3" : game.LightingCarryHint;
+        }
+        static ColorReceiver NearestReceiver(GameManager game)
+        {
+            var particles = game.GetComponent<LightingParticles>();
+            if (particles == null || game.player == null) return null;
+            return particles.Nearest(game.player.transform.position + Vector3.up * .7f, LightingParticles.DepositRange, game.player.transform);
         }
         // The placement preview has no public handle, so the chip finds it by name once and caches it.
         // ponytail: one Find per second while it is missing; make GameManager expose the ghost if that ever shows up in a profile.

@@ -42,10 +42,18 @@ namespace LightingBlocks
     {
         public int particleVersion;
         public int seed,layoutVersion=ForestConfiguration.LayoutVersion;
+        // Lighting particleVersion 2+: shared inventory across every island. See ForestWorld.SharedInventory.
+        public int inventory;
         public List<IslandParticleSave> islands=new List<IslandParticleSave>();
         public List<string> suppressedTrees=new List<string>();
     }
-    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory,treeCharge;public int chargeColor;public bool hasChargeColor;public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
+    // inventory/treeCharge/chargeColor/hasChargeColor are retained only for older saves
+    // (particleVersion 0/1) and legacy (non-Lighting) scenes; ForestWorld.MigrateToV2 folds them into
+    // charge/queue once. particleVersion 2+ (Lighting): charge[0..2] is each receiver's own 0..3
+    // charge (blue/violet/amber, matching ColorReceiver.ColorIndex); queue is that tree's completed
+    // rewards in completion order (a colour index, or -1 for an uncoloured legacy-migrated reward -
+    // see ForestWorld.MigrateToV2 and WisdomTree.Tick).
+    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory,treeCharge;public int chargeColor;public bool hasChargeColor;public int[] charge=new int[3];public List<int> queue=new List<int>();public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
     [Serializable] public sealed class ParticleSlotSave{public string id;public int color;public float remaining;public Vector3 position;public int generation;public bool positioned,pending;}
     public struct ForestPlacement{public Vector3 position;public float yaw,scale;public int variant,id;}
     public sealed class IslandForestLayout

@@ -10,21 +10,24 @@ namespace LightingBlocks
         void LateUpdate()
         {
             var game=GameManager.Instance;
-            var particles=game!=null?game.GetComponent<LightingParticles>():null;
+            var forest=game!=null?ForestWorld.For(game):null;
             int count=0;
-            if(game!=null&&BridgeProfile.Current.isLighting&&particles!=null)
+            if(game!=null&&BridgeProfile.Current.isLighting&&forest!=null)
             {
-                foreach(var particle in particles.Particles)
+                // Every particle is the same warm yellow now (see LightingParticles.ParticleColor);
+                // there is no per-particle colour left to read.
+                var tint=LightingParticles.ParticleColor.linear*4;
+                foreach(var visual in forest.PickupVisuals)
                 {
-                    if(particle==null||!particle.gameObject.activeInHierarchy)continue;
-                    var p=particle.transform.position;
+                    if(visual==null||!visual.gameObject.activeInHierarchy)continue;
+                    var p=visual.position;
                     float distance=(p-game.player.transform.position).sqrMagnitude;
                     int at=count;
                     while(at>0&&distance<distances[at-1])at--;
                     if(at>=MaxLights)continue;
                     for(int j=Mathf.Min(count,MaxLights-1);j>at;j--){distances[j]=distances[j-1];positions[j]=positions[j-1];colors[j]=colors[j-1];}
                     distances[at]=distance;positions[at]=new Vector4(p.x,p.y,p.z,7);
-                    colors[at]=LightingParticles.Colors[particle.Slot.color].linear*4;
+                    colors[at]=tint;
                     count=Mathf.Min(count+1,MaxLights);
                 }
             }

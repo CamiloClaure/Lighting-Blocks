@@ -44,19 +44,30 @@ namespace LightingBlocks
         }
         public ForestSave NewState(int seed)
         {
-            var state=new ForestSave{seed=seed,particleVersion=BridgeProfile.Current.isLighting?1:0};
+            var state=new ForestSave{seed=seed,particleVersion=BridgeProfile.Current.isLighting?2:0};
             foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=new IslandParticleSave{id=d.id};for(int i=0;i<d.particleCount;i++)island.slots.Add(new ParticleSlotSave{id=d.id+":"+i,color=i%3,position=layout.particles[i],positioned=true});state.islands.Add(island);}
             return state;
         }
         public bool Valid(ForestSave state,bool legacy=false)
         {
-            if(state==null||state.particleVersion<0||state.particleVersion>1||state.seed<0||(legacy?(state.layoutVersion!=1&&state.layoutVersion!=2):state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
+            if(state==null||state.particleVersion<0||state.particleVersion>2||state.seed<0||(legacy?(state.layoutVersion!=1&&state.layoutVersion!=2):state.layoutVersion!=ForestConfiguration.LayoutVersion)||state.islands==null||state.islands.Count!=configuration.islands.Length)return false;
             if(!legacy && (state.suppressedTrees==null||state.suppressedTrees.Count>1000))return false;
             if(!legacy){var unique=new HashSet<string>();foreach(var suppression in state.suppressedTrees){if(string.IsNullOrEmpty(suppression)||!unique.Add(suppression))return false;int slash=suppression.LastIndexOf('/');if(slash<0||configuration.Find(suppression.Substring(0,slash))==null||!int.TryParse(suppression.Substring(slash+1),out int index)||index<0||index>1000)return false;}}
+            // Shared inventory (particleVersion 2+) has no upper bound here: a migrated save may
+            // legitimately start above InventoryCapacity (see MigrateToV2) and must keep loading.
+            if(state.particleVersion>=2&&state.inventory<0)return false;
             var ids=new HashSet<string>();
             foreach(var i in state.islands)
             {
-                if(i==null||i.id==null||!ids.Add(i.id)||i.inventory<0||i.inventory>30||i.treeCharge<0||i.treeCharge>30||(i.hasChargeColor&&(i.chargeColor<0||i.chargeColor>2)))return false;
+                if(i==null||i.id==null||!ids.Add(i.id))return false;
+                if(state.particleVersion>=2)
+                {
+                    if(i.charge==null||i.charge.Length!=3)return false;
+                    foreach(var c in i.charge)if(c<0||c>3)return false;
+                    if(i.queue==null||i.queue.Count>300)return false;
+                    foreach(var q in i.queue)if(q<-1||q>2)return false;
+                }
+                else if(i.inventory<0||i.inventory>30||i.treeCharge<0||i.treeCharge>30||(i.hasChargeColor&&(i.chargeColor<0||i.chargeColor>2)))return false;
                 var d=configuration.Find(i.id);if(d==null||i.slots==null||i.slots.Count!=d.particleCount)return false;
                 var slots=new HashSet<string>();
                 foreach(var s in i.slots){if(s==null||!slots.Add(s.id)||float.IsNaN(s.remaining)||float.IsInfinity(s.remaining)||s.remaining<0||s.remaining>30||s.color<0||s.color>2)return false;}
@@ -70,16 +81,20 @@ namespace LightingBlocks
             if(version==4)
             {
                 if(!Valid(old))return null;
-                if(BridgeProfile.Current.isLighting&&old.particleVersion==0)
+                if(BridgeProfile.Current.isLighting)
                 {
-                    foreach(var island in old.islands)
+                    if(old.particleVersion==0)
                     {
-                        var d=configuration.Find(island.id);
-                        var layout=ForestLayoutGenerator.Generate(d,old.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);
-                        island.treeCharge=island.inventory;island.inventory=0;
-                        foreach(var slot in island.slots){int n=int.Parse(slot.id.Substring(slot.id.LastIndexOf(':')+1));slot.color=n%3;slot.position=layout.particles[n];}
+                        foreach(var island in old.islands)
+                        {
+                            var d=configuration.Find(island.id);
+                            var layout=ForestLayoutGenerator.Generate(d,old.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);
+                            island.treeCharge=island.inventory;island.inventory=0;
+                            foreach(var slot in island.slots){int n=int.Parse(slot.id.Substring(slot.id.LastIndexOf(':')+1));slot.color=n%3;slot.position=layout.particles[n];}
+                        }
+                        old.particleVersion=1;
                     }
-                    old.particleVersion=1;
+                    if(old.particleVersion==1){MigrateToV2(old);old.particleVersion=2;}
                 }
                 return old;
             }
@@ -90,6 +105,56 @@ namespace LightingBlocks
             if(version>=2)foreach(var target in next.islands){var source=old.islands.Find(i=>i.id==target.id);target.inventory=source.inventory;foreach(var slot in target.slots){var prior=source.slots.Find(p=>p.id==slot.id);slot.remaining=prior.remaining;if(version==3){slot.position=prior.position+(configuration.Find(target.id).polygonIndex==2?Vector3.forward*Landscape.Expansion:Vector3.zero);slot.generation=prior.generation;slot.pending=prior.pending;}}}
             if(version==3)foreach(var d in configuration.islands){var layout=ForestLayoutGenerator.Generate(d,next.seed,Landscape.Shores[d.polygonIndex],configuration.trees.Length);var island=next.islands.Find(i=>i.id==d.id);foreach(var tree in layout.trees)foreach(var slot in island.slots)if((tree.position-slot.position).sqrMagnitude<2.25f){string id=d.id+"/"+tree.id;if(!next.suppressedTrees.Contains(id))next.suppressedTrees.Add(id);break;}layout.trees.RemoveAll(t=>next.suppressedTrees.Contains(d.id+"/"+t.id));layout.navigation.BuildReachability(d.wisdomPosition+Vector3.right*2);foreach(var slot in island.slots)if(!layout.navigation.InReachableArea(slot.position)){int index=island.slots.IndexOf(slot);slot.position=layout.particles[index];}}
             return next;
+        }
+        // One-time particleVersion 1 -> 2 upgrade: each island's single bank (inventory/treeCharge/
+        // chargeColor/hasChargeColor) becomes the shared inventory plus one 0..3 charge per receiver
+        // colour, with every complete (multiple-of-3) bank preserved as an ordered queue entry - the
+        // stored colour when the bank had one, -1 (uncoloured, resolved by TrySpawnAtWisdomTree's own
+        // weighted draw - see WisdomTree.Tick) otherwise. Leftover partial charge follows the same
+        // rule: assigned to its recorded colour, or folded into the shared inventory when uncoloured.
+        void MigrateToV2(ForestSave old)
+        {
+            int shared=0;
+            foreach(var island in old.islands)
+            {
+                shared+=Mathf.Max(0,island.inventory);island.inventory=0;
+                int complete=island.treeCharge/3,leftover=island.treeCharge%3;
+                for(int n=0;n<complete;n++)island.queue.Add(island.hasChargeColor?island.chargeColor:-1);
+                if(leftover>0){if(island.hasChargeColor)island.charge[island.chargeColor]=leftover;else shared+=leftover;}
+                island.treeCharge=0;island.hasChargeColor=false;
+            }
+            old.inventory=shared; // may exceed InventoryCapacity; TryAddInventory keeps it from climbing further until spent down
+        }
+        // ---- Lighting resource transfers ---------------------------------------------------------
+        // Every source of shared-inventory or receiver-charge change - walk-over pickup (TryCollect),
+        // tile-return refunds (GameManager.ReturnStones) and E-key deposits (Deposit, via
+        // LightingParticles.TryDeposit) - routes through these, so inventory/charge/rewards can never
+        // be applied twice.
+        public const int InventoryCapacity=30;
+        public int SharedInventory=>State.inventory;
+        // All-or-nothing: a pickup or a tile refund that cannot fully fit is left uncollected/undestroyed.
+        public bool TryAddInventory(int amount)
+        {
+            if(amount<=0||State.inventory+amount>InventoryCapacity)return false;
+            State.inventory+=amount;return true;
+        }
+        public bool TrySpendInventory(int amount)
+        {
+            if(amount<=0||State.inventory<amount)return false;
+            State.inventory-=amount;return true;
+        }
+        public enum DepositResult{Success,Full,Empty}
+        // Spends one shared particle into island's colour receiver, queueing a reward at 3/3.
+        // Charge is only ever reduced once the tile it earned is actually created - see WisdomTree.Tick.
+        public DepositResult Deposit(string islandId,int color)
+        {
+            var island=Inventory(islandId);
+            if(island==null||color<0||color>2)return DepositResult.Empty;
+            if(island.charge[color]>=3)return DepositResult.Full;
+            if(!TrySpendInventory(1))return DepositResult.Empty;
+            island.charge[color]++;
+            if(island.charge[color]==3)island.queue.Add(color);
+            return DepositResult.Success;
         }
         // One-time import only: the old save's positions are all invalid once the profile has
         // shifted the islands (particle slots are validated against a regenerated layout, and every
@@ -113,6 +178,9 @@ namespace LightingBlocks
             if(visualRoot!=null)Build();
         }
         public IslandParticleSave Inventory(string id){foreach(var i in State.islands)if(i.id==id)return i;return null;}
+        // Read-only: active/inactive pickup transforms, in the same order as pickupStates. Lighting's
+        // dark-floor glow (LightingGlassLights) is the only external reader.
+        public IReadOnlyList<Transform> PickupVisuals=>pickupVisuals;
         public IslandForestDefinition IslandAt(Vector3 p)
         {
             // Lighting: hub ownership comes from whichever PlatformSupport the point sits over, by
@@ -159,8 +227,13 @@ namespace LightingBlocks
                 {
                     var pickup=new GameObject("Particle "+owner.slots[i].id,typeof(MeshFilter),typeof(MeshRenderer));pickup.GetComponent<MeshFilter>().sharedMesh=configuration.particleMesh;
                     pickup.transform.SetParent(root,false);layout.particles[i]=owner.slots[i].position;pickup.transform.position=owner.slots[i].position+Vector3.up*.7f;pickup.transform.localScale=Vector3.one*.3f;pickup.transform.rotation=Quaternion.Euler(0,45,12);
-                    pickup.GetComponent<Renderer>().sharedMaterial=configuration.particleMaterial;pickup.GetComponent<Renderer>().shadowCastingMode=ShadowCastingMode.Off;
-                    if(particles!=null)particles.AddParticle(this,pickup,owner,owner.slots[i]);
+                    var pickupRenderer=pickup.GetComponent<Renderer>();pickupRenderer.sharedMaterial=configuration.particleMaterial;pickupRenderer.shadowCastingMode=ShadowCastingMode.Off;
+                    if(particles!=null)
+                    {
+                        // Every fundamental particle is the same warm yellow now; colour no longer
+                        // carries any meaning (receivers are matched by proximity, not by colour).
+                        var block=new MaterialPropertyBlock();block.SetColor("_BaseColor",LightingParticles.ParticleColor);block.SetColor("_EmissionColor",LightingParticles.ParticleColor*1.6f);pickupRenderer.SetPropertyBlock(block);
+                    }
                     pickupVisuals.Add(pickup.transform);pickupStates.Add(owner.slots[i]);pickupOwners.Add(owner);pickupLayouts.Add(layout);pickupAppear.Add(1);pickup.SetActive(owner.slots[i].remaining<=0&&!owner.slots[i].pending);
                 }
                 for(int i=0;i<layout.animals.Count;i++)
@@ -226,11 +299,16 @@ namespace LightingBlocks
         }
         public bool TryCollect(int index)
         {
-            if(BridgeProfile.Current.isLighting)return false;
-            if(index<0||index>=pickupStates.Count||GameHUD.GameplayBlocked||pickupStates[index].remaining>0||pickupStates[index].pending||pickupOwners[index].inventory>=30)return false;
+            if(index<0||index>=pickupStates.Count||GameHUD.GameplayBlocked||pickupStates[index].remaining>0||pickupStates[index].pending)return false;
+            // Focus loss is gated at the call site (Update(), below), same as BoxPlayer's own
+            // Application.isFocused check - not here, so this stays directly callable from checks.
+            if(BridgeProfile.Current.isLighting){if(State.inventory>=InventoryCapacity)return false;}
+            else if(pickupOwners[index].inventory>=30)return false;
             var t=pickupVisuals[index];var delta=game.player.transform.position-t.position;
             if(new Vector2(delta.x,delta.z).sqrMagnitude>1.21f||Mathf.Abs(delta.y)>1.5f||Occupied(t.position,new Vector3(.15f,.12f,.15f),true))return false;
-            pickupOwners[index].inventory++;pickupStates[index].remaining=30;ForestSoundscape.Play("collect",t.position,.12f);t.gameObject.SetActive(false);return true;
+            // Never consume the world pickup if the shared inventory cannot actually take it.
+            if(BridgeProfile.Current.isLighting){if(!TryAddInventory(1))return false;}else pickupOwners[index].inventory++;
+            pickupStates[index].remaining=30;ForestSoundscape.Play("collect",t.position,.12f);t.gameObject.SetActive(false);return true;
         }
         public void Tick(float delta,bool collect)
         {
@@ -240,7 +318,7 @@ namespace LightingBlocks
             for(int i=0;i<pickupVisuals.Count;i++)
             {
                 var t=pickupVisuals[i];var slot=pickupStates[i];if(slot.pending&&respawnTimer<=0)Respawn(i);bool active=slot.remaining<=0&&!slot.pending;t.gameObject.SetActive(active);
-                if(!active||t.GetComponent<ParticleDrag>()?.Held==true)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
+                if(!active)continue;pickupAppear[i]=Mathf.Min(1,pickupAppear[i]+delta*2);t.localScale=Vector3.one*(.3f*Mathf.SmoothStep(0,1,pickupAppear[i]));t.position=slot.position+Vector3.up*(.7f+Mathf.Sin(fxTime*.9f+i)*.06f);t.Rotate(0,35*delta,0,Space.World);
                 if(collect&&collectionTimer<=0)TryCollect(i);
             }
             if(collectionTimer<=0)collectionTimer=.1f;if(respawnTimer<=0)respawnTimer=.5f;
@@ -257,6 +335,16 @@ namespace LightingBlocks
                 if(blocked)continue;slot.position=p;slot.generation++;slot.pending=false;pickupAppear[index]=0;int local=pickupOwners[index].slots.IndexOf(slot);layout.particles[local]=p;return true;
             }return false;
         }
-        void Update(){if(game==null||!game.autoTick)return;long before=ForestPerformanceProbe.Measuring?GC.GetAllocatedBytesForCurrentThread():0;Tick(Time.deltaTime,true);if(ForestPerformanceProbe.Measuring)ForestPerformanceProbe.ForestBytes+=GC.GetAllocatedBytesForCurrentThread()-before;}
+        void Update()
+        {
+            if(game==null||!game.autoTick)return;
+            long before=ForestPerformanceProbe.Measuring?GC.GetAllocatedBytesForCurrentThread():0;
+            // Lighting: losing focus stops walk-over collection (same convention as BoxPlayer's own
+            // Application.isFocused check), but the rest of the world - respawn timers included -
+            // keeps simulating. Legacy is unaffected: it never gated collection on focus.
+            bool collect=!BridgeProfile.Current.isLighting||Application.isFocused;
+            Tick(Time.deltaTime,collect);
+            if(ForestPerformanceProbe.Measuring)ForestPerformanceProbe.ForestBytes+=GC.GetAllocatedBytesForCurrentThread()-before;
+        }
     }
 }

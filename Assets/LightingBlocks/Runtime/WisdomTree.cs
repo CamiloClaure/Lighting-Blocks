@@ -53,15 +53,30 @@ namespace LightingBlocks
         public void Tick(float delta)
         {
             if(GameHUD.SimulationPaused||delta<=0)return;
-            if(BridgeProfile.Current.isLighting&&remaining<=0&&forest.Inventory(Definition.id).treeCharge>=3&&forest.FindOutput(Definition,out _))remaining=.6f;
+            var inventory=forest.Inventory(Definition.id);
+            // Lighting: the queue drives its own charging pass (no BeginCharge call needed - see
+            // ForestWorld.Deposit for how an entry gets queued). Legacy: unchanged, driven by
+            // BeginCharge/the held-channel key.
+            if(BridgeProfile.Current.isLighting&&remaining<=0&&inventory.queue.Count>0&&forest.FindOutput(Definition,out _))remaining=.6f;
             if(remaining<=0)return;
             remaining=Mathf.Max(0,remaining-delta);
             if(remaining==0)
             {
-                var inventory=forest.Inventory(Definition.id);
-                if((BridgeProfile.Current.isLighting?inventory.treeCharge:inventory.inventory)>=3&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting&&inventory.hasChargeColor?inventory.chargeColor:-1))
+                bool ready=BridgeProfile.Current.isLighting?inventory.queue.Count>0:inventory.inventory>=3;
+                // Lighting: the queued colour IS the required tile tier (queue holds -1 for an
+                // uncoloured legacy-migrated reward, which falls back to the usual weighted draw).
+                if(ready&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting?inventory.queue[0]:-1))
                 {
-                    if(BridgeProfile.Current.isLighting){inventory.treeCharge-=3;if(inventory.treeCharge==0)inventory.hasChargeColor=false;}else inventory.inventory-=3;ForestSoundscape.Play("release",block.transform.position,.12f);
+                    if(BridgeProfile.Current.isLighting)
+                    {
+                        // Charge is only ever consumed here, once the tile actually exists - a
+                        // blocked output (TrySpawnAtWisdomTree above fails) leaves both the charge
+                        // and the queue entry untouched, so it simply retries next Tick.
+                        int color=inventory.queue[0];inventory.queue.RemoveAt(0);
+                        if(color>=0)inventory.charge[color]=Mathf.Max(0,inventory.charge[color]-3);
+                    }
+                    else inventory.inventory-=3;
+                    ForestSoundscape.Play("release",block.transform.position,.12f);
                     if(release!=null){release.transform.position=block.transform.position+Vector3.up*.4f;release.Play();}
                     // A held channel completes a charge every .6 s. Chiming and writing the whole
                     // save that often turns the feature into a stutter, so a channelled stone is
@@ -75,7 +90,10 @@ namespace LightingBlocks
         {
             if(forest==null)return;
             if(game.autoTick)Tick(Time.deltaTime);
-            float bank=BridgeProfile.Current.isLighting?Mathf.Min(3,forest.Inventory(Definition.id).treeCharge):0;
+            // Combined outstanding charge across all three receivers, capped at the existing
+            // full-charge brightness (3) - independent receivers no longer share one bank.
+            var chargeInventory=BridgeProfile.Current.isLighting?forest.Inventory(Definition.id):null;
+            float bank=BridgeProfile.Current.isLighting?Mathf.Min(3,chargeInventory.charge[0]+chargeInventory.charge[1]+chargeInventory.charge[2]):0;
             float strength=1+bank*.4f+(Charging?Mathf.Sin((.6f-remaining)/.6f*Mathf.PI)*1.2f:0);
             if(BridgeProfile.Current.isLighting){displayedStrength=Mathf.Lerp(displayedStrength,strength,1-Mathf.Exp(-8*Time.deltaTime));strength=displayedStrength;}
             if(glowLight!=null)glowLight.intensity=baseIntensity*strength;

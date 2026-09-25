@@ -104,11 +104,10 @@ namespace LightingBlocks
 
         void Update()
         {
-            var particles=BridgeProfile.Current.isLighting?GameManager.Instance?.GetComponent<LightingParticles>():null;
-            if (!readInput || GameHUD.GameplayBlocked){particles?.Cancel();return;}
+            if (!readInput || GameHUD.GameplayBlocked) return;
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
-            if (!Application.isFocused) { particles?.Cancel(); Release(); return; }
+            if (!Application.isFocused) { Release(); return; }
             UpdateNearby();
             if (keyboard != null && keyboard.qKey.wasPressedThisFrame) {
                 if (Orbiting) DropOrbit(true); else if(HeldBox!=null) Release();
@@ -120,11 +119,8 @@ namespace LightingBlocks
                 // Space replaces the left mouse button with the same hold-to-carry semantics. The
                 // cursor is locked to screen centre under this profile, so PointerOverUI cannot be
                 // hit by a key press and the check the mouse path needs is skipped here.
-                if (keyboard == null || !keyboard.spaceKey.isPressed){particles?.Drop();Release();}
-                else if (keyboard.spaceKey.wasPressedThisFrame)
-                {
-                    if(particles==null||!particles.TryGrab(this,NearbyBox))TryGrab(NearbyBox);
-                }
+                if (keyboard == null || !keyboard.spaceKey.isPressed) Release();
+                else if (keyboard.spaceKey.wasPressedThisFrame) TryGrab(NearbyBox);
             }
             else if (mouse == null || !mouse.leftButton.isPressed) Release();
             else if (mouse.leftButton.wasPressedThisFrame && !GameHUD.PointerOverUI()) TryGrab(NearbyBox);
@@ -178,7 +174,7 @@ namespace LightingBlocks
                 soul.Notify(stone.placed ? "BRIDGE BLOCK ANCHORED\nConnected blocks become the walkable bridge. Grab a loose block to extend it." : stone.Title.ToUpper() + " IS TOO HEAVY\nRequires Strength " + stone.RequiredStrength + "; yours is " + soul.strength + ". Upgrade in Skills [Tab].", false);
                 return false;
             }
-            if (box == null || (GameManager.Instance?.GetComponent<LightingParticles>()?.Held!=null) || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
+            if (box == null || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
             HeldBox = box;
             HeldBoxes.Clear(); HeldBoxes.Add(box);
             if (soul != null)

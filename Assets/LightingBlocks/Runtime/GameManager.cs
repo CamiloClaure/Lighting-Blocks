@@ -312,7 +312,7 @@ namespace LightingBlocks
             Save(); return true;
         }
         public string LightingCarryHint => ForestWorld.For(this)?.enableLightingParticles == true
-            ? "Hold SPACE to carry colored particles into matching cubes. Three deliveries grow a bridge tile."
+            ? "Walk over particles to collect them. Press E near a receiver to deposit one - three of a colour release a bridge tile."
             : "Hold SPACE to carry a nearby bridge block.";
         public void ApplyUpgrades()
         {
@@ -397,18 +397,20 @@ namespace LightingBlocks
             var loose = Blocks.Where(b => !b.placed && b.Box.Holder == null && !player.HeldBoxes.Contains(b.Box)
                 && new Vector2(b.transform.position.x - tree.transform.position.x, b.transform.position.z - tree.transform.position.z).magnitude <= 4).ToArray();
             if (loose.Length == 0) { Notify("NO LOOSE STONES HERE\nDrag unwanted stones into the tree's clearing first.", false); return false; }
-            var inventory = forest.Inventory(tree.Definition.id);
-            int before = BridgeProfile.Current.isLighting?inventory.treeCharge:inventory.inventory;
+            // Lighting: refunds go into the shared inventory (see ForestWorld.TryAddInventory), not
+            // any one island's bank - a tile is never destroyed if its full 3-particle refund cannot fit.
+            var inventory = BridgeProfile.Current.isLighting ? null : forest.Inventory(tree.Definition.id);
+            int before = BridgeProfile.Current.isLighting?forest.SharedInventory:inventory.inventory;
             int returned=0;
             foreach (var b in loose)
             {
-                if(BridgeProfile.Current.isLighting&&inventory.treeCharge>27)break;
+                if(BridgeProfile.Current.isLighting&&!forest.TryAddInventory(3))break;
                 returned++;Blocks.Remove(b); b.gameObject.SetActive(false); Destroy(b.gameObject);
-                // Clamp to 30: ForestWorld.Valid rejects any island inventory above 30, so an unclamped refund would leave the save unable to load.
-                if(BridgeProfile.Current.isLighting)inventory.treeCharge+=3;else inventory.inventory = Mathf.Min(30, inventory.inventory + 3);
+                // Clamp to 30: ForestWorld.Valid rejects any legacy island inventory above 30, so an unclamped refund would leave the save unable to load.
+                if(!BridgeProfile.Current.isLighting)inventory.inventory = Mathf.Min(30, inventory.inventory + 3);
             }
             // Report the refund that actually landed, not 3 per stone: a full satchel swallows the rest.
-            Notify("THE TREE TAKES THEM BACK\n" + returned + " stones returned · +" + ((BridgeProfile.Current.isLighting?inventory.treeCharge:inventory.inventory) - before) + (BridgeProfile.Current.isLighting?" tree charge":" particles"));
+            Notify("THE TREE TAKES THEM BACK\n" + returned + " stones returned · +" + ((BridgeProfile.Current.isLighting?forest.SharedInventory:inventory.inventory) - before) + " particles");
             Save();
             return true;
         }
@@ -559,6 +561,7 @@ namespace LightingBlocks
         public void Interact()
         {
             if (GameHUD.GameplayBlocked) return;
+            if (BridgeProfile.Current.isLighting && (GetComponent<LightingParticles>()?.TryDeposit(player) ?? false)) return;
             var wisdom = ForestWorld.For(this)?.Nearby(player.transform.position);
             if (wisdom != null) { if(BridgeProfile.Current.isLighting)Notify(LightingCarryHint,false);else wisdom.BeginCharge(); return; }
             if (completed) { Notify("THE NEXT DAWN IS OPEN\nContinue growing your paths and powers.", false); return; }

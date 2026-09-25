@@ -2,140 +2,113 @@ using System.Collections.Generic;
 using UnityEngine;
 namespace LightingBlocks
 {
-    // Owns the shared Space-grab arbitration; particles are not bridge blocks or soul generators.
+    // Owns each Wisdom Tree's three colour receivers and the E-key deposit interaction. Collection
+    // is walk-over (see ForestWorld.TryCollect) and Space still only carries bridge blocks - there is
+    // no particle dragging or particle/block grab arbitration here any more. Every charge/inventory
+    // change routes through ForestWorld.Deposit, the single place that can apply it.
     public sealed class LightingParticles : MonoBehaviour
     {
-        public readonly List<ParticleDrag> Particles=new List<ParticleDrag>();
-        public readonly List<ColorReceiver> Receivers=new List<ColorReceiver>();
-        public ParticleDrag Held {get;private set;}
-        BoxPlayer holder;
-        public static readonly Color[] Colors={new Color(.14f,.43f,1),new Color(.69f,.24f,1),new Color(1,.68f,.22f)};
-        public void ResetWorld(){Cancel();Particles.Clear();Receivers.Clear();}
-        public void AddParticle(ForestWorld forest,GameObject visual,IslandParticleSave owner,ParticleSlotSave slot)
+        // How close a receiver must be, straight-line and unobstructed, for E to reach it.
+        public const float DepositRange = 1.5f;
+        public readonly List<ColorReceiver> Receivers = new List<ColorReceiver>();
+        // Receiver/tile colours: blue, violet, amber - matches BridgeBlock's tier 0/1/2 exactly, so a
+        // receiver's ColorIndex can be passed straight through as TrySpawnAtWisdomTree's forced tier.
+        public static readonly Color[] Colors = { new Color(.14f, .43f, 1), new Color(.69f, .24f, 1), new Color(1, .68f, .22f) };
+        // Every fundamental particle: warm yellow #FFD66B, regardless of the receiver it will end up in.
+        public static readonly Color ParticleColor = new Color(1f, .839f, .420f);
+        public void ResetWorld() { Receivers.Clear(); }
+        public void AddTree(ForestWorld world, WisdomTree tree, Transform parent)
         {
-            var particle=visual.AddComponent<ParticleDrag>();particle.World=forest;particle.Owner=owner;particle.Slot=slot;
-            particle.Paint();Particles.Add(particle);
-        }
-        public void AddTree(ForestWorld world,WisdomTree tree,Transform parent)
-        {
-            for(int color=0;color<3;color++)
+            for (int color = 0; color < 3; color++)
             {
-                var cube=GameObject.CreatePrimitive(PrimitiveType.Cube);cube.name="Color receiver "+color;cube.transform.SetParent(parent,false);
-                cube.transform.position=tree.Definition.wisdomPosition+new Vector3(-3.2f,.55f,(color-1)*2.1f);cube.transform.localScale=Vector3.one*.8f;
-                // Trigger volume accepts particles but never blocks the player or the tree's output.
-                cube.GetComponent<Collider>().isTrigger=true;
-                var receiver=cube.AddComponent<ColorReceiver>();receiver.Tree=tree;receiver.World=world;receiver.ColorIndex=color;
-                receiver.Initialize(world.configuration.particleMaterial);Receivers.Add(receiver);
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube); cube.name = "Color receiver " + color; cube.transform.SetParent(parent, false);
+                cube.transform.position = tree.Definition.wisdomPosition + new Vector3(-3.2f, .55f, (color - 1) * 2.1f); cube.transform.localScale = Vector3.one * .8f;
+                // Trigger volume accepts deposits but never blocks the player or the tree's output.
+                cube.GetComponent<Collider>().isTrigger = true;
+                var receiver = cube.AddComponent<ColorReceiver>(); receiver.Tree = tree; receiver.World = world; receiver.ColorIndex = color;
+                receiver.Initialize(world.configuration.particleMaterial); Receivers.Add(receiver);
             }
-            if(tree.Definition.polygonIndex==0)
+            if (tree.Definition.polygonIndex == 0)
             {
-                var lights=new GameObject("Canopy fireflies",typeof(ParticleSystem));lights.transform.SetParent(tree.transform,false);
-                var bounds=new Bounds(tree.transform.position,Vector3.zero);foreach(var renderer in tree.GetComponentsInChildren<Renderer>())bounds.Encapsulate(renderer.bounds);
-                lights.transform.position=new Vector3(tree.transform.position.x,bounds.max.y+.5f,tree.transform.position.z);
-                var ps=lights.GetComponent<ParticleSystem>();ps.Stop(true,ParticleSystemStopBehavior.StopEmittingAndClear);
-                var main=ps.main;main.startLifetime=7;main.startSpeed=.04f;main.startSize=.07f;main.maxParticles=12;main.startColor=new Color(.45f,.4f,.7f,.35f);
-                var emission=ps.emission;emission.rateOverTime=1.5f;var shape=ps.shape;shape.shapeType=ParticleSystemShapeType.Sphere;shape.radius=2.5f;
-                lights.GetComponent<ParticleSystemRenderer>().sharedMaterial=world.configuration.particleMaterial;ps.Play();
+                var lights = new GameObject("Canopy fireflies", typeof(ParticleSystem)); lights.transform.SetParent(tree.transform, false);
+                var bounds = new Bounds(tree.transform.position, Vector3.zero); foreach (var renderer in tree.GetComponentsInChildren<Renderer>()) bounds.Encapsulate(renderer.bounds);
+                lights.transform.position = new Vector3(tree.transform.position.x, bounds.max.y + .5f, tree.transform.position.z);
+                var ps = lights.GetComponent<ParticleSystem>(); ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                var main = ps.main; main.startLifetime = 7; main.startSpeed = .04f; main.startSize = .07f; main.maxParticles = 12; main.startColor = new Color(.45f, .4f, .7f, .35f);
+                var emission = ps.emission; emission.rateOverTime = 1.5f; var shape = ps.shape; shape.shapeType = ParticleSystemShapeType.Sphere; shape.radius = 2.5f;
+                lights.GetComponent<ParticleSystemRenderer>().sharedMaterial = world.configuration.particleMaterial; ps.Play();
             }
         }
-        public bool TryGrab(BoxPlayer player,PullableBox block)
+        // Nearest receiver within range with a clear, unobstructed line from origin; null if none.
+        // ignore excludes a transform's own hierarchy (the player's body sits at/near origin).
+        public ColorReceiver Nearest(Vector3 origin, float range, Transform ignore = null)
         {
-            if(Held!=null||player.HeldBox!=null||GameHUD.GameplayBlocked)return false;
-            var origin=player.transform.position+Vector3.up*.7f;
-            if(block!=null&&block.GetComponent<BridgeBlock>()?.CanLift==false)block=null;
-            float best=block!=null?Vector3.Distance(origin,block.Shape.ClosestPoint(origin)):player.grabReach;
-            ParticleDrag chosen=null;
-            foreach(var particle in Particles)
+            ColorReceiver best = null; float bestDistance = range;
+            foreach (var receiver in Receivers)
             {
-                if(particle==null||!particle.gameObject.activeInHierarchy||particle.Slot.remaining>0||particle.Slot.pending)continue;
-                float distance=Vector3.Distance(origin,particle.transform.position);
-                if(distance>best||!Clear(player,origin,particle.transform.position))continue;
-                chosen=particle;best=distance;
+                if (receiver == null) continue;
+                float distance = Vector3.Distance(origin, receiver.transform.position);
+                if (distance > bestDistance || !Clear(origin, receiver.transform.position, ignore)) continue;
+                bestDistance = distance; best = receiver;
             }
-            if(chosen==null)return false;
-            Held=chosen;holder=player;chosen.Held=true;return true;
+            return best;
         }
-        bool Clear(BoxPlayer player,Vector3 from,Vector3 to)
+        static bool Clear(Vector3 from, Vector3 to, Transform ignore)
         {
-            var delta=to-from;
-            foreach(var hit in Physics.RaycastAll(from,delta.normalized,delta.magnitude,~0,QueryTriggerInteraction.Ignore))
-                if(!hit.transform.IsChildOf(player.transform)&&hit.collider.GetComponent<PlatformSupport>()==null)return false;
+            var delta = to - from;
+            foreach (var hit in Physics.RaycastAll(from, delta.normalized, delta.magnitude, ~0, QueryTriggerInteraction.Ignore))
+            {
+                if (ignore != null && hit.transform.IsChildOf(ignore)) continue;
+                if (hit.collider.GetComponent<PlatformSupport>() != null) continue;
+                return false;
+            }
             return true;
         }
-        void LateUpdate()
+        // E: one press deposits one particle into the single nearest reachable receiver. Edge-trigger
+        // (no repeat while held) is GameManager.Update's wasPressedThisFrame gate on the E key.
+        public bool TryDeposit(BoxPlayer player)
         {
-            if(Held==null)return;
-            if(holder==null||GameHUD.GameplayBlocked||!Application.isFocused){Cancel();return;}
-            var forward=Vector3.ProjectOnPlane(holder.viewCamera!=null?holder.viewCamera.transform.forward:holder.transform.forward,Vector3.up).normalized;
-            var target=holder.transform.position+forward*1.05f+Vector3.up*.7f;
-            if(Clear(holder,holder.transform.position+Vector3.up*.7f,target))Held.transform.position=target;
-            foreach(var receiver in Receivers)receiver.Highlight(receiver.Matches(Held)&&receiver.Contains(Held.transform.position));
-        }
-        public void Drop()
-        {
-            if(GameHUD.GameplayBlocked){Cancel();return;}
-            if(Held==null)return;
-            var particle=Held;Held=null;particle.Held=false;
-            bool delivered=false,overReceiver=false;
-            foreach(var receiver in Receivers)
-            {
-                receiver.Highlight(false);
-                if(!receiver.Contains(particle.transform.position))continue;
-                overReceiver=true;delivered=receiver.Receive(particle);break;
-            }
-            if(!delivered)
-            {
-                var p=particle.transform.position;p.y=0;
-                // Only commit positions the save validator and respawn system can also accept.
-                var layout=particle.World.Layouts.Find(l=>l.definition.id==particle.Owner.id);
-                if(!overReceiver&&PlatformSupport.At(p)?.hubId==particle.Owner.id&&layout!=null&&layout.navigation.InReachableArea(p)&&!particle.World.Occupied(p+Vector3.up*.7f,Vector3.one*.15f,true))particle.Slot.position=p;
-                particle.transform.position=particle.Slot.position+Vector3.up*.7f;
-            }
-            holder=null;GetComponent<GameManager>().Save();
-        }
-        public void Cancel()
-        {
-            if(Held!=null){Held.Held=false;Held.transform.position=Held.Slot.position+Vector3.up*.7f;Held=null;}
-            holder=null;foreach(var receiver in Receivers)if(receiver!=null)receiver.Highlight(false);
-        }
-        void OnDisable(){Cancel();}
-    }
-    public sealed class ParticleDrag : MonoBehaviour
-    {
-        public ForestWorld World;public IslandParticleSave Owner;public ParticleSlotSave Slot;public bool Held;
-        public void Paint()
-        {
-            var block=new MaterialPropertyBlock();var color=LightingParticles.Colors[Slot.color];
-            block.SetColor("_BaseColor",color);block.SetColor("_EmissionColor",color*1.6f);GetComponent<Renderer>().SetPropertyBlock(block);
+            if (GameHUD.GameplayBlocked || player == null) return false;
+            var receiver = Nearest(player.transform.position + Vector3.up * .7f, DepositRange, player.transform);
+            return receiver != null && receiver.Deposit();
         }
     }
     public sealed class ColorReceiver : MonoBehaviour
     {
-        public WisdomTree Tree;public ForestWorld World;public int ColorIndex;
-        MaterialPropertyBlock properties;Renderer surface;float rejection,pulse;
+        public WisdomTree Tree; public ForestWorld World; public int ColorIndex;
+        MaterialPropertyBlock properties; Renderer surface; float rejection, pulse;
         GameObject spark;
-        public void Initialize(Material material){surface=GetComponent<Renderer>();surface.sharedMaterial=material;properties=new MaterialPropertyBlock();Highlight(false);}
-        public bool Contains(Vector3 p)=>Mathf.Abs(p.x-transform.position.x)<.8f&&Mathf.Abs(p.z-transform.position.z)<.8f&&Mathf.Abs(p.y-transform.position.y)<1;
-        public bool Matches(ParticleDrag particle)=>particle!=null&&particle.Slot.color==ColorIndex&&particle.Owner.id==Tree.Definition.id;
-        public void Highlight(bool on)
+        public int Charge => World.Inventory(Tree.Definition.id).charge[ColorIndex];
+        public void Initialize(Material material) { surface = GetComponent<Renderer>(); surface.sharedMaterial = material; properties = new MaterialPropertyBlock(); Refresh(); }
+        // The single place a receiver's own charge changes - see ForestWorld.Deposit for the actual
+        // inventory/charge/queue mutation; this only turns the result into feedback.
+        public bool Deposit()
         {
-            if(surface==null)return;var c=rejection>0?Color.red:LightingParticles.Colors[ColorIndex];
-            properties.SetColor("_BaseColor",c);properties.SetColor("_EmissionColor",c*(on?2.2f:.65f));surface.SetPropertyBlock(properties);
+            var result = World.Deposit(Tree.Definition.id, ColorIndex);
+            if (result == ForestWorld.DepositResult.Success)
+            {
+                pulse = .5f;
+                if (spark == null) { spark = GameObject.CreatePrimitive(PrimitiveType.Sphere); Destroy(spark.GetComponent<Collider>()); spark.transform.SetParent(transform.parent, true); spark.transform.localScale = Vector3.one * .18f; spark.GetComponent<Renderer>().sharedMaterial = surface.sharedMaterial; }
+                spark.GetComponent<Renderer>().SetPropertyBlock(properties); spark.transform.position = transform.position; spark.SetActive(true);
+                ForestSoundscape.Play("collect", transform.position, .12f); Refresh(); return true;
+            }
+            // Full (3/3, awaiting its tile) or empty (nothing left to deposit): flash red only when
+            // the receiver itself refused it, not merely because there was nothing to give it.
+            if (result == ForestWorld.DepositResult.Full) rejection = .25f;
+            Refresh(); return false;
         }
-        public bool Receive(ParticleDrag particle)
+        void Refresh()
         {
-            if(GameHUD.GameplayBlocked||particle==null||!particle.gameObject.activeInHierarchy||particle.Slot.remaining>0||particle.Slot.pending)return false;
-            if(!Matches(particle)||particle.Owner.treeCharge>=3){rejection=.25f;Highlight(false);return false;}
-            particle.Owner.chargeColor=ColorIndex;particle.Owner.hasChargeColor=true;particle.Owner.treeCharge++;particle.Slot.remaining=30;particle.Slot.pending=false;particle.gameObject.SetActive(false);
-            pulse=.5f;
-            if(spark==null){spark=GameObject.CreatePrimitive(PrimitiveType.Sphere);Destroy(spark.GetComponent<Collider>());spark.transform.SetParent(transform.parent,true);spark.transform.localScale=Vector3.one*.18f;spark.GetComponent<Renderer>().sharedMaterial=surface.sharedMaterial;spark.GetComponent<Renderer>().SetPropertyBlock(properties);}
-            spark.SetActive(true);ForestSoundscape.Play("collect",transform.position,.12f);return true;
+            if (surface == null) return;
+            var c = rejection > 0 ? Color.red : LightingParticles.Colors[ColorIndex];
+            float glow = .55f + Charge / 3f * .65f;
+            properties.SetColor("_BaseColor", c); properties.SetColor("_EmissionColor", c * glow); surface.SetPropertyBlock(properties);
         }
         void Update()
         {
-            if(GameHUD.SimulationPaused)return;
-            if(rejection>0){rejection-=Time.deltaTime;Highlight(false);}
-            if(pulse>0){pulse=Mathf.Max(0,pulse-Time.deltaTime);spark.transform.position=Vector3.Lerp(transform.position,Tree.transform.position+Vector3.up*2,1-pulse/.5f);if(pulse==0)spark.SetActive(false);}
+            if (GameHUD.SimulationPaused) return;
+            if (rejection > 0) { rejection = Mathf.Max(0, rejection - Time.deltaTime); Refresh(); }
+            if (pulse > 0) { pulse = Mathf.Max(0, pulse - Time.deltaTime); spark.transform.position = Vector3.Lerp(transform.position, Tree.transform.position + Vector3.up * 2, 1 - pulse / .5f); if (pulse == 0) spark.SetActive(false); }
         }
     }
 }

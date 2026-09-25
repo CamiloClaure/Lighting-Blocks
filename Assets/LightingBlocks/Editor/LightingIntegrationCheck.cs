@@ -139,7 +139,7 @@ namespace LightingBlocks.Editor
         {
             var island = forest.configuration.islands[0];
             game.souls = 1234.5; game.speed = 3; game.soulGainLevel = 5;
-            forest.Inventory(island.id).inventory = 7;
+            forest.State.inventory = 7; // shared inventory (particleVersion 2+), not the legacy per-island field
             var slot = forest.Inventory(island.id).slots[2];
             slot.remaining = 0; slot.pending = true; // a fragment mid-respawn wait
 
@@ -162,7 +162,7 @@ namespace LightingBlocks.Editor
             // Mutate everything away from the saved values before reloading - a match afterward
             // proves Load() actually restored from disk, not that the fields were untouched.
             game.souls = 0; game.speed = 0; game.soulGainLevel = 0;
-            forest.Inventory(island.id).inventory = 0; slot.pending = false;
+            forest.State.inventory = 0; slot.pending = false;
             placedBlock.tier = 2;
 
             bool loaded = game.Load();
@@ -182,7 +182,7 @@ namespace LightingBlocks.Editor
             Check(game.souls >= 1234.5 - .01 && game.souls <= 1234.5 + maxOfflineGain + .5,
                 "Souls survive save/reload, allowing for legitimate offline-income accrual between Save() and Load() (" + game.souls + ", expected 1234.5 plus up to " + maxOfflineGain + ")");
             Check(game.speed == 3 && game.soulGainLevel == 5, "Upgrades survive save/reload (speed=" + game.speed + " soulGain=" + game.soulGainLevel + ")");
-            Check(forest.Inventory(island.id).inventory == 7, "Particle inventory count survives save/reload (" + forest.Inventory(island.id).inventory + ")");
+            Check(forest.State.inventory == 7, "Shared particle inventory survives save/reload (" + forest.State.inventory + ")");
             Check(forest.Inventory(island.id).slots[2].pending, "A pending (mid-respawn) fragment survives save/reload");
             var reloadedPlaced = game.Blocks.FirstOrDefault(b => b.placed && b.gap == 0 && b.column == 0 && b.row == 4);
             Check(reloadedPlaced != null && reloadedPlaced.tier == expectedTier, "Placed block state (gap/column/row/tier=" + expectedTier + ") survives save/reload");
