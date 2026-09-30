@@ -78,7 +78,8 @@ namespace LightingBlocks
                 Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(560, 550), 104);
                 Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(430, 375), 104);
                 Add("root", BridgeProfile.Current.isLighting ? "THE BRIDGE PATH" : "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
-                Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash");
+                Add("grenade", "LIGHT GRENADE", "Throw a charged spirit into the void: it lays tiles where it bursts and relights the tiles already there.", new Vector2(430, 200), 104);
+                Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash"); Connect("dash", "grenade");
             }
             else
             {
@@ -312,6 +313,7 @@ namespace LightingBlocks
                 case "soulgain": return BridgeProfile.Current.isLighting ? "Hotkey [2].\nEach level adds 0.25 particle to every pickup.\nCurrent pickup: " + (1 + .25 * game.soulGainLevel).ToString("0.00") + " particles." : "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
                     + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
                 case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n0.3-second cooldown. Unavailable while hauling.";
+                case "grenade": return "Hold right mouse to charge, release to throw along the camera. Costs " + LightingGrenade.ThrowCost + " particles per throw.\nReach and blast radius: " + LightingGrenade.Radius(game.grenadeLevel) + " tiles (levels: " + string.Join("/", LightingGrenade.GrenadeTiles) + ").\nThe blast lays tiles over the void that connect to your network and relights the tiles already there.";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";

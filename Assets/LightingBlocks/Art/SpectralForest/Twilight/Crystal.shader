@@ -8,6 +8,7 @@ Shader "LightingBlocks/Twilight Crystal"
         _Connected("Connected", Float) = 0
         _Refraction("Refraction", Float) = .002
         _Glow("Step illumination", Range(0,1)) = 1
+        _LitGain("Lit brightness", Float) = 1
         _IdleVisibility("Unstepped tint", Range(0,.3)) = .14
         _FacetSeed("Facet variation", Float) = 0
     }
@@ -28,7 +29,7 @@ Shader "LightingBlocks/Twilight Crystal"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
             CBUFFER_START(UnityPerMaterial)
             float4 _BaseColor;
-            float _Opacity, _Highlight, _Connected, _Refraction, _Glow, _FacetSeed, _IdleVisibility;
+            float _Opacity, _Highlight, _Connected, _Refraction, _Glow, _FacetSeed, _IdleVisibility, _LitGain;
             CBUFFER_END
             // Zero outside Lighting. A bounded pool lets this stylized glass catch the player lamp.
             float4 _LightingCharacterPosition, _LightingCharacterColor;
@@ -89,6 +90,8 @@ Shader "LightingBlocks/Twilight Crystal"
                 float cloud=.65*cloudNoise(i.uv*2.4+_FacetSeed)+.35*cloudNoise(i.uv*5.2+_FacetSeed);
                 float3 tint=_BaseColor.rgb;
                 float glow=saturate(_Glow);
+                // _LitGain scales only the stepped-on light (BlockArt sets 2 in Lighting); the idle tint keeps its level.
+                float lit=glow*_LitGain;
                 // Keep resting slabs readable without keeping their point lights on.
                 // The tint fades out as the existing stepped-on illumination takes over.
                 float idle=_IdleVisibility*(1-glow);
@@ -96,12 +99,12 @@ Shader "LightingBlocks/Twilight Crystal"
                 float opacity=saturate(_Opacity+rim*.12);
                 float3 glass=behind*lerp(float3(1,1,1),tint,.55)*.32;
                 // Continuous cloud lighting avoids abrupt brightness changes between cells.
-                glass+=tint*(.016+idle+glow*(.28+cloud*.22+rim*.18));
+                glass+=tint*(.016+idle+lit*(.28+cloud*.22+rim*.18));
                 float junction=exp2(-dot(f.xz,f.xz)/(.065*.065));
-                float caustic=((filament*.95+halo*.48)*(.65+cloud*.55)+junction*.65)*i.top*(glow+idle*.4);
+                float caustic=((filament*.95+halo*.48)*(.65+cloud*.55)+junction*.65)*i.top*(lit+idle*.4);
                 float2 edge=min(i.uv,1-i.uv);
                 float perimeter=exp2(-pow(min(edge.x,edge.y)/.095,2));
-                glass+=tint*perimeter*.35*i.top*(glow+idle*.6);
+                glass+=tint*perimeter*.35*i.top*(lit+idle*.6);
                 glass+=lerp(tint,sqrt(saturate(tint)),.12)*caustic;
                 glass+=tint*_Highlight*.12;
                 float3 toLamp=_LightingCharacterPosition.xyz-i.w;

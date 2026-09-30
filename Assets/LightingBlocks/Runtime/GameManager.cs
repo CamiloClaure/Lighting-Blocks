@@ -31,6 +31,8 @@ namespace LightingBlocks
         public double souls;
         public int speed, links, strength, radiance, generator, summoned;
         public int dashLevel;
+        // Lighting-only Light Grenade (LightingGrenade): blast radius and throw reach grow per level.
+        public int grenadeLevel;
         // Lighting-only upgrade. Eight levels, price ceil(60 * 1.65^level), each adding 25% of base
         // connected-path income, applied once after existing path bonuses (see Recalculate). Wired
         // into Cost/Level/Purchase, gated on BridgeProfile.Current.isLighting.
@@ -206,6 +208,7 @@ namespace LightingBlocks
             if (string.IsNullOrEmpty(Notice)) Notify(BridgeProfile.Current.isLighting?LightingCarryHint:"THE WISDOM TREE\nCollect the bright particles. Press E beside the violet tree to charge it and release a bridge block.", false);
             cameraRig.CenterOnPlayer();
             WorldDressing.Build(this);
+            if (BridgeProfile.Current.isLighting && GetComponent<LightingGrenade>() == null) gameObject.AddComponent<LightingGrenade>();
             if (forest != null) { forest.Build(); if (safeToSave) Save(); }
             GameAudio.PlayMusic("IntroGusta");
         }
@@ -341,29 +344,31 @@ namespace LightingBlocks
                 case "generator": return Math.Ceiling(60 * Math.Pow(1.65, generator));
                 case "soulgain": return BridgeProfile.Current.isLighting ? Math.Ceiling(15 * Math.Pow(1.65, soulGainLevel)) : Math.Ceiling(60 * Math.Pow(1.65, soulGainLevel));
                 case "dash": return BridgeProfile.Current.isLighting ? Math.Ceiling(25 * Math.Pow(1.8, dashLevel)) : 0;
+                case "grenade": return BridgeProfile.Current.isLighting ? Math.Ceiling(40 * Math.Pow(1.8, grenadeLevel)) : 0;
                 case "stone": return Math.Min(60, Math.Ceiling(12 * Math.Pow(1.12, summoned)));
                 case "grave": return 45;
                 default: return 0;
             }
         }
-        public int Level(string id) => id == "dash" ? dashLevel : id == "speed" ? speed : id == "links" ? links : id == "strength" ? strength : id == "radiance" ? radiance : id == "soulgain" ? soulGainLevel : generator;
-        public int Cap(string id) => id == "dash" ? BoxPlayer.DashTiles.Length : id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
+        public int Level(string id) => id == "dash" ? dashLevel : id == "grenade" ? grenadeLevel : id == "speed" ? speed : id == "links" ? links : id == "strength" ? strength : id == "radiance" ? radiance : id == "soulgain" ? soulGainLevel : generator;
+        public int Cap(string id) => id == "dash" ? BoxPlayer.DashTiles.Length : id == "grenade" ? LightingGrenade.GrenadeTiles.Length : id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
         public bool Purchase(string id)
         {
             if (GameHUD.SimulationPaused) return false;
             if (BridgeProfile.Current.isLighting)
             {
-                if (id != "speed" && id != "soulgain" && id != "dash") return false;
+                if (id != "speed" && id != "soulgain" && id != "dash" && id != "grenade") return false;
                 if (Level(id) >= Cap(id)) return Deny("FULLY AWAKENED\nThis power has reached its maximum level.");
                 if (!CanBuyLightingUpgrades()) return Deny("STAND BY A WISDOM TREE\nSkill purchases need supported ground within 3 metres of any Wisdom Tree.");
                 var world = ForestWorld.For(this);
                 int unitPrice = checked((int)Math.Ceiling(Cost(id) * ForestWorld.ParticleUnitsPerParticle));
                 if (world == null || world.SharedInventory < unitPrice) return Deny("NOT ENOUGH PARTICLES\nHave " + (world==null?"0":world.SharedInventoryLabel) + " / " + Format(Cost(id)) + " particles.");
                 if (!world.TrySpendInventory(unitPrice)) return false;
-                switch (id) { case "speed": speed++; break; case "soulgain": soulGainLevel++; break; case "dash": dashLevel++; break; }
+                switch (id) { case "speed": speed++; break; case "soulgain": soulGainLevel++; break; case "dash": dashLevel++; break; case "grenade": grenadeLevel++; break; }
                 ApplyUpgrades(); // no Recalculate: none of these skills changes a tile or the network
 
-                Notify(id == "speed" ? "SPEED AWAKENED\nWalking and hauling are faster." : id == "soulgain" ? "PARTICLE YIELD " + soulGainLevel + "\nPickups now yield " + (1 + .25 * soulGainLevel).ToString("0.00") + " particles." : "DASH " + dashLevel + "\nShift bursts " + BoxPlayer.DashTiles[dashLevel - 1] + " tiles, building across the void.");
+                Notify(id == "speed" ? "SPEED AWAKENED\nWalking and hauling are faster." : id == "soulgain" ? "PARTICLE YIELD " + soulGainLevel + "\nPickups now yield " + (1 + .25 * soulGainLevel).ToString("0.00") + " particles." : id == "grenade" ? "LIGHT GRENADE " + grenadeLevel + "\nHold right mouse to charge, release to throw up to " + LightingGrenade.GrenadeTiles[grenadeLevel - 1] + " tiles (" + LightingGrenade.ThrowCost + " particles)."
+                    : "DASH " + dashLevel + "\nShift bursts " + BoxPlayer.DashTiles[dashLevel - 1] + " tiles, building across the void.");
                 Save(); return true;
             }
             if (id == "stone" || id == "grave") return Deny("WISDOM TREES PROVIDE BLOCKS\nCollect particles and press E beside a Wisdom Tree.");
@@ -648,16 +653,68 @@ namespace LightingBlocks
             if (!BridgeProfile.Current.isLighting || !LightingBridgeGrid.InBounds(cell) || LightingBridgeGrid.OverlapsPlatform(cell)
                 || LightingBridgeGrid.IsOccupied(this, cell) || !LightingBridgeGrid.IsFrontier(this, cell) || LightingBridgeGrid.HasObstruction(cell, this)
                 || LightingBridgeGrid.PlacedCount(this) >= LightingBridgeGrid.MaxPlacedTiles) return false;
-            int tier = Mathf.Clamp(RequiredTier(0, cell.x, cell.y), 0, blockPrefabs.Length - 1);
-            var block = Instantiate(blockPrefabs[tier], LightingBridgeGrid.Cell(cell.x, cell.y), Quaternion.identity, blocksRoot);
-            block.id = "dash-" + Guid.NewGuid().ToString("N");
-            block.placed = true; block.gap = 0; block.column = cell.x; block.row = cell.y;
-            Blocks.Add(block); ConfigureBlock(block); Recalculate(block);
+            var block = LayTile(cell, "dash-"); Physics.SyncTransforms(); Recalculate(block);
             // A burst lays a tile every .05 s; one crystal per tile stacked into a loud clip that took
             // every pooled voice. One every .12 s reads as a run of ticks instead.
             if (Time.unscaledTime >= nextDashChime) { nextDashChime = Time.unscaledTime + .12f; ForestSoundscape.Play("crystal", block.transform.position, .12f); }
             dashSavePending = true; // saved once when the burst ends (Update), not once per tile
             return true;
+        }
+        // A free tile in the cell's own colour; the caller checks the cell and runs Recalculate.
+        BridgeBlock LayTile(Vector2Int cell, string prefix)
+        {
+            int tier = Mathf.Clamp(RequiredTier(0, cell.x, cell.y), 0, blockPrefabs.Length - 1);
+            var block = Instantiate(blockPrefabs[tier], LightingBridgeGrid.Cell(cell.x, cell.y), Quaternion.identity, blocksRoot);
+            block.id = prefix + Guid.NewGuid().ToString("N");
+            block.placed = true; block.gap = 0; block.column = cell.x; block.row = cell.y;
+            Blocks.Add(block); ConfigureBlock(block, false);
+            return block;
+        }
+        // Light Grenade: relights every tile already in the blast, then lays every free cell within radius
+        // tiles of center that the network reaches through the blast itself: a flood fill from the
+        // connected edge, so every new tile is connected and a save taken mid-blast stays valid. The throw
+        // never goes farther than the radius, so the blast holds the thrower's side of the network.
+        // One step per frame, each yielding the tiles laid so far; the caller saves when it ends.
+        // ponytail: 6 new tiles (one Recalculate) and 8 relit ones a frame keep a 149-cell blast under a
+        // 60 FPS frame beside a 2000-tile network. All in one frame took 35-52 ms, and relighting ~80 old
+        // tiles at once (each builds its step light on first use) cost ~17 ms by itself.
+        public const int BlastTilesPerFrame = 6, BlastRelightsPerFrame = 8;
+        public IEnumerator<int> GrenadeBlast(Vector2Int center, int radius)
+        {
+            if (!BridgeProfile.Current.isLighting || radius < 0) yield break;
+            bool InBlast(Vector2Int c) => (c - center).sqrMagnitude <= radius * radius;
+            void Relight(BridgeBlock tile) { if (tile == null) return; tile.lit = 1; WorldDressing.StepGlow(tile, 1); } // BridgeSteps fades it like a step
+            var queue = new Queue<Vector2Int>(); var seen = new HashSet<Vector2Int>(); var batch = new HashSet<Vector2Int>(); var old = new List<BridgeBlock>();
+            for (int x = center.x - radius; x <= center.x + radius; x++) for (int z = center.y - radius; z <= center.y + radius; z++)
+            {
+                var c = new Vector2Int(x, z); if (!InBlast(c)) continue;
+                var tile = LightingBridgeGrid.TileAt(this, LightingBridgeGrid.Cell(x, z));
+                if (tile != null) old.Add(tile);
+                else if (LightingBridgeGrid.IsFrontier(this, c) && seen.Add(c)) queue.Enqueue(c);
+            }
+            old.Sort((a, b) => (new Vector2Int(a.column, a.row) - center).sqrMagnitude.CompareTo((new Vector2Int(b.column, b.row) - center).sqrMagnitude)); // relit from the impact out
+            int laid = 0, relit = 0;
+            while (queue.Count > 0 || relit < old.Count)
+            {
+                for (int end = Mathf.Min(old.Count, relit + BlastRelightsPerFrame); relit < end; relit++) Relight(old[relit]);
+                batch.Clear();
+                while (queue.Count > 0 && batch.Count < BlastTilesPerFrame && LightingBridgeGrid.PlacedCount(this) + batch.Count < LightingBridgeGrid.MaxPlacedTiles)
+                {
+                    var c = queue.Dequeue();
+                    // Tested when laid, not when queued: a load or a reclaim between frames can change the network.
+                    bool linked = LightingBridgeGrid.IsFrontier(this, c) || LightingBridgeGrid.NeighborsOf(c).Any(batch.Contains);
+                    if (!linked || LightingBridgeGrid.IsOccupied(this, c) || LightingBridgeGrid.OverlapsPlatform(c) || !LightingBridgeGrid.InBounds(c) || LightingBridgeGrid.HasObstruction(c, this)) continue;
+                    LayTile(c, "grenade-"); batch.Add(c); laid++;
+                    foreach (var n in LightingBridgeGrid.NeighborsOf(c)) if (InBlast(n) && seen.Add(n)) queue.Enqueue(n);
+                }
+                if (batch.Count > 0)
+                {
+                    Physics.SyncTransforms(); Recalculate();
+                    foreach (var c in batch) Relight(LightingBridgeGrid.TileAt(this, LightingBridgeGrid.Cell(c.x, c.y)));
+                }
+                else if (relit >= old.Count) yield break; // nothing left to lay (or the tile cap is reached)
+                yield return laid;
+            }
         }
         // sync: false lets a caller configuring many blocks run Physics.SyncTransforms once at the end.
         public void ConfigureBlock(BridgeBlock block, bool sync = true)
@@ -813,12 +870,12 @@ namespace LightingBlocks
             // mismatched schema without touching the file is what keeps an incompatible save from
             // ever being overwritten - see ImportSave and Load.
             public string schema;
-            public int speed, links, strength, radiance, generator, summoned, soulGainLevel, dashLevel; public bool completed; public Vector3 player;
+            public int speed, links, strength, radiance, generator, summoned, soulGainLevel, dashLevel, grenadeLevel; public bool completed; public Vector3 player;
             public List<BlockSave> blocks = new List<BlockSave>();
         }
         public string ExportSave()
         {
-            var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), schema = BridgeProfile.Current.saveSchema, speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, soulGainLevel = soulGainLevel, dashLevel = dashLevel, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
+            var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), schema = BridgeProfile.Current.saveSchema, speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, soulGainLevel = soulGainLevel, dashLevel = dashLevel, grenadeLevel = grenadeLevel, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
             foreach (var b in Blocks)
             {
                 int overrideTier=BridgeProfile.Current.isLighting&&lightingTierOverrides.TryGetValue(new Vector2Int(b.column,b.row),out int savedTier)?savedTier:-1;
@@ -833,7 +890,7 @@ namespace LightingBlocks
             bool lightingV4=lighting&&d!=null&&d.version==4&&d.schema=="lighting-v1";
             int maximumBlocks=lighting?LightingBridgeGrid.MaxPlacedTiles+150:150;
             bool supportedVersion=d!=null&&(d.version==1||d.version==2||d.version==3||d.version==4||lighting&&d.version==5);
-            if (d == null || !supportedVersion || d.blocks == null || d.blocks.Count > maximumBlocks || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.soulGainLevel < 0 || d.soulGainLevel > 8 || lighting && (d.dashLevel < 0 || d.dashLevel > BoxPlayer.DashTiles.Length) || d.summoned < 0 || !(lighting?LightingPositionValid(d.player):PositionValid(d.player))) return false;
+            if (d == null || !supportedVersion || d.blocks == null || d.blocks.Count > maximumBlocks || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.soulGainLevel < 0 || d.soulGainLevel > 8 || lighting && (d.dashLevel < 0 || d.dashLevel > BoxPlayer.DashTiles.Length || d.grenadeLevel < 0 || d.grenadeLevel > LightingGrenade.GrenadeTiles.Length) || d.summoned < 0 || !(lighting?LightingPositionValid(d.player):PositionValid(d.player))) return false;
             // A save whose schema does not match the active profile's is a different world's save
             // (or a legacy one, under Lighting): reject it without writing anything. Every legacy
             // profile leaves saveSchema null, so this never engages for them.
@@ -927,7 +984,7 @@ namespace LightingBlocks
             }
             Physics.SyncTransforms();
             lightingTierOverrides.Clear(); if(lighting)foreach(var saved in d.blocks)if(saved.placed&&saved.cellTierOverride>=0)lightingTierOverrides[new Vector2Int(saved.column,saved.row)]=saved.cellTierOverride;
-            souls = d.souls; speed = d.speed; links = d.links; strength = d.strength; radiance = d.radiance; generator = d.generator; soulGainLevel = d.soulGainLevel; dashLevel = lighting ? d.dashLevel : 0; summoned = d.summoned; completed = d.completed;
+            souls = d.souls; speed = d.speed; links = d.links; strength = d.strength; radiance = d.radiance; generator = d.generator; soulGainLevel = d.soulGainLevel; dashLevel = lighting ? d.dashLevel : 0; grenadeLevel = lighting ? d.grenadeLevel : 0; summoned = d.summoned; completed = d.completed;
             if(lighting&&lightingV4)souls=0;
             ApplyUpgrades(); Recalculate(); if(!lighting)completed &= Bridges[1];
             var cc = player.GetComponent<CharacterController>(); cc.enabled = false; player.transform.position = CanStand(d.player) ? d.player : new Vector3(0, .025f, 3); cc.enabled = true; safePosition = player.transform.position;

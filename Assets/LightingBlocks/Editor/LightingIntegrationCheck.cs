@@ -87,6 +87,7 @@ namespace LightingBlocks.Editor
             CheckSaveRoundTrip(game, forest);
             CheckSkillTreeClick(game, forest);
             CheckDash(game, forest);
+            CheckGrenade(game, forest);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
             CheckDotSaveMigration(game, forest);
@@ -465,11 +466,110 @@ namespace LightingBlocks.Editor
                     "A standing Dash bursts the way the character faces, not the camera");
                 foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("dash-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
                 game.Recalculate(); game.player.ResetDash();
+
+                // Dashing through a dot collects it: a pickup poll tests the whole path since the last
+                // poll, not only the spot where the burst ended 6 m later.
+                var dots = forest.Dots; int oldSeed = forest.State.seed;
+                float rowZ = LightingBridgeGrid.Cell(0, Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize)).z;
+                var dotCell = LightingBridgeGrid.CellOf(new Vector3(bounds.min.x - 3f, 0, rowZ));
+                try
+                {
+                    for (int i = 0; i < 1000 && !dots.IsDot(dotCell); i++) forest.State.seed++;
+                    Check(dots.IsDot(dotCell), "A dot floats over the dash path, 3 m into the void");
+                    Teleport(game, new Vector3(startX, .025f, rowZ));
+                    if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+                    Physics.SyncTransforms(); dots.Refresh();
+                    forest.Tick(.1f, true); // the poll before the burst
+                    int walletBefore = forest.SharedInventory; float dashFrom = game.player.transform.position.x;
+                    Check(game.player.TryStartDash(Vector2.up), "Dash starts toward the dot");
+                    game.player.StepMovement(Vector2.zero, BoxPlayer.DashDuration(1) * 2); Physics.SyncTransforms();
+                    forest.Tick(.1f, true); // the first poll lands after the burst, 6 m out
+                    // Another seeded dot on the same row is taken too; every pickup pays the full yield.
+                    int perDot = ForestWorld.ParticleUnitsPerParticle + Mathf.Clamp(game.soulGainLevel, 0, 8), gained = forest.SharedInventory - walletBefore;
+                    Check(gained >= perDot && gained % perDot == 0
+                        && forest.State.dots.Any(d => d.x == dotCell.x && d.z == dotCell.y), "Dashing through a dot collects it (dashed "
+                        + (dashFrom - game.player.transform.position.x).ToString("0.00") + " m, tile under the dot " + (game.BlockUnder(LightingDots.Position(dotCell)) != null) + ", wallet +"
+                        + (forest.SharedInventory - walletBefore) + ", dot " + dotCell + " from x " + dashFrom.ToString("0.00") + " z " + rowZ.ToString("0.00") + ", shown " + dots.ShownCells.Contains(dotCell) + ")");
+                }
+                finally
+                {
+                    forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
+                    foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("dash-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
+                    game.Recalculate(); game.player.ResetDash();
+                }
             }
             finally
             {
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 if (wall != null) UnityEngine.Object.Destroy(wall);
+                Physics.SyncTransforms();
+            }
+        }
+
+        // ---- Light Grenade: a charged throw lays connected tiles in its blast and relights old ones ----
+        static void CheckGrenade(GameManager game, ForestWorld forest)
+        {
+            var grenade = game.GetComponent<LightingGrenade>();
+            Check(grenade != null, "The Light Grenade rides on the Lighting GameManager");
+            var tree = forest.WisdomTrees.First(t => t != null);
+            int oldLevel = game.grenadeLevel; game.grenadeLevel = 0;
+            Check(Math.Abs(game.Cost("grenade") - 40) < .001 && game.Cap("grenade") == 3 && string.Join("/", LightingGrenade.GrenadeTiles) == "5/6/7",
+                "Light Grenade costs 40 particles and has three levels (5/6/7 tiles)");
+            forest.State.inventory = 40 * ForestWorld.ParticleUnitsPerParticle;
+            Teleport(game, tree.transform.position + Vector3.right * 8);
+            Check(!game.Purchase("grenade") && game.grenadeLevel == 0, "Light Grenade cannot be bought away from a Wisdom Tree");
+            Teleport(game, tree.transform.position + Vector3.right * 2);
+            Check(game.Purchase("grenade") && game.grenadeLevel == 1 && forest.SharedInventory == 0, "Buying Light Grenade at a tree spends exactly 40 particles");
+            string save = game.ExportSave(); game.grenadeLevel = 0;
+            Check(game.ImportSave(save) && game.grenadeLevel == 1, "The Light Grenade level survives save and load");
+            var invalid = JsonUtility.FromJson<GameManager.SaveData>(save); invalid.grenadeLevel = 4;
+            Check(!game.ImportSave(JsonUtility.ToJson(invalid)) && game.grenadeLevel == 1, "A Light Grenade level past the cap is rejected");
+            game.grenadeLevel = 3; forest.State.inventory = 100000;
+            Check(!game.Purchase("grenade") && game.grenadeLevel == 3 && forest.SharedInventory == 100000, "The three-level cap refuses a fourth purchase without spending");
+            game.grenadeLevel = 1;
+
+            // Full charge from the island-1 west edge, the camera looking west, out over the void.
+            var bounds = HubBounds("island-1");
+            Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
+            try
+            {
+                float rowZ = LightingBridgeGrid.Cell(0, Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize)).z;
+                Vector3 edge = new Vector3(bounds.min.x + .22f, .025f, rowZ);
+                Teleport(game, edge);
+                if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+                Physics.SyncTransforms();
+                int price = LightingGrenade.ThrowCost * ForestWorld.ParticleUnitsPerParticle, tilesBefore = game.Blocks.Count;
+                forest.State.inventory = price - 1;
+                Check(!grenade.TryThrow(1) && !grenade.Flying && forest.SharedInventory == price - 1 && game.Blocks.Count == tilesBefore, "A throw without 10 particles is refused and spends nothing");
+                forest.State.inventory = price;
+                Check(grenade.TryThrow(1) && grenade.Flying && forest.SharedInventory == 0, "A full-charge throw spends exactly 10 particles");
+                var landing = LightingBridgeGrid.CellOf(grenade.Landing); var thrower = LightingBridgeGrid.CellOf(game.player.transform.position);
+                Check(Mathf.Abs(((Vector2)(landing - thrower)).magnitude - 5) <= 1, "Full charge at level 1 lands 5 tiles out");
+                for (int i = 0; i < 240 && grenade.Busy; i++) grenade.Tick(1f / 60);
+                Check(!grenade.Busy, "The grenade lands and its blast finishes within four seconds");
+                var laid = game.Blocks.Where(b => b.id != null && b.id.StartsWith("grenade-")).ToArray();
+                Check(laid.Length > 20 && laid.All(b => b.placed && b.Connected && (new Vector2Int(b.column, b.row) - landing).sqrMagnitude <= 25),
+                    "The blast lays connected tiles within 5 tiles of where it lands (" + laid.Length + " laid)");
+                Check(laid.All(b => b.lit == 1), "Every tile in the blast lights up");
+                var body = laid[0].GetComponent<BlockArt>().bodies.First(r => r != null); var props = new MaterialPropertyBlock(); body.GetPropertyBlock(props);
+                var lamp = laid[0].transform.Find("Step light")?.GetComponent<Light>();
+                Check(Math.Abs(props.GetFloat("_LitGain") - BlockArt.LightingLitGain) < .001f && lamp != null && Math.Abs(lamp.intensity - WorldDressing.LightingStepLight) < .01f,
+                    "A lit Lighting tile shines at twice the crystal brightness with an intensity-8 step light");
+                Check(game.ImportSave(game.ExportSave()), "A save taken after the blast reloads: every blast tile is connected");
+
+                // A second throw at the same spot finds no free cell it can reach; it relights the old tiles.
+                foreach (var b in laid) { b.lit = 0; WorldDressing.StepGlow(b, 0); }
+                int before = game.Blocks.Count; forest.State.inventory = price;
+                Teleport(game, edge);
+                Check(grenade.TryThrow(1), "A second throw starts");
+                for (int i = 0; i < 240 && grenade.Busy; i++) grenade.Tick(1f / 60);
+                Check(!grenade.Busy && game.Blocks.Count == before && laid.All(b => b.lit == 1), "A blast over placed tiles lays nothing new and relights them");
+            }
+            finally
+            {
+                foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("grenade-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
+                game.Recalculate(); game.grenadeLevel = oldLevel;
+                if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 Physics.SyncTransforms();
             }
         }
@@ -602,6 +702,16 @@ namespace LightingBlocks.Editor
                     double ms = watch.Elapsed.TotalMilliseconds; worst = Math.Max(worst, ms); total += ms; frames++;
                 }
                 int laid = game.Blocks.Count - before;
+                // A level-3 Light Grenade (radius 7) into the comb's open rows beside the spine column.
+                var blast = game.GrenadeBlast(new Vector2Int(x0 + 10, zc), LightingGrenade.GrenadeTiles[LightingGrenade.GrenadeTiles.Length - 1]);
+                int blastLaid = 0, blastFrames = 0; double blastWorst = 0, blastTotal = 0; var blastMs = new System.Collections.Generic.List<string>();
+                while (true)
+                {
+                    watch.Restart(); bool more = blast.MoveNext(); double ms = watch.Elapsed.TotalMilliseconds;
+                    blastWorst = Math.Max(blastWorst, ms); blastTotal += ms; blastMs.Add(ms.ToString("0.0")); if (!more) break; blastLaid = blast.Current; blastFrames++;
+                }
+                report.AppendLine("PERF: grenade blast laid " + blastLaid + " tiles over " + blastFrames + " frames, worst frame " + blastWorst.ToString("0.0") + " ms, total " + blastTotal.ToString("0.0") + " ms (the one save at the end excluded; ExportSave below)");
+                Check(blastLaid >= 40 && blastWorst < 1000.0 / 60, "A level-3 Light Grenade beside a " + connected + "-tile network lays " + blastLaid + " tiles, every frame under 60 FPS (" + blastWorst.ToString("0.0") + " ms worst; frames " + string.Join("/", blastMs) + ")");
                 report.AppendLine("PERF: dot restream " + restreamMs.ToString("0.00") + " ms; zoom-42 render CPU "
                     + shadowedMs.ToString("0.0") + " ms before (sun shadows, all tiles), " + unshadowedMs.ToString("0.0") + " ms without shadows, " + culledMs.ToString("0.0") + " ms with the fog cull too; "
                     + drawn + " of " + fixture.Count + " comb tiles drawn");
@@ -614,7 +724,7 @@ namespace LightingBlocks.Editor
             }
             finally
             {
-                foreach (var b in game.Blocks.Where(b => b.id != null && (b.id.StartsWith("perf-") || b.id.StartsWith("dash-"))).ToArray())
+                foreach (var b in game.Blocks.Where(b => b.id != null && (b.id.StartsWith("perf-") || b.id.StartsWith("dash-") || b.id.StartsWith("grenade-"))).ToArray())
                 { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
                 game.Recalculate();
                 game.dashLevel = oldDash; game.player.ResetDash();

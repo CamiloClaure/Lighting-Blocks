@@ -28,6 +28,9 @@ namespace LightingBlocks
         readonly HashSet<Vector2Int> wanted = new HashSet<Vector2Int>(), shown = new HashSet<Vector2Int>(), collected = new HashSet<Vector2Int>();
         Vector2Int streamCell; bool dirty = true;
         float time, lightTimer, collectTimer;
+        // The player's position at the last pickup poll: a poll tests the whole path since then, so a
+        // 40 m/s dash (4 m between polls) still takes every dot it passes through.
+        Vector3? swept;
 
         public IReadOnlyList<Transform> Visuals => visuals;
         public IReadOnlyList<Light> Lights => lights;
@@ -56,13 +59,8 @@ namespace LightingBlocks
         public void Build(ForestWorld owner, Transform parent)
         {
             world = owner; game = owner.GetComponent<GameManager>();
-            if (material == null)
-            {
-                var shader = Resources.Load<Shader>("LivingSpirit");
-                material = new Material(shader != null ? shader : Shader.Find("Universal Render Pipeline/Unlit")) { name = "Spirit dot" };
-                material.SetColor("_BaseColor", LightingParticles.ParticleColor); material.SetColor("_EmissionColor", Emission);
-            }
-            visuals.Clear(); lights.Clear();
+            if (material == null) material = SpiritMaterial();
+            visuals.Clear(); lights.Clear(); swept = null;
             var root = new GameObject("Spirit dots").transform; root.SetParent(parent, false);
             for (int i = 0; i < MaxVisible; i++)
             {
@@ -80,6 +78,14 @@ namespace LightingBlocks
                 lights.Add(light);
             }
             dirty = true;
+        }
+        // The yellow spirit look; LightingGrenade throws a bigger one.
+        public static Material SpiritMaterial()
+        {
+            var shader = Resources.Load<Shader>("LivingSpirit");
+            var spirit = new Material(shader != null ? shader : Shader.Find("Universal Render Pipeline/Unlit")) { name = "Spirit dot" };
+            spirit.SetColor("_BaseColor", LightingParticles.ParticleColor); spirit.SetColor("_EmissionColor", Emission);
+            return spirit;
         }
 
         public void Tick(float delta, bool collect)
@@ -106,7 +112,11 @@ namespace LightingBlocks
             if (collectTimer <= 0)
             {
                 collectTimer = .1f;
-                if (collect) for (int i = 0; i < MaxVisible; i++) if (used[i]) TryCollect(cells[i]);
+                var to = game.player.transform.position; var from = swept ?? to; swept = to;
+                // ponytail: teleport cap. A jump longer than 12 m (load, fall recovery) is not a path;
+                // a dash covers 4 m per poll, so only a frame slower than .3 s would lose its sweep.
+                if ((to - from).sqrMagnitude > 144) from = to;
+                if (collect) for (int i = 0; i < MaxVisible; i++) if (used[i]) TryCollect(cells[i], from, to);
             }
         }
         public static Vector3 Position(Vector2Int cell) { var p = LightingBridgeGrid.Cell(cell.x, cell.y); p.y = Hover; return p; }
@@ -171,11 +181,16 @@ namespace LightingBlocks
             }
         }
 
-        // Same rule the slot pickups had: within 1.05 m, standing on the very tile under the dot.
-        public bool TryCollect(Vector2Int cell)
+        // Same rule the slot pickups had: within 1.05 m, standing on the very tile under the dot. It is
+        // tested at the point of the path from..to nearest the dot.
+        public bool TryCollect(Vector2Int cell) { var p = game.player.transform.position; return TryCollect(cell, p, p); }
+        public bool TryCollect(Vector2Int cell, Vector3 from, Vector3 to)
         {
             if (GameHUD.GameplayBlocked || world == null || world.State == null || !IsDot(cell)) return false;
-            var dot = Position(cell); var player = game.player.transform.position;
+            var dot = Position(cell);
+            Vector2 a = new Vector2(from.x, from.z), path = new Vector2(to.x - from.x, to.z - from.z);
+            float t = path.sqrMagnitude > .000001f ? Mathf.Clamp01(Vector2.Dot(new Vector2(dot.x, dot.z) - a, path) / path.sqrMagnitude) : 0;
+            var player = Vector3.Lerp(from, to, t);
             float dx = player.x - dot.x, dz = player.z - dot.z;
             if (dx * dx + dz * dz > 1.1025f || Mathf.Abs(player.y - dot.y) > 1.5f) return false;
             var tile = game.BlockUnder(new Vector3(dot.x, 0, dot.z));

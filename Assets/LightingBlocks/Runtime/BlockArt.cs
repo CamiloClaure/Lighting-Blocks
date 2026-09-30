@@ -8,6 +8,8 @@ namespace LightingBlocks
         public Transform looseVisual, placedVisual;
         public Renderer[] bodies, seams;
         public Renderer[] lightDetails;
+        // ponytail: tuned by eye. Lighting's stepped-on tiles shine twice as bright; legacy keeps 1.
+        public const float LightingLitGain = 2f;
         BridgeBlock block;
         MaterialPropertyBlock properties;
         bool nearby;
@@ -49,6 +51,7 @@ namespace LightingBlocks
                 if(renderer==null) continue;
                 renderer.GetPropertyBlock(properties);
                 properties.SetFloat("_Glow",Mathf.Clamp01(value));
+                properties.SetFloat("_LitGain",BridgeProfile.Current.isLighting?LightingLitGain:1f);
                 renderer.SetPropertyBlock(properties);
             }
         }

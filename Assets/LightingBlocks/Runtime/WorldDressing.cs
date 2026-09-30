@@ -811,6 +811,8 @@ namespace LightingBlocks
         // Scales the step light and the emission of a placed block by how lit it is (0 dark, 1 full).
         // Occupancy lighting only; called from StepLight under the profile gate and from BridgeSteps
         // every frame a block's lit amount changes.
+        // ponytail: tuned by eye. Lighting's step light peak; the legacy crossing keeps 4.4.
+        public const float LightingStepLight = 8f;
         public static void StepGlow(BridgeBlock block, float lit)
         {
             if (block == null) return;
@@ -821,7 +823,7 @@ namespace LightingBlocks
                 var light = existing.GetComponent<Light>();
                 if (light != null)
                 {
-                    float intensity = 4.4f * lit;
+                    float intensity = (BridgeProfile.Current.isLighting ? LightingStepLight : 4.4f) * lit;
                     var breath = light.GetComponent<Breath>();
                     // Write through Breath when present, so the swell rides the fade instead of
                     // fighting it. The direct write matters too: Breath skips any frame where the
