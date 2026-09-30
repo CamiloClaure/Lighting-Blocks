@@ -24,9 +24,9 @@ namespace LightingBlocks
         [Min(0)] public float worldBlackDistance = 24f;
         [Header("Particle fade (narrower, applied before bloom)")]
         [Tooltip("Lighting only. Particles read at full colour within this many metres.")]
-        [Min(0)] public float particleClearDistance = 8f;
+        [Min(0)] public float particleClearDistance = 12f;
         [Tooltip("Lighting only. Particle renderers switch off beyond this many metres.")]
-        [Min(0)] public float particleHiddenDistance = 12f;
+        [Min(0)] public float particleHiddenDistance = 24f;
         [Tooltip("Lighting only. Visible base colour of fundamental particles; fades toward black.")]
         public Color particleColor = LightingParticles.ParticleColor;
 
@@ -106,7 +106,7 @@ namespace LightingBlocks
                 float t = Mathf.SmoothStep(0, 1, Mathf.InverseLerp(clear, hidden, distance));
                 var block = blocks[i];
                 block.SetColor("_BaseColor", Color.Lerp(particleColor, Color.black, t));
-                block.SetColor("_EmissionColor", particleColor * 1.6f * (1 - t));
+                block.SetColor("_EmissionColor", LightingDots.Emission * (1 - t));
                 r.SetPropertyBlock(block);
             }
         }

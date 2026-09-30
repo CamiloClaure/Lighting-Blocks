@@ -89,7 +89,7 @@ namespace LightingBlocks.Editor
             CheckDash(game, forest);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
-            CheckParticleSlotPadding(game, forest);
+            CheckDotSaveMigration(game, forest);
             CheckLegacyLightingMigration(game, forest);
             CheckEdgeMovement(game);
             CheckAnimalSupport(game, forest);
@@ -290,9 +290,9 @@ namespace LightingBlocks.Editor
             var island = forest.configuration.islands[0];
             game.souls = 0; game.speed = 3; game.soulGainLevel = 5;
             forest.State.inventory = 28; // 7 whole particles in quarter-particle units
-            var slot = forest.Inventory(island.id).slots[2];
-            slot.remaining = 0; slot.pending = true; // a fragment mid-respawn wait
-            var timedSlot=forest.Inventory(island.id).slots[3];timedSlot.remaining=7.25f;timedSlot.pending=false;
+            // A dot taken 7.75 s ago: its cell comes back in 7.25 s.
+            var takenCell = Enumerable.Range(0, 400).Select(i => new Vector2Int(60 + i % 20, i / 20)).First(c => forest.Dots.IsDot(c));
+            forest.State.dots.Clear(); forest.State.dots.Add(new DotSave { x = takenCell.x, z = takenCell.y, remaining = 7.25f });
             var placedBefore=game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).OrderBy(b=>b.cell.x).ThenBy(b=>b.cell.y).ToArray();
             Check(placedBefore.Length>0,"Branching fixture has placed tiles to round-trip");
 
@@ -311,7 +311,7 @@ namespace LightingBlocks.Editor
             // Mutate everything away from the saved values before reloading - a match afterward
             // proves Load() actually restored from disk, not that the fields were untouched.
             game.souls = 0; game.speed = 0; game.soulGainLevel = 0;
-            forest.State.inventory = 0; slot.pending = false;timedSlot.remaining=0;
+            forest.State.inventory = 0; forest.State.dots.Clear();
 
             loaded = game.Load();
             }
@@ -327,8 +327,8 @@ namespace LightingBlocks.Editor
             Check(game.souls==0&&game.Rate==0,"Lighting save/reload has no Soul or offline-income accrual");
             Check(game.speed == 3 && game.soulGainLevel == 5, "Upgrades survive save/reload (speed=" + game.speed + " soulGain=" + game.soulGainLevel + ")");
             Check(forest.State.inventory == 28&&forest.SharedInventoryLabel=="7", "Quarter-particle wallet survives save/reload (" + forest.SharedInventoryLabel + " particles)");
-            Check(forest.Inventory(island.id).slots[2].pending, "A pending (mid-respawn) fragment survives save/reload");
-            Check(Math.Abs(forest.Inventory(island.id).slots[3].remaining-7.25f)<.001f&&!forest.Inventory(island.id).slots[3].pending,"A non-pending pickup timer survives save/reload");
+            Check(forest.State.particleVersion == 5 && forest.State.dots.Count == 1 && forest.State.dots[0].x == takenCell.x && forest.State.dots[0].z == takenCell.y && Math.Abs(forest.State.dots[0].remaining - 7.25f) < .001f,
+                "A collected dot's return timer survives save/reload");
             var placedAfter=game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).OrderBy(b=>b.cell.x).ThenBy(b=>b.cell.y).ToArray();
             Check(placedBefore.SequenceEqual(placedAfter),"Every placed grid cell and its saved color survive save/reload");
             var malformedSave=JsonUtility.FromJson<GameManager.SaveData>(game.ExportSave());
@@ -425,11 +425,11 @@ namespace LightingBlocks.Editor
                 Teleport(game, new Vector3(startX, .025f, bounds.center.z));
                 foreach (var b in laid) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
                 game.Recalculate();
-                Check(!game.player.TryStartDash(Vector2.up) && game.player.DashCooldownRemaining > .9f,
-                    "Dash enters its one-second cooldown after the burst");
+                Check(!game.player.TryStartDash(Vector2.up) && game.player.DashCooldownRemaining > BoxPlayer.DashCooldown - .1f,
+                    "Dash enters its " + BoxPlayer.DashCooldown + "-second cooldown after the burst");
                 for (int i = 0; i < 42; i++) game.player.StepMovement(Vector2.zero, .05f);
                 Check(game.player.DashCooldownRemaining <= .001f && game.player.TryStartDash(Vector2.up),
-                    "Dash can be used again after the one-second cooldown");
+                    "Dash can be used again after the " + BoxPlayer.DashCooldown + "-second cooldown");
                 GameHUD.Current.SetView(GameHUD.ScreenView.Pause);
                 float pausedCooldown = game.player.DashCooldownRemaining;
                 Check(!game.player.IsDashing && !game.player.TryStartDash(Vector2.up), "Opening a menu cancels the active burst and blocks Dash input");
@@ -482,7 +482,7 @@ namespace LightingBlocks.Editor
         static void CheckSounds(GameManager game)
         {
             string[] paths = { "Audio/Forest/wind", "Audio/Forest/leaves", "Audio/Forest/collect", "Audio/Forest/charge", "Audio/Forest/release", "Audio/Forest/crystal",
-                "Audio/LightingSteps/step_0", "Audio/LightingSteps/step_1", "Audio/LightingSteps/step_2", "Audio/LightingSteps/step_3",
+                "Audio/SFX/PasosNotas/04LB A#",
                 "Audio/LightingPickups/pickup_01", "Audio/LightingPickups/pickup_02", "Audio/LightingPickups/pickup_03", "Audio/LightingPickups/pickup_04",
                 "Audio/Music/IntroGusta", "Audio/SFX/Bloques" };
             var missing = paths.Where(p => Resources.Load<AudioClip>(p) == null).ToArray();
@@ -501,10 +501,21 @@ namespace LightingBlocks.Editor
 
             ForestSoundscape.Play("crystal", game.player.transform.position, .12f);
             Check(CrystalVoices() >= 1, "A placed tile's crystal cue starts a world voice");
-            var steps = game.player.GetComponent<LightingFootsteps>();
-            if (steps == null) steps = game.player.gameObject.AddComponent<LightingFootsteps>();
-            steps.PlayStep();
-            Check(game.player.GetComponents<AudioSource>().Any(s => s.isPlaying && s.clip != null && s.clip.name.StartsWith("step_")), "A stride plays a Lighting footstep");
+            // One note per floor cell entered (the reference's platform_step), driven by BridgeSteps.
+            var bridgeSteps = game.GetComponent<BridgeSteps>();
+            var stepUpdate = typeof(BridgeSteps).GetMethod("Update", BindingFlags.NonPublic | BindingFlags.Instance);
+            var stepCooldown = typeof(BridgeSteps).GetField("nextNote", BindingFlags.NonPublic | BindingFlags.Instance);
+            Check(bridgeSteps != null && stepUpdate != null && stepCooldown != null, "Lighting has the floor-cell step note driver");
+            AudioSource StepVoice() => game.player.GetComponents<AudioSource>().FirstOrDefault(s => s.clip != null && s.clip.name == "04LB A#");
+            void StepOnto(Vector3 p) { Teleport(game, p); stepCooldown.SetValue(bridgeSteps, 0f); stepUpdate.Invoke(bridgeSteps, null); }
+            var hubCell = new Vector3(0, .025f, 4); var nextHubCell = hubCell + Vector3.right * LightingBridgeGrid.CellSize;
+            Check(PlatformSupport.At(hubCell) != null && PlatformSupport.At(nextHubCell) != null, "Two neighbouring hub cells to step across");
+            StepOnto(hubCell); StepVoice()?.Stop();
+            StepOnto(nextHubCell);
+            Check(StepVoice() != null && StepVoice().isPlaying, "Stepping onto a new hub cell plays the 04LB A# note");
+            StepVoice().Stop(); StepOnto(nextHubCell + Vector3.forward * .4f);
+            Check(!StepVoice().isPlaying, "Moving within the same cell plays no second note");
+            Check(!game.player.GetComponents<AudioSource>().Any(s => s.clip != null && s.clip.name.StartsWith("step_")), "No per-stride impact clip is loaded in Lighting");
             var pickup = game.GetComponent<LightingPickupAudio>();
             int played = pickup != null ? pickup.PlaybackCount : -1;
             if (pickup != null) pickup.PlayPickup();
@@ -526,8 +537,6 @@ namespace LightingBlocks.Editor
             Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
             float oldDistance = game.cameraRig.distance;
             var fog = game.GetComponent<LightingFog>(); float black = fog.worldBlackDistance;
-            var slot = forest.PickupVisuals.Count > 0 ? forest.Inventory(forest.configuration.islands[0].id).slots[0] : null;
-            var oldSlot = slot == null ? default : (slot.position, slot.generation, slot.pending, slot.remaining);
             try
             {
                 for (int x = x0; x < x0 + 50; x++) for (int z = zc - 40; z < zc + 40; z++)
@@ -550,19 +559,10 @@ namespace LightingBlocks.Editor
                 // Reloading the same save reuses every tile by id.
                 watch.Restart(); bool reloaded = game.ImportSave(bigSave); double reloadMs = watch.Elapsed.TotalMilliseconds;
                 Check(reloaded && fixture.All(b => b != null && b.Connected), "The " + connected + "-tile save reloads onto the same tiles");
-                if (slot != null) slot = forest.Inventory(forest.configuration.islands[0].id).slots[0]; // the reload replaced the forest state
 
-                // Respawn walks the whole frontier; index 0 is island-1's first slot (ForestWorld.Build order).
-                double respawnCold = -1, respawnWarm = -1;
-                if (slot != null)
-                {
-                    slot.remaining = 0; slot.pending = true;
-                    forest.Respawn(0); // the first call ever also pays the JIT; time a network change instead
-                    slot.pending = true; LightingBridgeGrid.Invalidate(game); LightingBridgeGrid.Connected(game);
-                    watch.Restart(); forest.Respawn(0); respawnCold = watch.Elapsed.TotalMilliseconds;
-                    slot.pending = true;
-                    watch.Restart(); forest.Respawn(0); respawnWarm = watch.Elapsed.TotalMilliseconds;
-                }
+                // Dots restream on every cell the player enters; the network size must not matter.
+                double restreamMs = -1;
+                if (forest.Dots != null) { forest.Dots.Refresh(); watch.Restart(); forest.Dots.Refresh(); restreamMs = watch.Elapsed.TotalMilliseconds; } // the first call pays the JIT
 
                 // Zoomed all the way out over the middle of the comb: CPU cost of one frame's draw
                 // submission, with the zero-intensity directional light casting shadows (the old scene
@@ -602,11 +602,10 @@ namespace LightingBlocks.Editor
                     double ms = watch.Elapsed.TotalMilliseconds; worst = Math.Max(worst, ms); total += ms; frames++;
                 }
                 int laid = game.Blocks.Count - before;
-                report.AppendLine("PERF: respawn " + respawnCold.ToString("0.0") + " ms cold, " + respawnWarm.ToString("0.0") + " ms warm; zoom-42 render CPU "
+                report.AppendLine("PERF: dot restream " + restreamMs.ToString("0.00") + " ms; zoom-42 render CPU "
                     + shadowedMs.ToString("0.0") + " ms before (sun shadows, all tiles), " + unshadowedMs.ToString("0.0") + " ms without shadows, " + culledMs.ToString("0.0") + " ms with the fog cull too; "
                     + drawn + " of " + fixture.Count + " comb tiles drawn");
-                // Editor (debug) timing; the old frontier scan took ~880 ms here.
-                Check(slot == null || respawnCold < 12, "A particle respawn after a network change beside a " + connected + "-tile comb stays under 12 ms (" + respawnCold.ToString("0.0") + " ms)");
+                Check(forest.Dots == null || restreamMs < 2, "A dot restream beside a " + connected + "-tile comb stays under 2 ms (" + restreamMs.ToString("0.00") + " ms)");
                 report.AppendLine("PERF: " + connected + " tiles, first paint " + recalculateMs.ToString("0.0") + " ms, unchanged Recalculate " + repaintMs.ToString("0.0") + " ms, reload " + reloadMs.ToString("0.0") + " ms, ExportSave " + exportMs.ToString("0.0")
                     + " ms, network flood " + floodMs.ToString("0.0") + " ms, dash laid " + laid + " tiles over " + frames + " frames, worst frame " + worst.ToString("0.0") + " ms, total " + total.ToString("0.0") + " ms");
                 Check(CrystalVoices() <= 4, "A 12-tile Dash plays at most a few crystal ticks, not one per tile (" + CrystalVoices() + " voices)");
@@ -621,24 +620,23 @@ namespace LightingBlocks.Editor
                 game.dashLevel = oldDash; game.player.ResetDash();
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 game.cameraRig.distance = oldDistance; fog.worldBlackDistance = black;
-                if (slot != null) (slot.position, slot.generation, slot.pending, slot.remaining) = oldSlot;
                 Physics.SyncTransforms();
             }
         }
 
-        // Saves from before 40-slot hubs keep their 24 slots per hub and gain 16 pending ones.
-        static void CheckParticleSlotPadding(GameManager game, ForestWorld forest)
+        // A save from the 40-slot era (particleVersion 4) loads with its wallet; its slots give way to the
+        // seeded dot field.
+        static void CheckDotSaveMigration(GameManager game, ForestWorld forest)
         {
             string full = game.ExportSave();
             var data = JsonUtility.FromJson<GameManager.SaveData>(full);
-            foreach (var island in data.forest.islands) island.slots.RemoveRange(24, island.slots.Count - 24);
-            var kept = data.forest.islands.SelectMany(i => i.slots).Select(s => (s.id, s.position, s.pending, s.remaining)).ToArray();
-            Check(game.ImportSave(JsonUtility.ToJson(data)), "A save with the old 24 particle slots per hub still loads");
-            var islands = forest.State.islands;
-            Check(islands.All(i => i.slots.Count == 40 && forest.configuration.Find(i.id).ParticleCount == 40), "Each Lighting hub now holds 40 particle slots (120 total)");
-            Check(islands.SelectMany(i => i.slots.Take(24)).Select(s => (s.id, s.position, s.pending, s.remaining)).SequenceEqual(kept) && islands.All(i => i.slots.Skip(24).All(s => s.pending)),
-                "The old slots load unchanged and the 16 new ones per hub wait to respawn");
-            Check(game.ImportSave(full), "The full save reloads after the padding check");
+            data.forest.particleVersion = 4; data.forest.dots = null; data.forest.inventory = 57;
+            foreach (var island in data.forest.islands)
+                for (int i = 0; i < 40; i++) island.slots.Add(new ParticleSlotSave { id = island.id + ":" + i, color = i % 3, position = new Vector3(100 + i * 2, 0, 0), positioned = true, pending = i >= 24 });
+            Check(game.ImportSave(JsonUtility.ToJson(data)), "A particleVersion-4 save with 40 slots per hub still loads");
+            Check(forest.State.particleVersion == 5 && forest.State.islands.All(i => i.slots.Count == 0) && forest.State.dots != null && forest.State.dots.Count == 0 && forest.SharedInventory == 57,
+                "Its wallet is kept and its slots give way to the dot field (particleVersion 5)");
+            Check(game.ImportSave(full), "The current save reloads after the migration check");
         }
 
         // CPU time of one synchronous render, after a warm-up render that pays any state change.
@@ -677,19 +675,18 @@ namespace LightingBlocks.Editor
             {
                 var definition=forest.configuration.Find(island.id);
                 var layout=ForestLayoutGenerator.Generate(definition,legacy.seed,Landscape.Shores[definition.polygonIndex],forest.configuration.trees.Length);
-                island.slots.RemoveRange(definition.particleCount,island.slots.Count-definition.particleCount); // a real version-4 save: 24 per hub
-                for(int i=0;i<island.slots.Count;i++){island.slots[i].position=layout.particles[i];island.slots[i].positioned=true;}
+                // A real version-4 save: 24 slots per hub (Lighting's NewState has none now).
+                for(int i=0;i<definition.particleCount;i++)island.slots.Add(new ParticleSlotSave{id=island.id+":"+i,color=i%3,position=layout.particles[i],positioned=true});
                 island.charge=new[]{0,0,0};island.rewards=new System.Collections.Generic.List<ParticleRewardSave>();
             }
             var first=legacy.islands[0];first.charge[0]=3;first.rewards.Add(new ParticleRewardSave{color=0,consumesCharge=true});
             first.charge[1]=1;first.rewards.Add(new ParticleRewardSave{color=2,consumesCharge=false});
-            first.slots[0].remaining=7.25f;first.slots[0].pending=true;
             var data=new GameManager.SaveData{version=4,schema="lighting-v1",forest=legacy,souls=11,speed=2,soulGainLevel=3,player=game.player.transform.position};
             Check(game.ImportSave(JsonUtility.ToJson(data),offline:true),"lighting-v1 version-4 save migrates to the open grid schema");
-            Check(forest.State.particleVersion==4&&forest.SharedInventory==56,"migration converts 5 banked particles, outstanding deposits/rewards, and 11 Souls exactly once to 56 quarter units");
+            Check(forest.State.particleVersion==5&&forest.SharedInventory==56,"migration converts 5 banked particles, outstanding deposits/rewards, and 11 Souls exactly once to 56 quarter units");
             var migratedFirst=forest.Inventory(first.id);
             Check(migratedFirst.charge.All(c=>c==0)&&migratedFirst.rewards.Count==0,"migration clears refunded receiver charge and reward queues");
-            Check(Math.Abs(migratedFirst.slots[0].remaining-7.25f)<.001f&&migratedFirst.slots[0].pending,"void relocation preserves pickup cooldown and pending state");
+            Check(forest.State.islands.All(i=>i.slots.Count==0),"migration drops the old slots for the seeded dot field");
             int before=forest.SharedInventory;var malformed="{\"version\":6,\"schema\":\"lighting-v1\"}";
             Check(!game.ImportSave(malformed)&&forest.SharedInventory==before,"unsupported future schema is rejected without mutating the active wallet");
 
@@ -698,8 +695,7 @@ namespace LightingBlocks.Editor
             {
                 var definition=forest.configuration.Find(island.id);
                 var layout=ForestLayoutGenerator.Generate(definition,corridorForest.seed,Landscape.Shores[definition.polygonIndex],forest.configuration.trees.Length);
-                island.slots.RemoveRange(definition.particleCount,island.slots.Count-definition.particleCount);
-                for(int i=0;i<island.slots.Count;i++){island.slots[i].position=layout.particles[i];island.slots[i].positioned=true;}
+                for(int i=0;i<definition.particleCount;i++)island.slots.Add(new ParticleSlotSave{id=island.id+":"+i,color=i%3,position=layout.particles[i],positioned=true});
             }
             var oldBlocks=new System.Collections.Generic.List<GameManager.BlockSave>();
             for(int gap=0;gap<2;gap++)for(int row=0;row<GameManager.Rows;row++)

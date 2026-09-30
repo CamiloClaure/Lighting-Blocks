@@ -73,7 +73,7 @@ namespace LightingBlocks.Editor
             // matching render pass built below. Lighting keeps a wider double-sight radius.
             var lightingFog = game.GetComponent<LightingFog>() ?? game.gameObject.AddComponent<LightingFog>();
             lightingFog.worldClearDistance = 12f; lightingFog.worldBlackDistance = 24f;
-            lightingFog.particleClearDistance = 8f; lightingFog.particleHiddenDistance = 12f;
+            lightingFog.particleClearDistance = 12f; lightingFog.particleHiddenDistance = 24f; // the reference shows dots to 24 m
             var pickupAudio=game.GetComponent<LightingPickupAudio>() ?? game.gameObject.AddComponent<LightingPickupAudio>();
             pickupAudio.clips=Enumerable.Range(1,4).Select(i=>Resources.Load<AudioClip>("Audio/LightingPickups/pickup_"+i.ToString("00"))).ToArray();
 
@@ -201,7 +201,9 @@ namespace LightingBlocks.Editor
         // Opaque, depth-writing floor: the batched hub tile meshes themselves are now the visible
         // island surface (see LightingWorldCheck's removal note) - no more transparent near-invisible
         // face with a separately-duplicated white dashed outline on top (LightingPlaceholderFloor,
-        // deleted). Plain URP Lit, unlit-dark charcoal, catches only the player and tree lights.
+        // deleted). Plain URP Lit, pitch black and glossy like the reference prototype's glass floor:
+        // the player, step and spirit-dot lights leave shiny pools, and with a solid black sky the
+        // environment reflection is black, so nothing else shows.
         static Material PlatformMaterial(int tier)
         {
             string path = Art + "/Materials/Platform" + tier + ".mat";
@@ -210,9 +212,9 @@ namespace LightingBlocks.Editor
             if (material == null) { material = new Material(shader); AssetDatabase.CreateAsset(material, path); }
             material.shader = shader;
             material.renderQueue = -1;
-            material.SetColor("_BaseColor", Hex("#14161B"));
+            material.SetColor("_BaseColor", Hex("#050507"));
             material.SetFloat("_Metallic", 0f);
-            material.SetFloat("_Smoothness", .15f);
+            material.SetFloat("_Smoothness", .85f);
             material.SetColor("_EmissionColor", Color.black);
             material.DisableKeyword("_EMISSION");
             material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.EmissiveIsBlack;

@@ -22807,9 +22807,9 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LightingBlocks.LightingFog
   worldClearDistance: 12
   worldBlackDistance: 24
-  particleClearDistance: 8
-  particleHiddenDistance: 12
-  particleColor: {r: 1, g: 0.839, b: 0.42, a: 1}
+  particleClearDistance: 12
+  particleHiddenDistance: 24
+  particleColor: {r: 1, g: 0.86, b: 0.18, a: 1}
 --- !u!114 &1430005270
 MonoBehaviour:
   m_ObjectHideFlags: 0

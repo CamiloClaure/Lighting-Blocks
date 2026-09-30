@@ -12,7 +12,7 @@ namespace LightingBlocks
         public const int MaxPlacedTiles = 4096;
         public const float HubMargin = 1024f;
         static readonly Vector2Int[] Neighbors = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
-        sealed class BoardCache { public GameManager game; public int revision; public HashSet<Vector2Int> occupied, connected; public HashSet<string> hubs; public Dictionary<Vector2Int, BridgeBlock> tiles; public HubSnapshot platforms; public List<Vector3> respawn; }
+        sealed class BoardCache { public GameManager game; public int revision; public HashSet<Vector2Int> occupied, connected; public HashSet<string> hubs; public Dictionary<Vector2Int, BridgeBlock> tiles; public HubSnapshot platforms; }
         static BoardCache boardCache;
 
         static BoardCache Cache(GameManager game)
@@ -106,31 +106,6 @@ namespace LightingBlocks
         }
         // PlatformSupport enable/disable lands here too, so the shared platform snapshot goes with it.
         public static void Invalidate(GameManager game=null) { sharedPlatforms=null; if(game==null||boardCache==null||boardCache.game==game)boardCache=null; }
-
-        // Void cells two to four beyond the network's open frontier, where a respawning particle may
-        // land (ForestWorld.LightingRespawnCandidates). Built once per network revision on cached
-        // platform bounds, and ordered by a cell hash so a walk from any start spreads out.
-        public static List<Vector3> RespawnCells(GameManager game)
-        {
-            var data=Cache(game); if(data.respawn!=null)return data.respawn;
-            var cells=new HashSet<Vector2Int>();
-            if(data.connected.Count<MaxPlacedTiles)
-            foreach(var path in data.connected)
-                foreach(var direction in Neighbors)
-                {
-                    // IsFrontier for a cell beside the network: its hub and neighbour scans are moot here.
-                    var frontier=path+direction;
-                    if(data.occupied.Contains(frontier)||data.platforms.Overlaps(frontier)||!data.platforms.InBounds(frontier))continue;
-                    for(int distance=1;distance<=3;distance++)
-                    {
-                        var cell=frontier+direction*distance; bool clear=true;
-                        for(int step=1;step<=distance;step++){var route=frontier+direction*step;if(data.platforms.Overlaps(route)||data.occupied.Contains(route)){clear=false;break;}}
-                        if(clear&&data.platforms.InBounds(cell))cells.Add(cell);
-                    }
-                }
-            return data.respawn=cells.OrderBy(c=>unchecked(((uint)(c.x*73856093)^(uint)(c.y*19349663))*2654435761u))
-                .Select(c=>new Vector3(c.x*CellSize,0,c.y*CellSize)).ToList();
-        }
 
         public static Vector3 Cell(int x, int z) => new Vector3(x * CellSize, -.18f, z * CellSize);
         public static Vector2Int CellOf(Vector3 point) => new Vector2Int(Mathf.RoundToInt(point.x / CellSize), Mathf.RoundToInt(point.z / CellSize));

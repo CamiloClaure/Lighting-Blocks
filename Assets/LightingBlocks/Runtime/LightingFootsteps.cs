@@ -2,12 +2,12 @@ using UnityEngine;
 
 namespace LightingBlocks
 {
-    // Lighting uses one dry impact per stride, including on bridge tiles.
+    // Lighting plays one note per floor cell entered (BridgeSteps), the reference prototype's
+    // platform_step - byte-identical to PasosNotas "04LB A#".
     public sealed class LightingFootsteps : MonoBehaviour
     {
-        readonly AudioClip[] clips = new AudioClip[4];
+        AudioClip clip;
         AudioSource source;
-        int next;
         void Awake()
         {
             source = gameObject.AddComponent<AudioSource>();
@@ -18,17 +18,16 @@ namespace LightingBlocks
             source.bypassReverbZones = true;
             source.bypassEffects = true;
             source.bypassListenerEffects = true;
-            for (int i = 0; i < clips.Length; i++)
-                clips[i] = Resources.Load<AudioClip>("Audio/LightingSteps/step_" + i);
+            clip = Resources.Load<AudioClip>("Audio/SFX/PasosNotas/04LB A#");
         }
         public void PlayStep()
         {
-            var clip = clips[next++ % clips.Length];
             if (clip == null || GameHUD.SimulationPaused) return;
             // ForestSoundscape may route sources during Awake. Keep these impacts dry
             // while honoring the same saved volume controls without mixer effects.
             source.outputAudioMixerGroup = null;
-            source.volume = .32f * ForestSoundscape.Volume("Master")
+            // ponytail: .5 tuned by ear against the pickup chime; the sliders scale it from here.
+            source.volume = .5f * ForestSoundscape.Volume("Master")
                 * ForestSoundscape.Volume("Effects") * ForestSoundscape.Volume("Footsteps");
             source.clip = clip;
             source.Play();

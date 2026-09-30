@@ -35,7 +35,7 @@ namespace LightingBlocks
         float dashTimeRemaining, dashCooldownRemaining;
         Vector3 dashDirection;
         const float StrideLength = 1.7f;
-        public const float DashCooldown = 1f;
+        public const float DashCooldown = .3f;
         public const float DashSpeed = 40f;
         // Tiles covered per Dash level; a dash that runs off the edge lays these as bridge tiles.
         public static readonly int[] DashTiles = { 3, 5, 7, 9, 12 };
@@ -468,13 +468,8 @@ namespace LightingBlocks
         {
             // Fire before the audio guard: a missing clip must not also swallow the visual.
             if (Stepped != null) Stepped(transform.position);
-            if (BridgeProfile.Current.isLighting)
-            {
-                var drySteps = GetComponent<LightingFootsteps>();
-                if (drySteps == null) drySteps = gameObject.AddComponent<LightingFootsteps>();
-                drySteps.PlayStep();
-                return;
-            }
+            // Lighting sounds once per floor cell entered (BridgeSteps.StepNote), not per stride.
+            if (BridgeProfile.Current.isLighting) return;
             var clip = ForestSoundscape.Footstep(transform.position);
             if (sfx == null || clip == null) return;
             sfx.pitch = 1; sfx.PlayOneShot(clip);

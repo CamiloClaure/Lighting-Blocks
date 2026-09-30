@@ -8,10 +8,9 @@ namespace LightingBlocks
     {
         public string id;
         public int polygonIndex, blockTier, treeCount=120, animalCount=6, particleCount=24, rabbitCount=4, birdCount=6;
-        // ponytail: Lighting's own slot count lives here, not in the asset: ForestTerrain.asset is shared
-        // with SampleSceneTerrain, whose saves require its 24. Layouts still generate particleCount
-        // placeholders; Lighting slots take their positions from the void, not the layout.
-        public int ParticleCount => BridgeProfile.Current.isLighting ? 40 : particleCount;
+        // Lighting keeps no slots: its particles are a seeded dot field (LightingDots). The asset's
+        // particleCount stays for SampleSceneTerrain (shared ForestTerrain.asset), whose saves need 24.
+        public int ParticleCount => BridgeProfile.Current.isLighting ? 0 : particleCount;
         // Authored against the shipped island positions. Everything that consumes a wisdom position
         // wants it where the island actually IS under the active profile, and there are a dozen such
         // call paths (layout generation, navigation, the tree prefab, paving, audio) including
@@ -50,7 +49,11 @@ namespace LightingBlocks
         public int inventory;
         public List<IslandParticleSave> islands=new List<IslandParticleSave>();
         public List<string> suppressedTrees=new List<string>();
+        // Lighting particleVersion 5: dot cells collected in the last LightingRespawnSeconds, and how
+        // long until each returns. Every other dot is implied by the seed (LightingDots.HasDot).
+        public List<DotSave> dots=new List<DotSave>();
     }
+    [Serializable] public sealed class DotSave{public int x,z;public float remaining;}
     // inventory/treeCharge/chargeColor/hasChargeColor are retained only for older saves
     // (particleVersion 0/1) and legacy (non-Lighting) scenes; ForestWorld.MigrateToV2 folds them into
     // charge/queue once. particleVersion 2+ (Lighting): charge[0..2] is each receiver's own 0..3

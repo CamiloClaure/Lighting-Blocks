@@ -73,7 +73,7 @@ namespace LightingBlocks.Editor
             Assert(lightingGame != null && lightingGame.characterLightRange == 24f,
                 "Lighting scene keeps the character light range at 24m");
             Assert(fog.worldClearDistance == 12f && fog.worldBlackDistance == 24f, "World fade defaults are 12/24 units");
-            Assert(fog.particleClearDistance == 8f && fog.particleHiddenDistance == 12f, "Particle fade defaults are 8/12 units");
+            Assert(fog.particleClearDistance == 12f && fog.particleHiddenDistance == 24f, "Particle fade defaults are 12/24 units, the reference's dot range");
             Assert(fog.particleColor == LightingParticles.ParticleColor, "Particle tint has its default value");
 
             var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset");
@@ -183,8 +183,8 @@ namespace LightingBlocks.Editor
             Assert(game.ImportSave(game.ExportSave()),"Save reload rebuilds the particle world");
             visual=forest.PickupVisuals[0];visualRenderer=visual.GetComponent<Renderer>();
             Assert(visual!=originalVisual&&forest.VisualRevision!=originalRevision,"Same-count reload changes visual identity and revision");
-            Teleport(game,visual.position+Vector3.right*13);lateUpdate.Invoke(fog,null);
-            Assert(!visualRenderer.enabled,"Replacement particle is hidden beyond the 12m threshold after same-count reload");
+            Teleport(game,visual.position+Vector3.right*(fog.particleHiddenDistance+1));lateUpdate.Invoke(fog,null);
+            Assert(!visualRenderer.enabled,"Replacement particle is hidden beyond the "+fog.particleHiddenDistance+"m threshold after same-count reload");
             Teleport(game,visual.position+Vector3.right*2);fog.particleColor=Color.cyan;lateUpdate.Invoke(fog,null);
             var tint=new MaterialPropertyBlock();visualRenderer.GetPropertyBlock(tint);
             Assert(tint.GetColor("_BaseColor")==Color.cyan,"Inspector particle colour controls visible colour");

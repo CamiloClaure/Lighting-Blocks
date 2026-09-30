@@ -311,7 +311,7 @@ namespace LightingBlocks
                 case "speed": return BridgeProfile.Current.isLighting ? "Hotkey [1].\nMove faster across platforms, with or without stones." : "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
                 case "soulgain": return BridgeProfile.Current.isLighting ? "Hotkey [2].\nEach level adds 0.25 particle to every pickup.\nCurrent pickup: " + (1 + .25 * game.soulGainLevel).ToString("0.00") + " particles." : "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
                     + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
-                case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n1-second cooldown. Unavailable while hauling.";
+                case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n0.3-second cooldown. Unavailable while hauling.";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";

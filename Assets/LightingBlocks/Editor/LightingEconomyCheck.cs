@@ -51,12 +51,13 @@ namespace LightingBlocks.Editor
         // fields the coordinator already added, without needing a running GameManager instance.
         static void CheckSaveDataRoundTrip()
         {
-            var data = new GameManager.SaveData { schema = "lighting-v1", soulGainLevel = 8, souls = 123, rate = 4.5, speed = 6, forest = new ForestSave { particleVersion = 4, inventory = 127, islands = new List<IslandParticleSave> { new IslandParticleSave { id = "island-1", freeDeliveryColor = 2, freeDeliveryColors = new List<int> { 0, 1 } } } } };
+            var data = new GameManager.SaveData { schema = "lighting-v1", soulGainLevel = 8, souls = 123, rate = 4.5, speed = 6, forest = new ForestSave { particleVersion = 5, inventory = 127, dots = new List<DotSave> { new DotSave { x = -7, z = 40, remaining = 3.5f } }, islands = new List<IslandParticleSave> { new IslandParticleSave { id = "island-1", freeDeliveryColor = 2, freeDeliveryColors = new List<int> { 0, 1 } } } } };
             string json = JsonUtility.ToJson(data);
             var back = JsonUtility.FromJson<GameManager.SaveData>(json);
             Assert(back.schema == "lighting-v1", "schema round-trips");
             Assert(back.soulGainLevel == 8, "yield level round-trips, got " + back.soulGainLevel);
-            Assert(back.forest.particleVersion==4&&back.forest.inventory==127,"quarter-particle wallet and version round-trip");
+            Assert(back.forest.particleVersion==5&&back.forest.inventory==127,"quarter-particle wallet and version round-trip");
+            Assert(back.forest.dots.Count==1&&back.forest.dots[0].x==-7&&back.forest.dots[0].z==40&&back.forest.dots[0].remaining==3.5f,"a collected dot's cell and return timer round-trip");
             Assert(back.forest.islands[0].freeDeliveryColor==2&&back.forest.islands[0].freeDeliveryColors.SequenceEqual(new[]{0,1}),"free selected and migrated tile deliveries round-trip");
 
             // Incompatible-schema rejection lives in GameManager.ImportSave, gated on

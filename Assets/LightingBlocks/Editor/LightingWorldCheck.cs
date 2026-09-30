@@ -171,47 +171,16 @@ namespace LightingBlocks.Editor
                 extraPlatforms.Add(otherGO);Physics.SyncTransforms();
             }
             var state=forest.NewState(1907);
-            var allSlots=state.islands.SelectMany(i=>i.slots).ToArray();
-            Check(allSlots.Length==config.islands.Sum(i=>i.ParticleCount)&&allSlots.Length==120,"All three hubs hold 40 persistent particle slots each (120)");
-            // Slots neither ring (2-4, then 5-6 tiles) can fit wait as pending for the respawn loop.
-            var placedSlots=allSlots.Where(s=>!s.pending).ToArray();
-            Check(placedSlots.Length>72,"The rings place more than the old 72 particles at once ("+placedSlots.Length+")");
-            Check(allSlots.All(s=>Mathf.Abs(s.position.x/LightingBridgeGrid.CellSize-Mathf.Round(s.position.x/LightingBridgeGrid.CellSize))<.001f&&Mathf.Abs(s.position.z/LightingBridgeGrid.CellSize-Mathf.Round(s.position.z/LightingBridgeGrid.CellSize))<.001f),"Every particle sits at a future two-metre grid-cell center");
-            Check(allSlots.All(s=>!LightingBridgeGrid.OverlapsPlatform(LightingBridgeGrid.CellOf(s.position))),"Initial particles are placed in the void beyond the hub platforms");
-            bool fourMetreSpacing=true;for(int a=0;a<placedSlots.Length;a++)for(int b=a+1;b<placedSlots.Length;b++)if((placedSlots[a].position-placedSlots[b].position).sqrMagnitude<16f)fourMetreSpacing=false;
-            Check(fourMetreSpacing,"All "+placedSlots.Length+" placed initial particles are globally spaced at least four metres apart");
-            var tileDistances=new List<int>();var edgeSectorCounts=new List<int>();
-            foreach(var owner in state.islands)
+            Check(state.particleVersion==5&&state.islands.All(i=>i.slots.Count==0)&&state.dots.Count==0&&forest.Valid(state),"A new Lighting state keeps no particle slots: particles are the seeded dot field (particleVersion 5)");
+            // The field around the authored spawn: void cells within the 24 m view hold dots from the start.
+            var spawnCell=LightingBridgeGrid.CellOf(new Vector3(0,0,3));int reach=Mathf.CeilToInt(LightingDots.StreamDistance/LightingBridgeGrid.CellSize),voidCells=0,dotCells=0;
+            for(int x=-reach;x<=reach;x++)for(int z=-reach;z<=reach;z++)
             {
-                var platforms=PlatformSupport.ActivePlatforms.Where(p=>p!=null&&p.hubId==owner.id).ToArray();var definition=config.Find(owner.id);var poly=Landscape.Shores[definition.polygonIndex];Vector2 low=poly[0],high=low;
-                foreach(var point in poly){low=Vector2.Min(low,point);high=Vector2.Max(high,point);}
-                var hubBounds=new Bounds(new Vector3((low.x+high.x)*.5f,0,(low.y+high.y)*.5f),new Vector3(high.x-low.x,1,high.y-low.y));
-                foreach(var platform in platforms)hubBounds.Encapsulate(platform.Surface.bounds);
-                var center=hubBounds.center;var sectors=new HashSet<int>();int x0=Mathf.FloorToInt((hubBounds.min.x-12)/LightingBridgeGrid.CellSize),x1=Mathf.CeilToInt((hubBounds.max.x+12)/LightingBridgeGrid.CellSize);
-                int z0=Mathf.FloorToInt((hubBounds.min.z-12)/LightingBridgeGrid.CellSize),z1=Mathf.CeilToInt((hubBounds.max.z+12)/LightingBridgeGrid.CellSize);
-                var distances=new Dictionary<Vector2Int,int>();var queue=new Queue<Vector2Int>();
-                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)
-                {
-                    var cell=new Vector2Int(x,z);if(LightingBridgeGrid.OverlapsPlatform(cell)||!LightingBridgeGrid.TouchesHub(cell,owner.id))continue;
-                    distances[cell]=1;queue.Enqueue(cell);
-                }
-                while(queue.Count>0)
-                {
-                    var cell=queue.Dequeue();int distance=distances[cell];if(distance>=6)continue;
-                    foreach(var next in LightingBridgeGrid.NeighborsOf(cell))if(next.x>=x0&&next.x<=x1&&next.y>=z0&&next.y<=z1&&!distances.ContainsKey(next)&&!LightingBridgeGrid.OverlapsPlatform(next)){distances[next]=distance+1;queue.Enqueue(next);}
-                }
-                foreach(var slot in owner.slots)
-                {
-                    if(slot.pending)continue;
-                    if(distances.TryGetValue(LightingBridgeGrid.CellOf(slot.position),out int distance))tileDistances.Add(distance);
-                    var radial=slot.position-center;sectors.Add(Mathf.Clamp(Mathf.FloorToInt(Mathf.Repeat(Mathf.Atan2(radial.z,radial.x)+Mathf.PI,Mathf.PI*2)/(Mathf.PI*2)*8),0,7));
-                }
-                edgeSectorCounts.Add(sectors.Count);
+                var cell=spawnCell+new Vector2Int(x,z);
+                if(x*x+z*z>reach*reach||LightingBridgeGrid.OverlapsPlatform(cell)||!LightingBridgeGrid.InBounds(cell))continue;
+                voidCells++;if(LightingDots.HasDot(state.seed,cell))dotCells++;
             }
-            Check(tileDistances.Count==placedSlots.Length&&tileDistances.All(d=>d>=2&&d<=6)&&tileDistances.Count(d=>d<=4)>=72,"Every initial particle is two to six orthogonal future tiles from its hub, at least 72 of them two to four");
-            Check(edgeSectorCounts.All(n=>n>=6),"Initial particle distribution reaches at least six of eight sectors around every hub edge");
-            var first=state.islands[0].slots[0];
-            Check(Vector3.Distance(first.position,new Vector3(0,0,3))<=12f,"A deterministic starting particle is visible within twelve metres of the authored spawn");
+            Check(dotCells>0&&dotCells>=voidCells*.1f&&dotCells<=voidCells*.26f,"Void cells within 24 m of spawn hold the reference's ~18% of dots ("+dotCells+" of "+voidCells+")");
             var selectorHost=new GameObject("Selector check host");var particles=selectorHost.AddComponent<LightingParticles>();
             var testTreeObject=new GameObject("Selector check Wisdom Tree");testTreeObject.transform.position=island.wisdomPosition;
             var testTree=testTreeObject.AddComponent<WisdomTree>();testTree.Initialize(forest,island);

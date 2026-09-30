@@ -12,6 +12,9 @@ namespace LightingBlocks
         const float NoteCooldown = .12f;
         GameManager game;
         BridgeBlock current;
+        // Lighting: the floor cell the last note was for; null until the first frame places the player.
+        Vector2Int? noteCell;
+        LightingFootsteps footsteps;
         AudioClip[] notes;
         AudioSource source;
         float nextNote;
@@ -39,10 +42,11 @@ namespace LightingBlocks
             // Real seconds, clamped like Footlights.Update already documents: one slow frame
             // (loading, alt-tab, a breakpoint) must not retire a three second fade in one step.
             float step = Mathf.Min(.1f, Time.unscaledDeltaTime);
-            var tile = game.BlockUnder(game.player.transform.position);
-            if (tile != current)
+            var position = game.player.transform.position;
+            var tile = game.BlockUnder(position);
+            if (BridgeProfile.Current.isLighting) StepNote(position, tile);
+            else if (tile != current)
             {
-                current = tile;
                 // Every entry sounds, including stepping right back onto the tile you just left.
                 // ponytail: cooldown ceiling is BlockUnder's box test (.99 x 1.02 half-extents on a
                 // 2m pitch) flickering across a seam and machine-gunning the note; top speed
@@ -54,6 +58,7 @@ namespace LightingBlocks
                     nextNote = Time.unscaledTime + NoteCooldown;
                 }
             }
+            current = tile;
             // Plain foreach, no LINQ, no closures: this runs over every block every frame.
             foreach (var block in game.Blocks)
             {
@@ -65,11 +70,25 @@ namespace LightingBlocks
             }
         }
 
+        // Lighting, like the reference: one note per floor cell entered, hub cells included, none on
+        // the void. Same .12 s cooldown as the legacy note; a skipped cell does not replay late.
+        void StepNote(Vector3 position, BridgeBlock tile)
+        {
+            var cell = LightingBridgeGrid.CellOf(position);
+            if (noteCell == null) { noteCell = cell; return; } // loading onto a cell is not a step
+            if (cell == noteCell.Value) return;
+            noteCell = cell;
+            if (tile == null && PlatformSupport.At(position) == null) return;
+            if (Time.unscaledTime < nextNote) return;
+            nextNote = Time.unscaledTime + NoteCooldown;
+            if (footsteps == null) footsteps = game.player.GetComponent<LightingFootsteps>();
+            if (footsteps == null) footsteps = game.player.gameObject.AddComponent<LightingFootsteps>();
+            footsteps.PlayStep();
+        }
+
         // Position, not chance, picks the note: a crossing plays a rising line as you walk it.
         void PlayNote(BridgeBlock block)
         {
-            // Lighting already plays a dry impact on each physical stride.
-            if (BridgeProfile.Current.isLighting) return;
             var clip = notes[(block.gap * GameManager.Rows + block.row) % notes.Length];
             if (clip == null) return;
             source.PlayOneShot(clip);

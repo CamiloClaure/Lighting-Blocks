@@ -89,48 +89,35 @@ namespace LightingBlocks.Editor
             }
             throw new Exception("Could not build a supported test tile at a reachable hub or connected frontier");
         }
-        static void CheckActualVoidLayout(ForestWorld forest)
+        // The reference prototype's field: a seeded ~18% of void cells, the nearest 40 within 24 m drawn,
+        // the nearest 4 within 12 m lit.
+        static void CheckDotField(GameManager game,ForestWorld forest)
         {
-            var all=forest.State.islands.SelectMany(owner=>owner.slots.Select(slot=>(owner.id,slot))).ToArray();
-            int slots=forest.configuration.islands.Sum(i=>i.ParticleCount);
-            Assert(all.Length==slots&&slots==120,"The live scene has all "+slots+" particle slots (40 per hub)");
-            // Slots the ring could not fit yet wait, pending, for the respawn loop; only placed ones are laid out.
-            all=all.Where(a=>!a.slot.pending).ToArray();
-            Assert(all.Length>72,"More than the old 72 particles sit in the void at once ("+all.Length+")");
-            bool spaced=true;for(int a=0;a<all.Length;a++)for(int b=a+1;b<all.Length;b++)if((all[a].slot.position-all[b].slot.position).sqrMagnitude<16f)spaced=false;
-            Assert(spaced,"All live-scene particles remain globally spaced by at least four metres");
-            var distances=new List<int>();var sectorsPerHub=new List<int>();
-            foreach(var owner in forest.State.islands)
-            {
-                var footprints=PlatformSupport.ActivePlatforms.Where(p=>p!=null&&p.hubId==owner.id&&p.Surface!=null).Select(p=>p.Surface.bounds).ToArray();
-                Assert(footprints.Length>0,"Live hub "+owner.id+" has support bounds for void placement");
-                var bounds=footprints[0];foreach(var extra in footprints.Skip(1))bounds.Encapsulate(extra);
-                int x0=Mathf.FloorToInt((bounds.min.x-12)/LightingBridgeGrid.CellSize),x1=Mathf.CeilToInt((bounds.max.x+12)/LightingBridgeGrid.CellSize);
-                int z0=Mathf.FloorToInt((bounds.min.z-12)/LightingBridgeGrid.CellSize),z1=Mathf.CeilToInt((bounds.max.z+12)/LightingBridgeGrid.CellSize);
-                var steps=new Dictionary<Vector2Int,int>();var queue=new Queue<Vector2Int>();
-                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)
-                {
-                    var cell=new Vector2Int(x,z);if(LightingBridgeGrid.OverlapsPlatform(cell)||!LightingBridgeGrid.TouchesHub(cell,owner.id))continue;
-                    steps[cell]=1;queue.Enqueue(cell);
-                }
-                while(queue.Count>0)
-                {
-                    var cell=queue.Dequeue();int step=steps[cell];if(step>=6)continue;
-                    foreach(var next in LightingBridgeGrid.NeighborsOf(cell))if(next.x>=x0&&next.x<=x1&&next.y>=z0&&next.y<=z1&&!steps.ContainsKey(next)&&!LightingBridgeGrid.OverlapsPlatform(next)){steps[next]=step+1;queue.Enqueue(next);}
-                }
-                var radialSectors=new HashSet<int>();
-                foreach(var slot in owner.slots)
-                {
-                    if(slot.pending)continue;
-                    if(steps.TryGetValue(LightingBridgeGrid.CellOf(slot.position),out int step))distances.Add(step);else distances.Add(-1);
-                    var radial=slot.position-bounds.center;radialSectors.Add(Mathf.Clamp(Mathf.FloorToInt(Mathf.Repeat(Mathf.Atan2(radial.z,radial.x)+Mathf.PI,Mathf.PI*2)/(Mathf.PI*2)*8),0,7));
-                }
-                sectorsPerHub.Add(radialSectors.Count);
-            }
-            Assert(distances.Count==all.Length&&distances.All(step=>step>=2&&step<=6),"Every live-scene particle is two to six orthogonal grid tiles from a hub frontier (the extra slots use the 5-6 ring)");
-            Assert(sectorsPerHub.All(count=>count>=6),"Live particles are distributed around at least six sectors of each hub edge");
-            var starter=forest.State.islands[0].slots[0];
-            Assert(Vector3.Distance(starter.position,new Vector3(0,0,3))<=12f,"The deterministic live-scene starter particle is visible within twelve metres of spawn");
+            var dots=forest.Dots;
+            Assert(dots!=null&&forest.State.particleVersion==5&&forest.State.islands.All(i=>i.slots.Count==0),"Lighting particles are the seeded dot field (particleVersion 5, no slots)");
+            Assert(forest.PickupVisuals.Count==LightingDots.MaxVisible&&dots.Lights.Count==LightingDots.DotLights,"A pool of 40 dot visuals and 4 dot lights");
+            var material=forest.PickupVisuals[0].GetComponent<Renderer>().sharedMaterial;
+            Assert(material!=null&&material.shader.name=="LightingBlocks/Living Spirit"&&material.GetColor("_BaseColor")==LightingParticles.ParticleColor,"Dots use the imported Living Spirit shader in the reference yellow");
+            int seed=forest.State.seed,hits=0,changed=0;
+            for(int x=-30;x<30;x++)for(int z=-30;z<30;z++){var c=new Vector2Int(x,z);if(LightingDots.HasDot(seed,c))hits++;if(LightingDots.HasDot(seed,c)!=LightingDots.HasDot(seed+1,c))changed++;}
+            Assert(hits>=540&&hits<=756,"About 18% of grid cells hold a dot ("+hits+" of 3600)");
+            Assert(changed>400,"Another seed lays a different field ("+changed+" of 3600 differ)");
+
+            Teleport(game,new Vector3(0,.025f,3));dots.Refresh();
+            var player=LightingBridgeGrid.CellOf(game.player.transform.position);
+            int reach=Mathf.CeilToInt(LightingDots.StreamDistance/LightingBridgeGrid.CellSize);
+            var near=new List<(Vector2Int cell,int distance)>();
+            for(int x=-reach;x<=reach;x++)for(int z=-reach;z<=reach;z++){var c=player+new Vector2Int(x,z);if(x*x+z*z<=reach*reach&&dots.IsDot(c))near.Add((c,x*x+z*z));}
+            var shown=dots.ShownCells.ToList();
+            Assert(near.Count>0&&shown.Count==Mathf.Min(LightingDots.MaxVisible,near.Count),"Spawn sees the nearest dots, at most 40 ("+shown.Count+" of "+near.Count+" within 24 m)");
+            Assert(shown.All(c=>!LightingBridgeGrid.OverlapsPlatform(c)&&LightingDots.HasDot(seed,c)),"Every shown dot sits over the void, never on a hub platform");
+            int farthestShown=shown.Max(c=>(c-player).sqrMagnitude);
+            Assert(near.Where(n=>!shown.Contains(n.cell)).All(n=>n.distance>=farthestShown),"Shown dots are the nearest ones");
+            forest.Tick(.25f,false);
+            var visible=forest.PickupVisuals.Where(t=>t.gameObject.activeSelf).ToArray();
+            Assert(visible.Length==shown.Count&&visible.All(t=>shown.Any(c=>{var p=LightingDots.Position(c);return Mathf.Abs(t.position.x-p.x)<.01f&&Mathf.Abs(t.position.z-p.z)<.01f&&Mathf.Abs(t.position.y-p.y)<=LightingDots.Bob+.01f;})),"Each visible dot floats over its cell centre, bobbing at most 0.16 m");
+            var lit=dots.Lights.Where(l=>l.enabled).ToArray();var here=game.player.transform.position;
+            Assert(lit.Length<=LightingDots.DotLights&&lit.All(l=>new Vector2(l.transform.position.x-here.x,l.transform.position.z-here.z).magnitude<=LightingDots.LightDistance+.01f),"At most four dot lights, all within twelve metres ("+lit.Length+" lit)");
         }
         static void Run(GameManager game)
         {
@@ -138,12 +125,8 @@ namespace LightingBlocks.Editor
             Assert(system!=null&&system.Receivers.Count==9,"Three near-tree free color selectors per Wisdom Tree");
             Assert(ForestWorld.ParticleUnitsPerParticle==4,"One particle is stored as four integer quarter units");
             Assert(ForestWorld.FormatParticleUnits(0)=="0"&&ForestWorld.FormatParticleUnits(4)=="1"&&ForestWorld.FormatParticleUnits(5)=="1.25"&&ForestWorld.FormatParticleUnits(6)=="1.5"&&ForestWorld.FormatParticleUnits(7)=="1.75"&&ForestWorld.FormatParticleUnits(8)=="2","Quarter-particle wallet formatting is exact");
-            CheckActualVoidLayout(forest);
-            var island=forest.configuration.islands[0];var owner=forest.Inventory(island.id);var slot=owner.slots[0];
-            Assert(forest.PickupVisuals.Count==forest.State.islands.Sum(i=>i.slots.Count),"Every saved void particle has one visual");
-            Assert(forest.PickupVisuals.All(t=>!LightingBridgeGrid.OverlapsPlatform(LightingBridgeGrid.CellOf(t.position))),"Visible particle positions stay outside every hub platform");
-            var sampleBlock=new MaterialPropertyBlock();forest.PickupVisuals[0].GetComponent<Renderer>().GetPropertyBlock(sampleBlock);
-            Assert(sampleBlock.GetColor("_BaseColor")==LightingParticles.ParticleColor,"Particles share the warm yellow material color");
+            CheckDotField(game,forest);
+            var island=forest.configuration.islands[0];var owner=forest.Inventory(island.id);var dots=forest.Dots;
 
             // Wallet accepts quarter units without the former 30-particle cap.
             forest.State.inventory=124;
@@ -153,33 +136,34 @@ namespace LightingBlocks.Editor
             int beforeDeposit=forest.SharedInventory;
             Assert(forest.Deposit(island.id,0)==ForestWorld.DepositResult.Empty&&forest.SharedInventory==beforeDeposit,"Legacy deposit calls cannot charge particles in Lighting");
 
-            int unsupportedIndex=owner.slots.FindIndex(s=>PlatformSupport.At(s.position)==null&&game.BlockUnder(s.position)==null);
-            Assert(unsupportedIndex>=0,"At least one initial void particle remains above unsupported ground");
-            slot=owner.slots[unsupportedIndex];var pickupVisual=forest.PickupVisuals[unsupportedIndex];
+            var bare=dots.ShownCells.FirstOrDefault(c=>game.BlockUnder(LightingDots.Position(c))==null);
+            Assert(dots.IsDot(bare)&&game.BlockUnder(LightingDots.Position(bare))==null,"At least one shown dot floats over bare void");
             var audio=game.GetComponent<LightingPickupAudio>();Assert(audio!=null&&audio.clips.All(c=>c!=null),"All four pickup clips are wired");
-            slot.remaining=0;slot.pending=false;
-            Teleport(game,slot.position);
-            Assert(!forest.TryCollect(unsupportedIndex)&&slot.remaining==0,"A void particle cannot be collected without standing on its supporting tile");
-            GameHUD.Current.ShowPause();Assert(!forest.TryCollect(unsupportedIndex),"Paused gameplay prevents collection");GameHUD.Current.BeginJourney();
+            Teleport(game,LightingDots.Position(bare));
+            Assert(!dots.TryCollect(bare)&&dots.IsDot(bare),"A void dot cannot be collected without standing on a tile under it");
             var tree=forest.WisdomTrees[0];
-            var support=PlaceTestTile(game);
-            slot.position=support.transform.position;pickupVisual.gameObject.SetActive(true);audio.ResetSequence();
+            var support=PlaceTestTile(game);var supportCell=LightingBridgeGrid.CellOf(support.transform.position);
+            // The test tile lands wherever a frontier is free; move the seed until the field puts a dot there.
+            int seed=forest.State.seed;while(!LightingDots.HasDot(forest.State.seed,supportCell))forest.State.seed++;
+            Teleport(game,support.transform.position+Vector3.up*.205f);dots.Refresh();
+            GameHUD.Current.ShowPause();Assert(!dots.TryCollect(supportCell),"Paused gameplay prevents collection");GameHUD.Current.BeginJourney();
+            audio.ResetSequence();
             int[] yieldLevels={0,1,8};
             foreach(int level in yieldLevels)
             {
-                game.soulGainLevel=level;slot.remaining=0;slot.pending=false;slot.position=support.transform.position;
-                pickupVisual.position=slot.position+Vector3.up*.7f;pickupVisual.gameObject.SetActive(true);
-                Teleport(game,support.transform.position+Vector3.up*.205f);int before=forest.SharedInventory;int plays=audio.PlaybackCount;
-                Assert(forest.TryCollect(unsupportedIndex)&&forest.SharedInventory-before==4+level,"Pickup on a real connected tile yields "+(1+level*.25f).ToString("0.00")+" particles at Particle Yield "+level);
+                game.soulGainLevel=level;forest.State.dots.RemoveAll(d=>d.x==supportCell.x&&d.z==supportCell.y);dots.Refresh();
+                int before=forest.SharedInventory;int plays=audio.PlaybackCount;
+                Assert(forest.PickupVisuals.Any(t=>t.gameObject.activeSelf&&LightingBridgeGrid.CellOf(t.position)==supportCell),"The dot over the tile is drawn before pickup");
+                Assert(dots.TryCollect(supportCell)&&forest.SharedInventory-before==4+level,"Pickup on a real connected tile yields "+(1+level*.25f).ToString("0.00")+" particles at Particle Yield "+level);
                 Assert(audio.PlaybackCount==plays+1,"Each successful pickup plays exactly one pickup voice");
             }
-            Assert(slot.remaining==ForestWorld.LightingRespawnSeconds,"Collected particle enters the "+ForestWorld.LightingRespawnSeconds+"-second cooldown");
-            forest.Tick(ForestWorld.LightingRespawnSeconds-.1f,false);Assert(slot.remaining>0&&!slot.pending,"Pickup remains unavailable until its cooldown expires");
-            forest.Tick(.2f,false);for(int retry=0;slot.pending&&retry<12;retry++)forest.Tick(.51f,false);
-            Assert(!slot.pending&&slot.remaining==0&&slot.generation>0,"Expired pickup respawns successfully after bounded retries");
-            var connected=LightingBridgeGrid.Connected(game);var respawnCell=LightingBridgeGrid.CellOf(slot.position);
-            int pathDistance=connected.Min(c=>Math.Abs(c.x-respawnCell.x)+Math.Abs(c.y-respawnCell.y));
-            Assert(pathDistance>=2&&pathDistance<=4&&!LightingBridgeGrid.OverlapsPlatform(respawnCell),"Respawn lands two to four grid cells beyond the reachable bridge frontier");
+            var taken=forest.State.dots.Single(d=>d.x==supportCell.x&&d.z==supportCell.y);
+            Assert(taken.remaining==ForestWorld.LightingRespawnSeconds,"A collected dot's cell waits "+ForestWorld.LightingRespawnSeconds+" seconds");
+            Assert(!dots.TryCollect(supportCell)&&!dots.ShownCells.Contains(supportCell)&&!forest.PickupVisuals.Any(t=>t.gameObject.activeSelf&&LightingBridgeGrid.CellOf(t.position)==supportCell),"The collected dot disappears and cannot be taken twice");
+            forest.Tick(ForestWorld.LightingRespawnSeconds-.1f,false);Assert(!dots.IsDot(supportCell),"The cell stays empty until its time is up");
+            forest.Tick(.2f,false);
+            Assert(dots.IsDot(supportCell)&&dots.ShownCells.Contains(supportCell)&&forest.State.dots.Count==0,"After "+ForestWorld.LightingRespawnSeconds+" seconds the dot returns to the same cell");
+            forest.State.seed=seed;dots.Refresh();
 
             forest.State.inventory=0;int speedBefore=game.speed;
             Teleport(game,tree.transform.position+Vector3.right*2);

@@ -884,11 +884,12 @@ namespace LightingBlocks
                 if (incoming == null) return false;
                 int incomingParticleVersion=incoming.particleVersion;
                 if(lightingV4&&incomingParticleVersion==3&&!MigrateLightingParticles(incoming,d.souls))return false;
-                else if(lightingV4&&incomingParticleVersion==4&&d.souls>0)
+                else if(lightingV4&&incomingParticleVersion>=4&&d.souls>0)
                 {
                     if(!AddLegacySoulsToInventory(incoming,d.souls))return false;
                 }
-                if(lightingV4){try{forest.RelocateLightingSlotsToVoid(incoming);}catch(Exception e){Debug.LogWarning(e.Message);return false;}}
+                // Migrate cleared the slots: Lighting particles are now the seeded dot field.
+                if(lighting)incoming.particleVersion=5;
                 foreach(var delivery in platformDeliveries)
                 {
                     var owner=incoming.islands.FirstOrDefault(i=>i.id==delivery.Item1);

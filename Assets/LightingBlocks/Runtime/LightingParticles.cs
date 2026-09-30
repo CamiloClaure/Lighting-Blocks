@@ -17,8 +17,8 @@ namespace LightingBlocks
         // Receiver/tile colours: blue, violet, amber - matches BridgeBlock's tier 0/1/2 exactly, so a
         // receiver's ColorIndex can be passed straight through as TrySpawnAtWisdomTree's forced tier.
         public static readonly Color[] Colors = { new Color(.14f, .43f, 1), new Color(.69f, .24f, 1), new Color(1, .68f, .22f) };
-        // Every fundamental particle: warm yellow #FFD66B, regardless of the receiver it will end up in.
-        public static readonly Color ParticleColor = new Color(1f, .839f, .420f);
+        // Every fundamental particle: the reference prototype's soul yellow (1, .86, .18).
+        public static readonly Color ParticleColor = new Color(1f, .86f, .18f);
         public void ResetWorld() { Receivers.Clear(); }
         // layout.receivers holds up to 3 farthest-point-selected sites for this island (see
         // ForestLayoutGenerator.PlaceReceivers) - index order matches ColorReceiver.ColorIndex
