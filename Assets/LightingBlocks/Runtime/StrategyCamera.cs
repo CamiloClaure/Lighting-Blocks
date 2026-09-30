@@ -20,6 +20,7 @@ namespace LightingBlocks
         public float yaw = 45f;
         // the camera FOV drops from 60 to 26 degrees, and tan(30)/tan(13) is 2.5, so every existing distance keeps its framing
         public float lensScale = 2.5f;
+        [Min(120)] public float lightingFarClip = 4096f;
         public float smoothing = 4f;
         public bool edgePan = true;
         public bool readInput = true;
@@ -37,6 +38,7 @@ namespace LightingBlocks
         void LateUpdate()
         {
             UpdateCursorLock();
+            MaintainLightingFarClip();
             if (GameHUD.GameplayBlocked) return;
             if (BridgeProfile.Current.playerCamera)
             {
@@ -53,7 +55,7 @@ namespace LightingBlocks
                         pitch = Mathf.Clamp(pitch - delta.y * orbitSpeed, 12f, 78f);
                         Vector2 position = mouse.position.ReadValue();
                         bool inside = position.x >= 0 && position.x <= Screen.width && position.y >= 0 && position.y <= Screen.height && !GameHUD.PointerOverUI();
-                        if (inside) distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * .012f, 14f, 42f);
+                        if (inside) distance = Mathf.Clamp(distance - mouse.scroll.ReadValue().y * .012f, BridgeProfile.Current.isLighting ? 10f : 14f, 42f);
                     }
                 }
                 Apply(1f - Mathf.Exp(-smoothing * Time.unscaledDeltaTime));
@@ -114,8 +116,15 @@ namespace LightingBlocks
             Vector3 target = Focus + right * amount.x + forward * amount.y;
             Focus = new Vector3(Mathf.Clamp(target.x, minimumFocus.x, bounds.x), 0, Mathf.Clamp(target.z, minimumFocus.y, bounds.y));
         }
+        void MaintainLightingFarClip()
+        {
+            if (!BridgeProfile.Current.isLighting) return;
+            var camera = GetComponent<Camera>();
+            if (camera != null && camera.farClipPlane < lightingFarClip) camera.farClipPlane = lightingFarClip;
+        }
         void Apply(float blend)
         {
+            MaintainLightingFarClip();
             transform.rotation = Quaternion.Euler(pitch, yaw, 0);
             smoothedFocus = Vector3.Lerp(smoothedFocus, Focus, blend);
             transform.position = smoothedFocus - transform.forward * distance * lensScale;

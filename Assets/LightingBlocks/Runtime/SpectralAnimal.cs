@@ -15,7 +15,7 @@ namespace LightingBlocks
         {
             if(game==null||GameHUD.SimulationPaused)return;
             float distance=(game.player.transform.position-transform.position).sqrMagnitude;
-            bool awake=distance<=3600;if(animator!=null)animator.enabled=awake;if(!awake)return;
+            bool awake=distance<=(BridgeProfile.Current.isLighting?676:3600);// Lighting's fog is black by 24 mif(animator!=null)animator.enabled=awake;if(!awake)return;
             decision-=delta;remaining-=delta;
             if(decision<=0)
             {

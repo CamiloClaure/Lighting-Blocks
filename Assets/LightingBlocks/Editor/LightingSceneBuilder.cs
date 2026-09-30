@@ -55,6 +55,13 @@ namespace LightingBlocks.Editor
 
             var game = UnityEngine.Object.FindAnyObjectByType<GameManager>();
             if (game == null) throw new Exception("No GameManager found in " + TerrainScenePath + " to clone controls from.");
+            game.characterLightRange = 24f;
+            if (game.cameraRig != null)
+            {
+                game.cameraRig.lightingFarClip = 4096f;
+                var lightingCamera = game.cameraRig.GetComponent<Camera>();
+                if (lightingCamera != null) lightingCamera.farClipPlane = 4096f;
+            }
             // ForestWorld is cloned from SampleSceneTerrain.unity, which never serializes this field
             // (it is missing from that scene's YAML entirely, so it loads at its C# default: false).
             // The shipped Lighting.unity has always carried it as 1 - a fresh build must reproduce
@@ -63,8 +70,10 @@ namespace LightingBlocks.Editor
             if (forestWorld == null) throw new Exception("No ForestWorld found alongside GameManager in " + TerrainScenePath + ".");
             forestWorld.enableLightingParticles = true;
             // Lighting-only visibility limiter (world + particle fade) - see LightingFog.cs and the
-            // matching render pass built below. Defaults match the spec (world 6/12, particles 4/6).
-            if (game.GetComponent<LightingFog>() == null) game.gameObject.AddComponent<LightingFog>();
+            // matching render pass built below. Lighting keeps a wider double-sight radius.
+            var lightingFog = game.GetComponent<LightingFog>() ?? game.gameObject.AddComponent<LightingFog>();
+            lightingFog.worldClearDistance = 12f; lightingFog.worldBlackDistance = 24f;
+            lightingFog.particleClearDistance = 8f; lightingFog.particleHiddenDistance = 12f;
             var pickupAudio=game.GetComponent<LightingPickupAudio>() ?? game.gameObject.AddComponent<LightingPickupAudio>();
             pickupAudio.clips=Enumerable.Range(1,4).Select(i=>Resources.Load<AudioClip>("Audio/LightingPickups/pickup_"+i.ToString("00"))).ToArray();
 
@@ -351,6 +360,7 @@ namespace LightingBlocks.Editor
             const string rendererPath="Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset";
             var existing=AssetDatabase.LoadAssetAtPath<UniversalRendererData>(rendererPath);
             if(existing==null){AssetDatabase.CreateAsset(renderer,rendererPath);existing=renderer;}else {EditorUtility.CopySerialized(renderer,existing);UnityEngine.Object.DestroyImmediate(renderer);}
+            AddWisdomFogMaskFeature(existing,rendererPath);
             AddFogFeature(existing,rendererPath);
             var pipeline=UnityEngine.Object.Instantiate(source);pipeline.name="Lighting Pipeline";pipeline.renderScale=1;
             var serialized=new SerializedObject(pipeline);var list=serialized.FindProperty("m_RendererDataList");list.arraySize=1;list.GetArrayElementAtIndex(0).objectReferenceValue=existing;serialized.ApplyModifiedPropertiesWithoutUndo();
@@ -364,6 +374,23 @@ namespace LightingBlocks.Editor
         // texture, fades to black by XZ distance from LightingFog.cs's _LightingFogCenter global).
         // Scoped to Lighting by construction: this feature only ever gets added to LightingRenderer.asset,
         // never to PC_Renderer/Mobile_Renderer, so legacy scenes' renderers never carry it.
+        static void AddWisdomFogMaskFeature(UniversalRendererData renderer,string rendererPath)
+        {
+            foreach(var stale in AssetDatabase.LoadAllAssetsAtPath(rendererPath).OfType<RenderObjects>().Where(f=>f.name=="Lighting Wisdom Fog Mask").ToArray())
+                UnityEngine.Object.DestroyImmediate(stale,true);
+            var feature=ScriptableObject.CreateInstance<RenderObjects>();
+            feature.name="Lighting Wisdom Fog Mask";
+            feature.settings.passTag="Lighting Wisdom Fog Mask";
+            feature.settings.Event=(RenderPassEvent)((int)RenderPassEvent.BeforeRenderingTransparents-1);
+            feature.settings.filterSettings.RenderQueueType=RenderQueueType.Opaque;
+            feature.settings.filterSettings.LayerMask=1<<31;
+            feature.settings.filterSettings.PassNames=new[]{"LightingFogMask"};
+            feature.settings.overrideMode=RenderObjects.RenderObjectsSettings.OverrideMaterialMode.None;
+            feature.settings.overrideDepthState=false;
+            feature.settings.enableWrite=false;
+            AssetDatabase.AddObjectToAsset(feature,renderer);
+            renderer.rendererFeatures.Add(feature);
+        }
         static void AddFogFeature(UniversalRendererData renderer,string rendererPath)
         {
             // CopySerialized above just overwrote rendererFeatures with PC_Renderer's own list (which
@@ -377,6 +404,7 @@ namespace LightingBlocks.Editor
             feature.passMaterial=FogMaterial();
             feature.injectionPoint=FullScreenPassRendererFeature.InjectionPoint.BeforeRenderingTransparents;
             feature.requirements=ScriptableRenderPassInput.Depth;
+            feature.bindDepthStencilAttachment=true;
             AssetDatabase.AddObjectToAsset(feature,renderer);
             renderer.rendererFeatures.Add(feature);
         }

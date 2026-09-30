@@ -26,6 +26,7 @@ namespace LightingBlocks.Editor
     {
         const string ScenePath = "Assets/Scenes/Lighting.unity";
         const string Result = "Library/LightingVisibilityCheck.txt";
+        const string Request = "Library/LightingVisibilityCheck.request";
         const string PlayKey = "LightingVisibilityCheck.Play";
         const string BatchKey = "LightingVisibilityCheck.Batch";
         const string AwaitExitKey = "LightingVisibilityCheck.AwaitExit";
@@ -68,8 +69,11 @@ namespace LightingBlocks.Editor
             EditorSceneManager.OpenScene(ScenePath);
             var fog = UnityEngine.Object.FindAnyObjectByType<LightingFog>();
             Assert(fog != null, "LightingFog controller present in the Lighting scene");
-            Assert(fog.worldClearDistance == 6f && fog.worldBlackDistance == 12f, "World fade defaults are 6/12 units");
-            Assert(fog.particleClearDistance == 4f && fog.particleHiddenDistance == 6f, "Particle fade defaults are 4/6 units");
+            var lightingGame = UnityEngine.Object.FindAnyObjectByType<GameManager>();
+            Assert(lightingGame != null && lightingGame.characterLightRange == 24f,
+                "Lighting scene keeps the character light range at 24m");
+            Assert(fog.worldClearDistance == 12f && fog.worldBlackDistance == 24f, "World fade defaults are 12/24 units");
+            Assert(fog.particleClearDistance == 8f && fog.particleHiddenDistance == 12f, "Particle fade defaults are 8/12 units");
             Assert(fog.particleColor == LightingParticles.ParticleColor, "Particle tint has its default value");
 
             var renderer = AssetDatabase.LoadAssetAtPath<UniversalRendererData>("Assets/LightingBlocks/Art/Lighting/LightingRenderer.asset");
@@ -82,6 +86,18 @@ namespace LightingBlocks.Editor
             Assert((feature.requirements & ScriptableRenderPassInput.Depth) != 0, "Fog pass requests the depth texture it reconstructs world position from");
             Assert(feature.passMaterial != null && feature.passMaterial.shader != null && feature.passMaterial.shader.name == "LightingBlocks/Lighting Fog",
                 "Fog pass uses the dedicated LightingFog shader");
+            Assert(feature.bindDepthStencilAttachment, "Fog pass binds depth/stencil so the tree mask can preserve exact visible pixels");
+            var treeMask = renderer.rendererFeatures.OfType<RenderObjects>().Where(f => f.name == "Lighting Wisdom Fog Mask").ToArray();
+            Assert(treeMask.Length == 1, "LightingRenderer carries exactly one Wisdom Tree fog mask feature");
+            Assert(treeMask[0].settings.Event == (RenderPassEvent)((int)RenderPassEvent.BeforeRenderingTransparents-1)
+                && renderer.rendererFeatures.IndexOf(treeMask[0]) < renderer.rendererFeatures.IndexOf(feature)
+                && treeMask[0].settings.filterSettings.LayerMask.value == (1 << 31)
+                && treeMask[0].settings.filterSettings.PassNames.Contains("LightingFogMask"),
+                "Wisdom mask runs before fog and draws only opaque tree-layer depth-equal pixels");
+            Assert(LayerMask.NameToLayer("LightingFogTree") == 31, "LightingFogTree is assigned to user layer 31");
+            var pickupClips = Enumerable.Range(1, 4).Select(i => Resources.Load<AudioClip>("Audio/LightingPickups/pickup_" + i.ToString("00"))).ToArray();
+            Assert(pickupClips.All(c => c != null && c.length >= .4f && c.length <= .7f), "Four generated pickup clips are wired and each lasts 0.4-0.7 seconds");
+            Assert(fog.worldClearDistance == 12f && fog.worldBlackDistance == 24f, "Lighting scene serializes the expanded world visibility distances");
 
             foreach (var path in new[] { "Assets/Settings/PC_Renderer.asset", "Assets/Settings/Mobile_Renderer.asset" })
             {
@@ -102,7 +118,16 @@ namespace LightingBlocks.Editor
                 catch (Exception e) { report.AppendLine("FAIL: " + e); Finish(false); }
                 return;
             }
-            if (!running || ++frames < 45) return;
+            if (!running)
+            {
+                if (!EditorApplication.isPlaying && File.Exists(Request))
+                {
+                    File.Delete(Request);
+                    Run();
+                }
+                return;
+            }
+            if (++frames < 45) return;
             running = false; bool ok = false;
             try { RunPlayChecks(); ok = true; }
             catch (Exception e) { report.AppendLine("FAIL: " + e); }
@@ -129,6 +154,17 @@ namespace LightingBlocks.Editor
             var fog = UnityEngine.Object.FindAnyObjectByType<LightingFog>();
             Assert(fog != null, "LightingFog controller present in Play Mode");
             Assert(Shader.GetGlobalFloat("_LightingFogActive") == 1f, "_LightingFogActive is set while the Lighting scene runs");
+            Assert(game.cameraRig != null && game.cameraRig.GetComponent<Camera>().farClipPlane >= 4096f,
+                "Lighting camera far clip preserves the distant Wisdom Tree view");
+            Assert(game.soulLight != null && game.soulLight.range == 24f && game.soulLight.intensity == 18f,
+                "Applied character light has 24m range at the existing intensity of 18");
+            foreach (var tree in forest.WisdomTrees)
+            {
+                var treeRenderers = tree.GetComponentsInChildren<Renderer>(true).Where(r => r != null
+                    && r.sharedMaterials.Any(m => m != null && m.shader != null && m.shader.name == "LightingBlocks/Spectral Lit")).ToArray();
+                Assert(treeRenderers.Length > 0 && treeRenderers.All(r => r.gameObject.layer == 31),
+                    "Wisdom Tree opaque renderers use the exact fog-mask layer while retaining their normal depth render");
+            }
 
             var lateUpdate = typeof(LightingFog).GetMethod("LateUpdate", BindingFlags.NonPublic | BindingFlags.Instance);
             var visual = forest.PickupVisuals[0];
@@ -147,8 +183,8 @@ namespace LightingBlocks.Editor
             Assert(game.ImportSave(game.ExportSave()),"Save reload rebuilds the particle world");
             visual=forest.PickupVisuals[0];visualRenderer=visual.GetComponent<Renderer>();
             Assert(visual!=originalVisual&&forest.VisualRevision!=originalRevision,"Same-count reload changes visual identity and revision");
-            Teleport(game,visual.position+Vector3.right*8);lateUpdate.Invoke(fog,null);
-            Assert(!visualRenderer.enabled,"Replacement particle is hidden at 8m after same-count reload");
+            Teleport(game,visual.position+Vector3.right*13);lateUpdate.Invoke(fog,null);
+            Assert(!visualRenderer.enabled,"Replacement particle is hidden beyond the 12m threshold after same-count reload");
             Teleport(game,visual.position+Vector3.right*2);fog.particleColor=Color.cyan;lateUpdate.Invoke(fog,null);
             var tint=new MaterialPropertyBlock();visualRenderer.GetPropertyBlock(tint);
             Assert(tint.GetColor("_BaseColor")==Color.cyan,"Inspector particle colour controls visible colour");
@@ -160,7 +196,7 @@ namespace LightingBlocks.Editor
                 Assert(v.GetComponentInChildren<Light>(true) == null, "No Light in a particle visual's children (" + v.name + ")");
             }
 
-            try { CaptureZoomLevels(game, fog, lateUpdate); report.AppendLine("PASS: Zoom-level captures written to Logs/lighting-captures/"); }
+            try { CaptureZoomLevels(game, fog, lateUpdate); report.AppendLine("PASS: Zoom-level and distant Wisdom Tree captures written to Logs/lighting-captures/"); }
             catch (Exception e) { report.AppendLine("NOTE: zoom-level captures could not be produced (" + e.Message + ") - not a check failure, see report."); }
         }
         // Same view (fixed pitch/yaw) at several zoom (camera distance) values, so the fade band and
@@ -196,6 +232,37 @@ namespace LightingBlocks.Editor
                 for (int i = 0; i < 10; i++) apply.Invoke(rig, new object[] { 1f });
                 SceneCapture.CaptureCamera(rig.GetComponent<Camera>(), folder + "/zoom-" + distance.ToString("00") + ".png");
             }
+            Teleport(game, treePosition - flatForward * 30f);
+            rig.CenterOnPlayer(); rig.pitch = pitch; rig.yaw = yaw; rig.distance = 14f;
+            lateUpdate.Invoke(fog, null);
+            var camera = rig.GetComponent<Camera>();
+            camera.transform.position = game.player.transform.position + Vector3.up * 12f;
+            camera.transform.rotation = Quaternion.LookRotation(treePosition + Vector3.up * 3f - camera.transform.position);
+            SceneCapture.CaptureCamera(camera, folder + "/wisdom-30m.png");
+
+            // An opaque, bright wall in front of the tree proves the exemption respects the
+            // camera depth buffer: the wall itself stays visible, while the tree behind it does not.
+            var direction = (treePosition + Vector3.up * 3f - camera.transform.position).normalized;
+            var occluder = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            occluder.name = "Temporary Wisdom occlusion check";
+            occluder.transform.SetPositionAndRotation(camera.transform.position + direction * 10f, Quaternion.LookRotation(direction));
+            occluder.transform.localScale = new Vector3(8f, 8f, .3f);
+            var occluderRenderer = occluder.GetComponent<Renderer>();
+            occluderRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            var wallMaterial = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            wallMaterial.SetColor("_BaseColor", new Color(.08f, 1.4f, .18f, 1));
+            occluderRenderer.sharedMaterial = wallMaterial;
+            Physics.SyncTransforms();
+            SceneCapture.CaptureCamera(camera, folder + "/wisdom-30m-occluded.png");
+            occluder.SetActive(false); UnityEngine.Object.Destroy(occluder); UnityEngine.Object.Destroy(wallMaterial);
+
+            // The player-to-tree radius is deliberately far beyond the 24m world black point.
+            // Keep the camera close enough to show the silhouette while the fog centre stays 500m away.
+            Teleport(game, treePosition - flatForward * 500f);
+            lateUpdate.Invoke(fog, null);
+            camera.transform.position = game.player.transform.position + Vector3.up * 90f;
+            camera.transform.rotation = Quaternion.LookRotation(treePosition + Vector3.up * 3f - camera.transform.position);
+            SceneCapture.CaptureCamera(camera, folder + "/wisdom-500m.png");
         }
     }
 }

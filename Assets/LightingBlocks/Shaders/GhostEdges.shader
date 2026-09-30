@@ -3,6 +3,7 @@ Shader "LightingBlocks/Ghost Edges"
  Properties{
  _MainTex("Dash",2D)="white"{}
  _Color("Edge ink",Color)=(0.55,0.7,1.6,1)
+ _PreviewFade("Preview fade",Range(0,1))=1
  }
  SubShader{
  Tags{"RenderType"="Transparent" "Queue"="Transparent" "IgnoreProjector"="True" "RenderPipeline"="UniversalPipeline"}
@@ -17,7 +18,7 @@ Shader "LightingBlocks/Ghost Edges"
  #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
  TEXTURE2D(_MainTex);SAMPLER(sampler_MainTex);
  CBUFFER_START(UnityPerMaterial)
- float4 _MainTex_ST;float4 _Color;
+ float4 _MainTex_ST;float4 _Color;float _PreviewFade;
  CBUFFER_END
  // Lighting-only world fade (see LightingFog.cs). _LightingFogActive is 0 outside Lighting, so
  // worldFade always evaluates to 1 there - legacy scenes (this placement ghost is shared) are unaffected.
@@ -29,7 +30,7 @@ Shader "LightingBlocks/Ghost Edges"
  half4 Frag(Varyings i):SV_Target{
   float worldT=saturate((length(i.world.xz-_LightingFogCenter.xz)-_LightingWorldClear)/max(_LightingWorldBlack-_LightingWorldClear,1e-4));
   float worldFade=1-_LightingFogActive*(worldT*worldT*(3-2*worldT));
-  return SAMPLE_TEXTURE2D(_MainTex,sampler_MainTex,i.uv)*_Color*i.color*worldFade;
+  half4 ink=SAMPLE_TEXTURE2D(_MainTex,sampler_MainTex,i.uv)*_Color*i.color*worldFade;ink.a*=_PreviewFade;return ink;
  }
  ENDHLSL
  }

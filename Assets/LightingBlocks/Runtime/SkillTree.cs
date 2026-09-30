@@ -52,6 +52,7 @@ namespace LightingBlocks
         Text detailButtonLabel;
         Node focus;
         float time;
+        int clickFrame = -1;
         static Sprite discSprite, ringSprite, dotSprite;
 
         public static SkillTree Build(RectTransform panel, GameManager game, Font font, UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
@@ -64,19 +65,20 @@ namespace LightingBlocks
 
         void Compose(UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
         {
-            Label("Skill Heading", root, "THE TREE OF THE LIGHTING SOUL", 30, 76, 640, 36, 28, White);
-            Label("Skill Help", root, "Powers grow from the path you build. Souls keep flowing while you choose.",
+            Label("Skill Heading", root, BridgeProfile.Current.isLighting ? "THE WISDOM TREE" : "THE TREE OF THE LIGHTING SOUL", 30, 76, 640, 36, 28, White);
+            Label("Skill Help", root, BridgeProfile.Current.isLighting ? "Click a skill to awaken its next level. Learning needs a Wisdom Tree." : "Powers grow from the path you build. Souls keep flowing while you choose.",
                 30, 112, 700, 24, 17, Muted);
             closeButton = Button("Skills Close", root, "CLOSE  [TAB]", PanelWidth - 190, 24, 160, 44, close);
 
-            // Lighting keeps only Speed and Soul Gain; Strength/Links/Radiance/Soul Well do not
-            // exist there (removed from both the tree and the purchase routes - see GameManager).
+            // Lighting keeps its movement and particle skills; legacy-only Strength/Links/Radiance/Soul Well
+            // do not exist there (removed from both the tree and the purchase routes - see GameManager).
             if (BridgeProfile.Current.isLighting)
             {
                 Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(295, 550), 104);
-                Add("soulgain", "SOUL GAIN", "Every level adds 25% more Souls to your connected path.", new Vector2(560, 550), 104);
-                Add("root", "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
-                Connect("root", "speed"); Connect("root", "soulgain");
+                Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(560, 550), 104);
+                Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(430, 375), 104);
+                Add("root", BridgeProfile.Current.isLighting ? "THE BRIDGE PATH" : "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
+                Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash");
             }
             else
             {
@@ -165,7 +167,7 @@ namespace LightingBlocks
             colors.normalColor = colors.highlightedColor = colors.selectedColor = colors.pressedColor = colors.disabledColor = Color.white;
             node.button.colors = colors;
             string id = node.id;
-            node.button.onClick.AddListener(() => Purchase(id));
+            if (!BridgeProfile.Current.isLighting) node.button.onClick.AddListener(() => Purchase(id));
         }
         void BuildDetail()
         {
@@ -175,8 +177,19 @@ namespace LightingBlocks
             detailLevel = Label("Detail Level", panel, "", 18, 78, 264, 24, 17, Gold);
             detailBlurb = Label("Detail Blurb", panel, "", 18, 112, 264, 120, 17, White);
             detailRequirement = Label("Power Requirements", panel, "", 18, 240, 264, 230, 17, Muted);
-            detailButton = Button("Detail Purchase", panel, "", 18, 500, 264, 56, () => { if (focus != null) Purchase(focus.id); });
+            detailButton = Button("Detail Purchase", panel, "", 18, 500, 264, 56, BridgeProfile.Current.isLighting ? null : (UnityEngine.Events.UnityAction)(() => { if (focus != null) Purchase(focus.id); }));
             detailButtonLabel = detailButton.GetComponentInChildren<Text>();
+        }
+        // Lighting: clicking a skill awakens its next level (GameManager.Purchase checks tree, cap and
+        // wallet, and spends the particles); AWAKEN in the detail card does the same for the focus.
+        // A direct pointer test, like hover: EventSystem clicks were not reaching the panel.
+        public bool ClickAt(Vector2 screenPoint)
+        {
+            foreach (var node in nodes)
+                if (node.button != null && RectTransformUtility.RectangleContainsScreenPoint(node.circle, screenPoint)) { focus = node; Purchase(node.id); return true; }
+            if (focus != null && detailButton.gameObject.activeInHierarchy && detailButton.interactable
+                && RectTransformUtility.RectangleContainsScreenPoint((RectTransform)detailButton.transform, screenPoint)) { Purchase(focus.id); return true; }
+            return false;
         }
         void Purchase(string id)
         {
@@ -186,6 +199,8 @@ namespace LightingBlocks
         }
 
         int Cap(Node node) => node.supply || node.id == "root" ? 1 : game != null ? game.Cap(node.id) : 1;
+        int ParticleWalletUnits() => ForestWorld.For(game)?.SharedInventory ?? 0;
+        static int ParticleCostUnits(double particles) => (int)System.Math.Ceiling(particles * ForestWorld.ParticleUnitsPerParticle - .000001);
         int Level(Node node) => node.id == "root" ? 1 : node.supply ? 1 : game != null ? game.Level(node.id) : 0;
         bool Locked(Node node) => node.id == "grave" && game != null && !game.Bridges[0];
 
@@ -196,6 +211,10 @@ namespace LightingBlocks
             time += step;
             var mouse = Mouse.current;
             Vector2 pointer = mouse != null ? mouse.position.ReadValue() : new Vector2(-1000, -1000);
+            // Lighting clicks use the same direct pointer test as hover (see ClickAt).
+            // clickFrame stops a second Refresh in the same frame from buying twice.
+            bool click = BridgeProfile.Current.isLighting && mouse != null && mouse.leftButton.wasPressedThisFrame && clickFrame != Time.frameCount && !GameHUD.SimulationPaused;
+            if (click) { clickFrame = Time.frameCount; if (ClickAt(pointer)) return; }
 
             foreach (var node in nodes)
             {
@@ -203,7 +222,9 @@ namespace LightingBlocks
                 bool supply = node.supply, maxed = !supply && node.id != "root" && level >= cap;
                 bool locked = Locked(node);
                 double cost = node.id == "root" ? 0 : game.Cost(node.id);
-                bool affordable = !maxed && !locked && node.id != "root" && game.souls + .0001 >= cost;
+                bool affordable = !maxed && !locked && node.id != "root" && (BridgeProfile.Current.isLighting ? ParticleWalletUnits() >= ParticleCostUnits(cost) : game.souls + .0001 >= cost);
+                bool atTree = !BridgeProfile.Current.isLighting || game.CanBuyLightingUpgrades();
+                if(node.button != null) node.button.interactable = !GameHUD.SimulationPaused;
 
                 if (node.shown != level) { node.shown = level; node.punch = 1; }
                 bool over = node.button != null && RectTransformUtility.RectangleContainsScreenPoint(node.circle, pointer);
@@ -219,7 +240,7 @@ namespace LightingBlocks
 
                 Color ring = maxed ? Gold
                     : locked ? new Color(.30f, .27f, .27f)
-                    : affordable ? Color.Lerp(Mint, Gold, .5f + Mathf.Sin(time * 3.4f) * .5f)
+                    : affordable ? Color.Lerp(Dormant, Mint, .5f + Mathf.Sin(time * 3.4f) * .5f) // breathes from dim: available, not learned
                     : level > 0 ? new Color(.62f, .50f, .32f)
                     : Dormant;
                 if (node.id == "root") ring = Gold;
@@ -231,7 +252,8 @@ namespace LightingBlocks
                 node.price.text = node.id == "root" ? "BLOCKS CONNECTED"
                     : maxed ? "FULLY AWAKENED"
                     : locked ? "LOCKED"
-                    : GameManager.Format(cost) + " Souls";
+                    : !atTree ? "RETURN TO A WISDOM TREE"
+                    : GameManager.Format(cost) + (BridgeProfile.Current.isLighting ? " particles" : " Souls");
                 node.price.color = maxed ? Gold : locked ? Dormant : affordable ? Mint : new Color(.55f, .49f, .40f);
                 for (int i = 0; i < node.pips.Length; i++)
                 {
@@ -273,21 +295,23 @@ namespace LightingBlocks
             detailRequirement.text = Requirement(focus.id);
             bool buyable = focus.id != "root" && !maxed && !locked;
             detailButton.gameObject.SetActive(focus.id != "root");
-            detailButton.interactable = buyable && !GameHUD.SimulationPaused;
+            bool atTree = !BridgeProfile.Current.isLighting || game.CanBuyLightingUpgrades();
+            detailButton.interactable = buyable && atTree && !GameHUD.SimulationPaused;
             detailButtonLabel.text = maxed ? "FULLY AWAKENED"
                 : locked ? "LOCKED  ·  FINISH THE FIRST BRIDGE"
-                : "AWAKEN  ·  " + GameManager.Format(cost) + " Souls";
+                : !atTree ? "RETURN TO A WISDOM TREE\nTO LEARN THIS SKILL" : "AWAKEN  ·  " + GameManager.Format(cost) + (BridgeProfile.Current.isLighting ? " particles" : " Souls");
             var colors = detailButton.colors;
-            colors.normalColor = buyable && game.souls + .0001 >= cost ? Color.white : new Color(.61f, .56f, .47f);
+            colors.normalColor = buyable && (BridgeProfile.Current.isLighting ? ParticleWalletUnits() >= ParticleCostUnits(cost) : game.souls + .0001 >= cost) && atTree ? Color.white : new Color(.61f, .56f, .47f);
             detailButton.colors = colors;
         }
         string Requirement(string id)
         {
             switch (id)
             {
-                case "speed": return "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
-                case "soulgain": return "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
+                case "speed": return BridgeProfile.Current.isLighting ? "Hotkey [1].\nMove faster across platforms, with or without stones." : "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
+                case "soulgain": return BridgeProfile.Current.isLighting ? "Hotkey [2].\nEach level adds 0.25 particle to every pickup.\nCurrent pickup: " + (1 + .25 * game.soulGainLevel).ToString("0.00") + " particles." : "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
                     + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
+                case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n1-second cooldown. Unavailable while hauling.";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";

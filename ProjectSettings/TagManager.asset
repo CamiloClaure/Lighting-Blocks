@@ -36,7 +36,7 @@ TagManager:
   - 
   - 
   - 
-  - 
+  - LightingFogTree
   m_SortingLayers:
   - name: Default
     uniqueID: 0

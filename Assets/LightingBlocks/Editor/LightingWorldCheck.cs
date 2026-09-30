@@ -78,10 +78,12 @@ namespace LightingBlocks.Editor
             // contiguous crystal tiles would cover on the existing two-metre grid.
             Vector2 min = polygon[0], max = polygon[0];
             foreach (var v in polygon) { min = Vector2.Min(min, v); max = Vector2.Max(max, v); }
+            float gridMinX=Mathf.FloorToInt((min.x-1f)/2f)*2f+1f,gridMaxX=Mathf.CeilToInt((max.x-1f)/2f)*2f+1f;
+            float gridMinZ=Mathf.FloorToInt((min.y-1f)/2f)*2f+1f,gridMaxZ=Mathf.CeilToInt((max.y-1f)/2f)*2f+1f;
             var platformGO = new GameObject("Check platform");
-            platformGO.transform.position = new Vector3((min.x + max.x) * .5f, 0, (min.y + max.y) * .5f);
+            platformGO.transform.position = new Vector3((gridMinX+gridMaxX)*.5f, 0, (gridMinZ+gridMaxZ)*.5f);
             var platformBox = platformGO.AddComponent<BoxCollider>();
-            platformBox.size = new Vector3(max.x - min.x + .4f, 1, max.y - min.y + .4f);
+            platformBox.size = new Vector3(gridMaxX-gridMinX, 1, gridMaxZ-gridMinZ);
             var support = platformGO.AddComponent<PlatformSupport>();
             support.hubId = island.id;
             Register(support);
@@ -152,55 +154,77 @@ namespace LightingBlocks.Editor
             Check(forest.IslandAt(island.wisdomPosition)?.id == island.id, "IslandAt resolves hub ownership via PlatformSupport.hubId under Lighting");
             Check(forest.IslandAt(island.wisdomPosition + new Vector3(0, 0, 500)) == null, "IslandAt returns no hub for a point off every platform");
 
-            // Receiver placement (phase 2): spacing, support, clearance, reachability and particle
-            // reservations, on all three islands - island-1 reuses the platform/layout built above;
-            // island-2 and island-3 get their own synthetic platform over their real footprint.
-            var receiverLayouts = new List<IslandForestLayout> { layout };
+            // The current Lighting world uses these generated legacy ecology layouts only for
+            // vegetation/wildlife. Runtime pickups come from ForestWorld.NewState on the void grid.
             var extraPlatforms = new List<GameObject>();
             for (int i = 1; i < config.islands.Length; i++)
             {
-                var otherIsland = config.islands[i];
-                var otherPolygon = Landscape.Shores[otherIsland.polygonIndex];
+                var otherIsland = config.islands[i];var otherPolygon = Landscape.Shores[otherIsland.polygonIndex];
                 Vector2 oMin = otherPolygon[0], oMax = otherPolygon[0];
                 foreach (var v in otherPolygon) { oMin = Vector2.Min(oMin, v); oMax = Vector2.Max(oMax, v); }
+                float ominx=Mathf.FloorToInt((oMin.x-1f)/2f)*2f+1f,omaxx=Mathf.CeilToInt((oMax.x-1f)/2f)*2f+1f;
+                float ominz=Mathf.FloorToInt((oMin.y-1f)/2f)*2f+1f,omaxz=Mathf.CeilToInt((oMax.y-1f)/2f)*2f+1f;
                 var otherGO = new GameObject("Check platform " + otherIsland.id);
-                otherGO.transform.position = new Vector3((oMin.x + oMax.x) * .5f, 0, (oMin.y + oMax.y) * .5f);
-                var otherBox = otherGO.AddComponent<BoxCollider>();
-                otherBox.size = new Vector3(oMax.x - oMin.x + .4f, 1, oMax.y - oMin.y + .4f);
-                var otherSupport = otherGO.AddComponent<PlatformSupport>();
-                otherSupport.hubId = otherIsland.id;
-                Register(otherSupport);
-                extraPlatforms.Add(otherGO);
-                Physics.SyncTransforms();
-                receiverLayouts.Add(ForestLayoutGenerator.Generate(otherIsland, 1907, otherPolygon, config.trees.Length));
+                otherGO.transform.position = new Vector3((ominx+omaxx)*.5f, 0, (ominz+omaxz)*.5f);
+                var otherBox = otherGO.AddComponent<BoxCollider>();otherBox.size = new Vector3(omaxx-ominx, 1, omaxz-ominz);
+                var otherSupport = otherGO.AddComponent<PlatformSupport>();otherSupport.hubId = otherIsland.id;Register(otherSupport);
+                extraPlatforms.Add(otherGO);Physics.SyncTransforms();
             }
-            for (int i = 0; i < config.islands.Length; i++)
+            var state=forest.NewState(1907);
+            var allSlots=state.islands.SelectMany(i=>i.slots).ToArray();
+            Check(allSlots.Length==config.islands.Sum(i=>i.ParticleCount)&&allSlots.Length==120,"All three hubs hold 40 persistent particle slots each (120)");
+            // Slots neither ring (2-4, then 5-6 tiles) can fit wait as pending for the respawn loop.
+            var placedSlots=allSlots.Where(s=>!s.pending).ToArray();
+            Check(placedSlots.Length>72,"The rings place more than the old 72 particles at once ("+placedSlots.Length+")");
+            Check(allSlots.All(s=>Mathf.Abs(s.position.x/LightingBridgeGrid.CellSize-Mathf.Round(s.position.x/LightingBridgeGrid.CellSize))<.001f&&Mathf.Abs(s.position.z/LightingBridgeGrid.CellSize-Mathf.Round(s.position.z/LightingBridgeGrid.CellSize))<.001f),"Every particle sits at a future two-metre grid-cell center");
+            Check(allSlots.All(s=>!LightingBridgeGrid.OverlapsPlatform(LightingBridgeGrid.CellOf(s.position))),"Initial particles are placed in the void beyond the hub platforms");
+            bool fourMetreSpacing=true;for(int a=0;a<placedSlots.Length;a++)for(int b=a+1;b<placedSlots.Length;b++)if((placedSlots[a].position-placedSlots[b].position).sqrMagnitude<16f)fourMetreSpacing=false;
+            Check(fourMetreSpacing,"All "+placedSlots.Length+" placed initial particles are globally spaced at least four metres apart");
+            var tileDistances=new List<int>();var edgeSectorCounts=new List<int>();
+            foreach(var owner in state.islands)
             {
-                var checkIsland = config.islands[i];
-                var checkLayout = receiverLayouts[i];
-                var checkPolygon = Landscape.Shores[checkIsland.polygonIndex];
-                Check(checkLayout.receivers.Count == 3, checkIsland.id + ": three receiver sites placed (" + checkLayout.receivers.Count + "/3)");
-                for (int a = 0; a < checkLayout.receivers.Count; a++)
+                var platforms=PlatformSupport.ActivePlatforms.Where(p=>p!=null&&p.hubId==owner.id).ToArray();var definition=config.Find(owner.id);var poly=Landscape.Shores[definition.polygonIndex];Vector2 low=poly[0],high=low;
+                foreach(var point in poly){low=Vector2.Min(low,point);high=Vector2.Max(high,point);}
+                var hubBounds=new Bounds(new Vector3((low.x+high.x)*.5f,0,(low.y+high.y)*.5f),new Vector3(high.x-low.x,1,high.y-low.y));
+                foreach(var platform in platforms)hubBounds.Encapsulate(platform.Surface.bounds);
+                var center=hubBounds.center;var sectors=new HashSet<int>();int x0=Mathf.FloorToInt((hubBounds.min.x-12)/LightingBridgeGrid.CellSize),x1=Mathf.CeilToInt((hubBounds.max.x+12)/LightingBridgeGrid.CellSize);
+                int z0=Mathf.FloorToInt((hubBounds.min.z-12)/LightingBridgeGrid.CellSize),z1=Mathf.CeilToInt((hubBounds.max.z+12)/LightingBridgeGrid.CellSize);
+                var distances=new Dictionary<Vector2Int,int>();var queue=new Queue<Vector2Int>();
+                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)
                 {
-                    var r = checkLayout.receivers[a];
-                    Check(PlatformSupport.Supports(r), checkIsland.id + ": receiver " + a + " sits on supported platform ground");
-                    Check(checkLayout.navigation.InReachableArea(r), checkIsland.id + ": receiver " + a + " is reachable from the Wisdom Tree");
-                    Check(ForestLayoutGenerator.Inside(r, checkPolygon, 3), checkIsland.id + ": receiver " + a + " is clear of the island edge");
-                    Check(!ForestHabitat.MainPath(r, checkIsland), checkIsland.id + ": receiver " + a + " is clear of the main walking route");
-                    Check(!ForestHabitat.Landing(r, checkIsland), checkIsland.id + ": receiver " + a + " is clear of any bridge landing");
-                    for (int b = a + 1; b < checkLayout.receivers.Count; b++)
-                    {
-                        float measured = Vector3.Distance(r, checkLayout.receivers[b]);
-                        Check(measured >= LightingParticles.ReceiverSpacing,
-                            checkIsland.id + ": receivers " + a + "/" + b + " are " + measured.ToString("0.0") + "m apart (>= " + LightingParticles.ReceiverSpacing + "m)");
-                    }
+                    var cell=new Vector2Int(x,z);if(LightingBridgeGrid.OverlapsPlatform(cell)||!LightingBridgeGrid.TouchesHub(cell,owner.id))continue;
+                    distances[cell]=1;queue.Enqueue(cell);
                 }
-                Check(checkLayout.particles.All(p => checkLayout.receivers.All(r => Vector3.Distance(p, r) >= LightingParticles.ReceiverClearance)),
-                    checkIsland.id + ": every particle position keeps clear of every receiver's interaction area");
-                Check(checkLayout.candidates.All(p => checkLayout.receivers.All(r => Vector3.Distance(p, r) >= LightingParticles.ReceiverClearance)),
-                    checkIsland.id + ": every respawn candidate keeps clear of every receiver's interaction area");
-                Check(checkLayout.animals.All(PlatformSupport.Supports), checkIsland.id + ": every creature spawn point still sits on supported platform ground");
+                while(queue.Count>0)
+                {
+                    var cell=queue.Dequeue();int distance=distances[cell];if(distance>=6)continue;
+                    foreach(var next in LightingBridgeGrid.NeighborsOf(cell))if(next.x>=x0&&next.x<=x1&&next.y>=z0&&next.y<=z1&&!distances.ContainsKey(next)&&!LightingBridgeGrid.OverlapsPlatform(next)){distances[next]=distance+1;queue.Enqueue(next);}
+                }
+                foreach(var slot in owner.slots)
+                {
+                    if(slot.pending)continue;
+                    if(distances.TryGetValue(LightingBridgeGrid.CellOf(slot.position),out int distance))tileDistances.Add(distance);
+                    var radial=slot.position-center;sectors.Add(Mathf.Clamp(Mathf.FloorToInt(Mathf.Repeat(Mathf.Atan2(radial.z,radial.x)+Mathf.PI,Mathf.PI*2)/(Mathf.PI*2)*8),0,7));
+                }
+                edgeSectorCounts.Add(sectors.Count);
             }
+            Check(tileDistances.Count==placedSlots.Length&&tileDistances.All(d=>d>=2&&d<=6)&&tileDistances.Count(d=>d<=4)>=72,"Every initial particle is two to six orthogonal future tiles from its hub, at least 72 of them two to four");
+            Check(edgeSectorCounts.All(n=>n>=6),"Initial particle distribution reaches at least six of eight sectors around every hub edge");
+            var first=state.islands[0].slots[0];
+            Check(Vector3.Distance(first.position,new Vector3(0,0,3))<=12f,"A deterministic starting particle is visible within twelve metres of the authored spawn");
+            var selectorHost=new GameObject("Selector check host");var particles=selectorHost.AddComponent<LightingParticles>();
+            var testTreeObject=new GameObject("Selector check Wisdom Tree");testTreeObject.transform.position=island.wisdomPosition;
+            var testTree=testTreeObject.AddComponent<WisdomTree>();testTree.Initialize(forest,island);
+            var selectorParent=new GameObject("Selector check parent").transform;
+            particles.AddTree(forest,testTree,selectorParent,layout);
+            Check(particles.Receivers.Count==3,"Each Wisdom Tree owns exactly three free color selectors");
+            for(int color=0;color<3;color++)
+            {
+                var selector=particles.Receivers[color];
+                Check(selector.ColorIndex==color&&Vector3.Distance(selector.transform.position,testTree.transform.position)<=3f,"Selector "+color+" matches its tile tier and sits beside its Wisdom Tree");
+                Check(PlatformSupport.Supports(selector.transform.position),"Selector "+color+" sits on supported hub ground");
+            }
+            UnityEngine.Object.DestroyImmediate(selectorParent.gameObject);UnityEngine.Object.DestroyImmediate(testTreeObject);UnityEngine.Object.DestroyImmediate(selectorHost);
             foreach (var go in extraPlatforms) UnityEngine.Object.DestroyImmediate(go);
             Physics.SyncTransforms();
         }
@@ -251,7 +275,14 @@ namespace LightingBlocks.Editor
         {
             if (!playRunning)
             {
+                // Library/LightingWorldCheck.edit-request runs the edit check from an open editor, then reopens Lighting.
+                if (!EditorApplication.isPlayingOrWillChangePlaymode && !EditorApplication.isCompiling && File.Exists("Library/LightingWorldCheck.edit-request"))
+                {
+                    AssetDatabase.Refresh(); if (EditorApplication.isCompiling) return;
+                    File.Delete("Library/LightingWorldCheck.edit-request"); EditCheck(); EditorSceneManager.OpenScene("Assets/Scenes/Lighting.unity"); return;
+                }
                 if (EditorApplication.isPlayingOrWillChangePlaymode || EditorApplication.isCompiling || !File.Exists(RequestFile)) return;
+                AssetDatabase.Refresh(); if (EditorApplication.isCompiling) return; // unfocused editors never auto-refresh
                 File.Delete(RequestFile); playReport.Clear();
                 EditorSceneManager.OpenScene("Assets/Scenes/Lighting.unity");
                 SessionState.SetBool(SceneKey, true); EditorApplication.isPlaying = true; return;
@@ -278,35 +309,24 @@ namespace LightingBlocks.Editor
             // here (unlike ForestVerification.cs's own proven Play-mode harness, which calls this
             // first thing) is exactly why the collection loop below used to fail on every fragment.
             GameHUD.Current.BeginJourney();
-            var forest = ForestWorld.For(game);
-            var island = forest.configuration.islands[0];
-
-            // Collect three fragments -> charge the tree -> exactly one block appears.
-            int before = forest.Inventory(island.id).inventory;
-            for (int i = 0; i < island.particleCount && forest.Inventory(island.id).inventory < before + 3; i++)
-            {
-                if (forest.Inventory(island.id).slots[i].remaining > 0) continue;
-                Teleport(game, forest.Layouts[0].particles[i]); forest.TryCollect(i);
-            }
-            Check(forest.Inventory(island.id).inventory >= 3, "Collected at least three fragments on island-1");
-            var tree = forest.WisdomTrees[0];
-            Teleport(game, tree.transform.position + Vector3.right * 2);
-            int blocksBefore = game.Blocks.Count;
-            Check(tree.BeginCharge(), "Wisdom Tree accepts a charge with three collected fragments");
+            var forest=ForestWorld.For(game);var island=forest.configuration.islands[0];var tree=forest.WisdomTrees[0];
+            var owner=forest.Inventory(island.id);owner.freeDeliveryColor=-1;owner.freeDeliveryColors.Clear();owner.charge=new[]{0,0,0};owner.rewards.Clear();
+            forest.State.inventory=13;int walletBefore=forest.SharedInventory;int blocksBefore=game.Blocks.Count;
+            Teleport(game,tree.transform.position+Vector3.right*8);
+            Check(!tree.RequestTile(2)&&owner.freeDeliveryColor==-1,"A direct remote tree request is refused");
+            Teleport(game,tree.transform.position+Vector3.right*2);
+            Check(tree.RequestTile(2)&&owner.freeDeliveryColor==2,"Supported ground within three metres can request one free matching tile");
+            Check(!tree.RequestTile(1)&&owner.freeDeliveryColor==2,"Each tree accepts only one user request at a time");
+            Check(forest.SharedInventory==walletBefore,"Requesting a tile spends no particles");
+            var obstacles=new List<GameObject>();
+            foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
+            Physics.SyncTransforms();tree.Tick(.61f);
+            Check(game.Blocks.Count==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output keeps the selected free tile pending");
+            foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();
             tree.Tick(.61f);
-            Check(game.Blocks.Count == blocksBefore + 1, "Charging the Wisdom Tree creates exactly one block");
-            Check(PlatformSupport.Supports(game.Blocks.Last().transform.position), "The released block spawned on supported platform ground");
-
-            // A blocked output slot does not consume fragments.
-            forest.Inventory(island.id).inventory = 3;
-            var obstacles = new List<GameObject>();
-            foreach (var offset in island.outputOffsets)
-            {
-                var o = GameObject.CreatePrimitive(PrimitiveType.Cube); o.transform.position = island.wisdomPosition + offset; obstacles.Add(o);
-            }
-            Physics.SyncTransforms();
-            Check(!tree.BeginCharge() && forest.Inventory(island.id).inventory == 3, "Blocked output slot consumes no particles");
-            foreach (var o in obstacles) ForestWorld.Remove(o);
+            Check(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==2,"A clear output releases exactly the selected free tile after its delay");
+            Check(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Successful free delivery clears only its request and creates no particle charge");
+            Check(forest.SharedInventory==walletBefore,"Free tile creation leaves the particle wallet unchanged");
         }
     }
 }

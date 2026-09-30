@@ -10,7 +10,7 @@ Shader "LightingBlocks/Spectral Lit"
  _SoftFill("Soft vegetation fill",Float)=0
  _Smoothness("Smoothness",Float)=.3 _AO("Occlusion",Range(0,1))=.4 _Cutoff("Alpha cutoff",Range(0,1))=0 _Cull("Culling",Float)=2
  [HDR]_EmissionColor("Emission",Color)=(0,0,0,1) [HDR]_RimColor("Spectral edge",Color)=(0,0,0,1)
- _RimPower("Edge power",Float)=3 _Wind("Wind",Float)=0 _Charge("Charge",Float)=1 _EmissionShape("Shaped emission",Range(0,1))=0
+ _RimPower("Edge power",Float)=3 _Wind("Wind",Float)=0 _Charge("Charge",Float)=1 _EmissionShape("Shaped emission",Range(0,1))=0 [HideInInspector] _LightingWisdomVisible("Wisdom visibility",Float)=0
  }
  SubShader {
  Tags {"RenderPipeline"="UniversalPipeline" "RenderType"="Opaque" "Queue"="Geometry"}
@@ -24,7 +24,7 @@ Shader "LightingBlocks/Spectral Lit"
  TEXTURE2D(_MossNormal);SAMPLER(sampler_MossNormal);
  CBUFFER_START(UnityPerMaterial)
  float4 _BaseMap_ST,_BaseColor,_EmissionColor,_RimColor;
- float _SoftFill,_NormalStrength,_Terrain,_Triplanar,_Smoothness,_AO,_Cutoff,_Cull,_RimPower,_Wind,_Charge,_EmissionShape,_VertexTint;
+ float _SoftFill,_NormalStrength,_Terrain,_Triplanar,_Smoothness,_AO,_Cutoff,_Cull,_RimPower,_Wind,_Charge,_EmissionShape,_VertexTint,_LightingWisdomVisible;
  CBUFFER_END
  float3 _ForestPlayer,_ForestWind;float _ForestTime;
  struct A{float4 positionOS:POSITION;float3 normalOS:NORMAL;float4 tangentOS:TANGENT;float2 uv:TEXCOORD0;half4 color:COLOR;UNITY_VERTEX_INPUT_INSTANCE_ID};
@@ -52,7 +52,7 @@ Shader "LightingBlocks/Spectral Lit"
  half3 view=GetWorldSpaceNormalizeViewDir(i.positionWS);half rim=pow(1-saturate(dot(n,view)),_RimPower);
  InputData input=(InputData)0;input.positionWS=i.positionWS;input.normalWS=n;input.viewDirectionWS=view;input.shadowCoord=TransformWorldToShadowCoord(i.positionWS);input.bakedGI=SampleSH(n);input.normalizedScreenSpaceUV=GetNormalizedScreenSpaceUV(i.positionCS);input.shadowMask=half4(1,1,1,1);
  SurfaceData surface=(SurfaceData)0;surface.albedo=color.rgb*_BaseColor.rgb;surface.alpha=1;surface.smoothness=mask.a*_Smoothness;surface.occlusion=lerp(1,mask.g,_AO);surface.normalTS=normal;
- surface.emission=surface.albedo*_SoftFill+(_EmissionColor.rgb*lerp(1,.25+.75*pow(saturate(dot(n,view)),1.5),_EmissionShape)+_RimColor.rgb*rim)*_Charge;
+ surface.emission=surface.albedo*_SoftFill+(_EmissionColor.rgb*lerp(1,.25+.75*pow(saturate(dot(n,view)),1.5),_EmissionShape)+_RimColor.rgb*rim)*_Charge;surface.emission+=_LightingWisdomVisible*half3(.55,.42,1.05);
  half4 result=UniversalFragmentPBR(input,surface);result.rgb=MixFog(result.rgb,i.fog);return result;}
  half4 Depth(V i):SV_Target{Cut(i);return 0;}
  half4 Normals(V i):SV_Target{Cut(i);return half4(normalize(i.normalWS),0);}
@@ -84,6 +84,12 @@ Shader "LightingBlocks/Spectral Lit"
  #pragma multi_compile_instancing
  ENDHLSL }
  Pass {Name "ShadowCaster" Tags {"LightMode"="ShadowCaster"} ZWrite On ColorMask 0
+ HLSLPROGRAM
+ #pragma vertex Vert
+ #pragma fragment Depth
+ #pragma multi_compile_instancing
+ ENDHLSL }
+ Pass {Name "LightingFogMask" Tags {"LightMode"="LightingFogMask"} ZWrite Off ZTest Equal ColorMask 0 Stencil {Ref 1 ReadMask 1 WriteMask 1 Comp Always Pass Replace}
  HLSLPROGRAM
  #pragma vertex Vert
  #pragma fragment Depth

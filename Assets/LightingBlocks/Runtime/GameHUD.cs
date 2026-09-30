@@ -156,7 +156,7 @@ namespace LightingBlocks
         public void SetView(ScreenView next)
         {
             View = next;
-            if (GameplayBlocked && game != null && game.player != null) game.player.Release();
+            if (GameplayBlocked && game != null && game.player != null) { game.player.Release(); game.player.CancelDash(); }
             Time.timeScale = SimulationPaused ? 0 : previousTimeScale;
             AudioListener.pause = SimulationPaused || previousAudioPause;
             if (canvas == null) return;
@@ -211,12 +211,12 @@ namespace LightingBlocks
             var location = Heading("Location Title", playRoot.transform, diamond + "  " + Spaced("THE SPIRIT PATH") + "  " + diamond,
                 0, 0, 760, 34, 21, Mint, TextAnchor.MiddleCenter).rectTransform;
             location.anchorMin = location.anchorMax = new Vector2(.5f, 1); location.pivot = new Vector2(.5f, 1); location.anchoredPosition = new Vector2(0, -14);
-            // Resources sit under the Souls wallet so the whole top-left column reads as one stack.
+            // Resources sit under the active Lighting wallet or legacy Souls wallet.
             var calls = Panel("Fragment Calls", playRoot.transform, 22, 162, 350, 152, Ink);
             Label("Call Heading", calls, diamond + "  RESOURCES", 18, 12, 314, 22, 15, Mint).fontStyle = FontStyle.Bold;
             particleText = Label("Particle Inventory", calls, "", 18, 40, 314, 52, 17, White);
             Label("Particle Help", calls, BridgeProfile.Current.isLighting
-                ? "Walk over particles to collect them.\nE near a receiver: 3 of a colour = 1 tile."
+                ? "Stand on the tile under a particle to collect it.\nChoose a free tile colour at any Wisdom Tree with E."
                 : "Walk over particles to collect them.\nE near a wisdom tree: 3 particles = 1 block.", 18, 96, 314, 46, 14, Muted);
             var mission = Panel("Current Objective", playRoot.transform, 22, 0, 430, 118, Ink);
             Bottom(mission, 22, 24, false);
@@ -239,11 +239,12 @@ namespace LightingBlocks
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
 
-            // This panel is above every modal so Souls is always visible, including during pause and skill selection.
-            var wallet = Panel("Souls Counter", canvas, 22, 20, 350, 132, Ink);
-            Label("Souls Label", wallet, diamond + "  SOULS", 20, 12, 310, 23, 15, Mint).fontStyle = FontStyle.Bold;
-            SoulsText = Label("Souls Amount", wallet, "0.0", 20, 37, 310, 52, 40, White);
-            incomeText = Label("Souls Income", wallet, "+0.0 / sec", 20, 94, 310, 26, 16, Muted);
+            // This panel is above every modal so the active wallet stays visible during pause and skill selection.
+            bool lighting = BridgeProfile.Current.isLighting;
+            var wallet = Panel(lighting ? "Particle Counter" : "Souls Counter", canvas, 22, 20, 350, 132, Ink);
+            Label(lighting ? "Particle Wallet Label" : "Souls Label", wallet, diamond + (lighting ? "  PARTICLES" : "  SOULS"), 20, 12, 310, 23, 15, Mint).fontStyle = FontStyle.Bold;
+            SoulsText = Label(lighting ? "Particle Wallet Amount" : "Souls Amount", wallet, "0.0", 20, 37, 310, 52, 40, White);
+            incomeText = Label(lighting ? "Particle Gathering Help" : "Souls Income", wallet, lighting ? "ACTIVE GATHERING ONLY" : "+0.0 / sec", 20, 94, 310, 26, 16, Muted);
             // Equal rounded squares, the way the diorama concept stacks its icon buttons.
             navigation = Rect("Quick Menu", canvas, 0, 0, 218, 66).gameObject;
             var nav = navigation.GetComponent<RectTransform>(); nav.anchorMin = nav.anchorMax = new Vector2(1, 1); nav.pivot = new Vector2(1, 1); nav.anchoredPosition = new Vector2(-22, -20);
@@ -257,8 +258,7 @@ namespace LightingBlocks
             noticeText = Label("Action Feedback Text", feedback, "", 16, 8, 588, 68, 17, Mint, TextAnchor.MiddleCenter);
             if(BridgeProfile.Current.isLighting)
             {
-                // No floating world labels; the resources panel stays (it now shows the shared
-                // inventory and the nearest receiver instead of the legacy per-island count).
+                // No floating world labels; resource and particle wallet panels remain visible.
                 WorldLabelRoot.gameObject.SetActive(false);location.gameObject.SetActive(false);
                 mission.gameObject.SetActive(false);keycaps.gameObject.SetActive(false);
             }
@@ -268,7 +268,7 @@ namespace LightingBlocks
             var panel = CenterPanel("Title Menu", 600, 610); titlePanel = panel.gameObject;
             Label("Title Eyebrow", panel, "AT THE END OF THE UNIVERSE", 40, 35, 520, 26, 17, Mint, TextAnchor.MiddleCenter);
             Heading("Game Title", panel, "THE LAST\nSPARK", 30, 79, 540, 146, 64, White, TextAnchor.MiddleCenter);
-            Label("Game Lore", panel, "Build a path for the souls lost in the dark.\nCarry the light toward the next dawn.", 55, 244, 490, 65, 20, Muted, TextAnchor.MiddleCenter);
+            Label("Game Lore", panel, BridgeProfile.Current.isLighting ? "Gather particles and build a path through the void.\nCarry the light toward the next dawn." : "Build a path for the souls lost in the dark.\nCarry the light toward the next dawn.", 55, 244, 490, 65, 20, Muted, TextAnchor.MiddleCenter);
             startButton = Button("Begin Journey", panel, "BEGIN JOURNEY", 70, 332, 460, 58, BeginJourney);
             journeyLabel = startButton.GetComponentInChildren<Text>();
             newButton = Button("New Journey", panel, "NEW JOURNEY", 70, 400, 460, 48, () => ConfirmNew(ScreenView.Title));
@@ -279,7 +279,7 @@ namespace LightingBlocks
         {
             var panel = CenterPanel("Pause Menu", 540, 724); pausePanel = panel.gameObject;
             Heading("Pause Title", panel, "PAUSED", 30, 16, 480, 64, 38, White, TextAnchor.MiddleCenter);
-            Label("Pause Description", panel, "Your soul paths are resting.", 30, 84, 480, 32, 20, Muted, TextAnchor.MiddleCenter);
+            Label("Pause Description", panel, BridgeProfile.Current.isLighting ? "Your journey is paused." : "Your soul paths are resting.", 30, 84, 480, 32, 20, Muted, TextAnchor.MiddleCenter);
             resumeButton = Button("Resume", panel, "RESUME  [ESC]", 40, 137, 460, 56, () => SetView(ScreenView.Playing));
             Button("Pause Controls", panel, "CONTROLS", 40, 205, 460, 56, ShowControls);
             AudioSlider(panel,"Master",272);AudioSlider(panel,"Music",326);AudioSlider(panel,"Ambience",380);AudioSlider(panel,"Effects",434);
@@ -316,14 +316,14 @@ namespace LightingBlocks
             var panel = CenterPanel("Controls View", 850, 730); controlsPanel = panel.gameObject;
             Heading("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
             Label("Controls Subtitle", panel, "Keyboard and mouse", 32, 82, 786, 26, 18, Muted, TextAnchor.MiddleCenter);
-            // Lighting keeps only Speed and Soul Gain (hotkeys 1/2); the other three legacy powers,
+            // Lighting keeps Speed, Particle Yield, and Dash (hotkeys 1/2 plus Shift); the other legacy powers,
             // and Soul Links' click-to-gather grab mode, do not exist there.
             string[,] rows = BridgeProfile.Current.isLighting ? new[,] {
                 {"Move", "W / A / S / D"}, {"Carry block", "Hold Space"},
                 {"Place tile", "Release Space"}, {"Rotate / zoom camera", "Move mouse / wheel"},
-                {"Collect particles", "Walk over them"}, {"Deposit particle / enter next area", "E"},
+                {"Collect particles", "Stand on their supporting tile"}, {"Request matching free tile", "E at a Wisdom Tree"},
                 {"Return unused blocks", "R near a Wisdom Tree"}, {"Open / close skill tree", "Tab or K"},
-                {"Pause / resume / go back", "Esc"}, {"Speed", "1"}, {"Soul Gain", "2"},
+                {"Pause / resume / go back", "Esc"}, {"Speed", "1"}, {"Particle Yield", "2"}, {"Dash (after unlock)", "Shift"},
                 {"Fullscreen / expand Game view", "F1"}
             } : new[,] {
                 {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
@@ -335,7 +335,7 @@ namespace LightingBlocks
             };
             for (int i = 0; i < rows.GetLength(0); i++)
             {
-                var row = Panel("Control Row " + i, panel, 35, 124 + i * 41, 780, 40, i % 2 == 0 ? Card : Ink);
+                var row = Panel("Control Row " + i, panel, 35, 124 + i * 39, 780, 38, i % 2 == 0 ? Card : Ink);
                 Label("Action", row, rows[i, 0], 12, 0, 328, 40, 18, White, TextAnchor.MiddleLeft);
                 Label("Binding", row, rows[i, 1], 354, 0, 414, 40, 17, Mint, TextAnchor.MiddleLeft);
             }
@@ -383,17 +383,25 @@ namespace LightingBlocks
         public void RefreshUI()
         {
             if (SoulsText == null || game == null) return;
-            SoulsText.text = game.souls.ToString("N1", CultureInfo.InvariantCulture);
-            incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
+            if (BridgeProfile.Current.isLighting)
+            {
+                SoulsText.text = ForestWorld.For(game)?.SharedInventoryLabel ?? "0";
+                incomeText.text = SimulationPaused ? "PAUSED" : "ACTIVE GATHERING ONLY";
+            }
+            else
+            {
+                SoulsText.text = game.souls.ToString("N1", CultureInfo.InvariantCulture);
+                incomeText.text = SimulationPaused ? "PAUSED · " + game.ConnectedCount + " path blocks" : "+" + GameManager.Format(game.Rate) + " / sec · " + game.ConnectedCount + " connected";
+            }
             objectiveText.text = game.Objective;
             var forest = ForestWorld.For(game);
             if (particleText != null && forest != null && forest.State != null)
             {
                 particleText.text = BridgeProfile.Current.isLighting
-                    ? "Particles: " + forest.SharedInventory + " / " + ForestWorld.InventoryCapacity + "\n" + NearbyReceiverLabel(game)
+                    ? "Particles: " + forest.SharedInventoryLabel + "\n" + NearbyReceiverLabel(game)
                     : forest.InventoryLabel + "\n" + game.ConnectedCount + " path blocks";
             }
-            bool journey = game.ConnectedCount > 0 || game.souls > 0 || System.IO.File.Exists(game.SavePath);
+            bool journey = game.ConnectedCount > 0 || (BridgeProfile.Current.isLighting ? (ForestWorld.For(game)?.SharedInventory ?? 0) > 0 : game.souls > 0) || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
             feedbackPanel.SetActive(showFeedback); noticeText.text = showFeedback ? game.Notice : "";
@@ -421,17 +429,17 @@ namespace LightingBlocks
             foreach (var binding in purchases) UpdatePurchase(binding);
             if (skillTree != null) skillTree.Refresh();
         }
-        // Lighting only: the nearest deposit-reachable receiver's colour/charge, or a fallback when
+        // Lighting only: the nearest nearby tree selector's colour, or a fallback when
         // none is in range. Shared by the resources panel and the E-key context hint below.
         static string NearbyReceiverLabel(GameManager game)
         {
             var receiver = NearestReceiver(game);
-            return receiver != null ? BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " receiver " + receiver.Charge + " / 3" : "No receiver in reach";
+            return receiver != null ? BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " tile selector · E to request" : "Visit a Wisdom Tree for free tiles";
         }
         static string LightingDepositHint(GameManager game)
         {
             var receiver = NearestReceiver(game);
-            return receiver != null ? "E TO DEPOSIT\n" + BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " receiver " + receiver.Charge + " / 3" : game.LightingCarryHint;
+            return receiver != null ? "E TO REQUEST A FREE " + BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " TILE" : game.LightingCarryHint;
         }
         static ColorReceiver NearestReceiver(GameManager game)
         {

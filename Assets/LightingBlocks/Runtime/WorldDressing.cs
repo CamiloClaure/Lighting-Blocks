@@ -61,8 +61,9 @@ namespace LightingBlocks
                 if (steps == null) steps = game.gameObject.AddComponent<BridgeSteps>();
                 steps.enabled = true;
             }
-            // Bridge glow keeps working whether or not the legacy dressing pass ran.
-            foreach (var block in game.Blocks) StepLight(block);
+            // Bridge glow keeps working whether or not the legacy dressing pass ran. Lighting's load and
+            // start already painted every tile through Recalculate; a second pass is 2000 repaints.
+            if (!BridgeProfile.Current.isLighting) foreach (var block in game.Blocks) StepLight(block);
         }
 
         // ---- the Lighting void -------------------------------------------------------------
@@ -76,10 +77,11 @@ namespace LightingBlocks
             RenderSettings.fog = false;
             RenderSettings.ambientMode = AmbientMode.Flat;
             RenderSettings.ambientLight = new Color(.02f, .025f, .045f);
+            // Zero intensity alone still leaves URP drawing every tile into a 130 m shadow map for it.
             foreach (var light in Object.FindObjectsByType<Light>())
-                if (light.type == LightType.Directional) light.intensity = 0f;
+                if (light.type == LightType.Directional) { light.intensity = 0f; light.shadows = LightShadows.None; }
             if (game.cameraRig == null) return;
-            game.cameraRig.distance = 20f;
+            game.cameraRig.distance = 10f; // Lighting opens close; StrategyCamera lets the wheel go 10..42
             var bounds = CourtBounds();
             game.cameraRig.minimumFocus = new Vector2(bounds.min.x + 2, bounds.min.z + 2);
             game.cameraRig.bounds = new Vector2(bounds.max.x - 2, bounds.max.z - 2);
@@ -767,36 +769,44 @@ namespace LightingBlocks
             if (block == null) return;
             var existing = block.transform.Find("Step light");
             if (!block.placed) { if (existing != null) existing.gameObject.SetActive(false); return; }
-            Light light;
-            if (existing == null)
-            {
-                var obj = new GameObject("Step light");
-                obj.transform.SetParent(block.transform, false);
-                light = obj.AddComponent<Light>();
-                light.type = LightType.Point; light.shadows = LightShadows.None;
-            }
-            else { existing.gameObject.SetActive(true); light = existing.GetComponent<Light>(); }
-            var colour = StepColor(block.gap, block.row);
-            // A placed block is scaled 2 x .36 x 2, so the local offset has to divide that out.
-            float lift = Mathf.Max(.01f, block.transform.localScale.y);
-            light.transform.localPosition = new Vector3(0, .85f / lift, 0);
-            light.color = colour;
-            var breath = light.GetComponent<Breath>();
-            if (breath == null) breath = light.gameObject.AddComponent<Breath>();
-            // Phase off where the block sits, so the crossing ripples instead of pulsing as one.
-            breath.phase = .7f * (block.transform.position.x + block.transform.position.z);
             if (BridgeProfile.Current.occupancyLight)
             {
                 // Occupancy owns the light level here: no connected/unconnected constants, only the fade.
+                // A tile nobody has stood on has no light object at all (StepGlow makes it on the first
+                // step), so a big network is not thousands of idle lights to build at load.
+                if (existing != null) Lamp(block, existing.gameObject);
                 StepGlow(block, block.lit);
             }
             else
             {
+                var light = Lamp(block, existing != null ? existing.gameObject : null);
                 light.range = block.Connected ? 6.8f : 3.4f;
                 light.intensity = block.Connected ? 4.4f : 1f;
-                breath.baseIntensity = light.intensity;
+                light.GetComponent<Breath>().baseIntensity = light.intensity;
             }
-            Seams(block, colour);
+            Seams(block, StepColor(block.gap, block.row));
+        }
+        // The tile's own point light, created when missing, placed and tinted for its cell.
+        static Light Lamp(BridgeBlock block, GameObject obj)
+        {
+            Light light;
+            if (obj == null)
+            {
+                obj = new GameObject("Step light");
+                obj.transform.SetParent(block.transform, false);
+                light = obj.AddComponent<Light>();
+                light.type = LightType.Point; light.shadows = LightShadows.None;
+            }
+            else { obj.SetActive(true); light = obj.GetComponent<Light>(); }
+            // A placed block is scaled 2 x .36 x 2, so the local offset has to divide that out.
+            float lift = Mathf.Max(.01f, block.transform.localScale.y);
+            light.transform.localPosition = new Vector3(0, .85f / lift, 0);
+            light.color = StepColor(block.gap, block.row);
+            var breath = light.GetComponent<Breath>();
+            if (breath == null) breath = light.gameObject.AddComponent<Breath>();
+            // Phase off where the block sits, so the crossing ripples instead of pulsing as one.
+            breath.phase = .7f * (block.transform.position.x + block.transform.position.z);
+            return light;
         }
         // Scales the step light and the emission of a placed block by how lit it is (0 dark, 1 full).
         // Occupancy lighting only; called from StepLight under the profile gate and from BridgeSteps
@@ -805,6 +815,7 @@ namespace LightingBlocks
         {
             if (block == null) return;
             var existing = block.transform.Find("Step light");
+            if (existing == null && lit > 0f && block.placed) existing = Lamp(block, null).transform; // first step on this tile
             if (existing != null)
             {
                 var light = existing.GetComponent<Light>();

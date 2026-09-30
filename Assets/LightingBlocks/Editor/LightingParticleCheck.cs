@@ -23,6 +23,8 @@ namespace LightingBlocks.Editor
         static void Assert(bool value,string message){if(!value)throw new Exception(message);report.AppendLine("PASS: "+message);}
         static void Poll()
         {
+            // Library/LightingParticleCheck.request runs it from an open editor, like the integration check.
+            if(!running&&!capturePending&&!EditorApplication.isPlayingOrWillChangePlaymode&&!EditorApplication.isCompiling&&File.Exists("Library/LightingParticleCheck.request")){AssetDatabase.Refresh();if(EditorApplication.isCompiling)return;File.Delete("Library/LightingParticleCheck.request");Batch();return;}
             if(capturePending)
             {
                 if(++frames<10)return;capturePending=false;
@@ -48,222 +50,167 @@ namespace LightingBlocks.Editor
             if(Application.isBatchMode)EditorApplication.Exit(ok?0:1);else EditorApplication.isPlaying=false;
         }
         static void Teleport(GameManager game,Vector3 position){var c=game.player.GetComponent<CharacterController>();c.enabled=false;game.player.transform.position=position;c.enabled=true;Physics.SyncTransforms();}
+        static BridgeBlock PlaceTestTile(GameManager game)
+        {
+            var candidates=new Dictionary<Vector2Int,Vector3>();var connected=LightingBridgeGrid.Connected(game);
+            var supportedPoints=new List<Vector3>();
+            foreach(var cell in connected)supportedPoints.Add(LightingBridgeGrid.Cell(cell.x,cell.y));
+            foreach(var platform in PlatformSupport.ActivePlatforms)
+            {
+                if(platform==null||platform.Surface==null)continue;var b=platform.Surface.bounds;
+                int x0=Mathf.FloorToInt((b.min.x-8)/LightingBridgeGrid.CellSize),x1=Mathf.CeilToInt((b.max.x+8)/LightingBridgeGrid.CellSize);
+                int z0=Mathf.FloorToInt((b.min.z-8)/LightingBridgeGrid.CellSize),z1=Mathf.CeilToInt((b.max.z+8)/LightingBridgeGrid.CellSize);
+                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)
+                {
+                    var cell=new Vector2Int(x,z);if(!LightingBridgeGrid.IsFrontier(game,cell)||LightingBridgeGrid.HasObstruction(cell,game))continue;
+                    var target=LightingBridgeGrid.Cell(x,z);
+                    var stand=new Vector3(Mathf.Clamp(target.x,b.min.x,b.max.x),.025f,Mathf.Clamp(target.z,b.min.z,b.max.z));
+                    if(game.CanStand(stand))candidates[cell]=stand;
+                }
+            }
+            foreach(var support in supportedPoints)
+            {
+                var origin=LightingBridgeGrid.CellOf(support);
+                for(int x=origin.x-2;x<=origin.x+2;x++)for(int z=origin.y-2;z<=origin.y+2;z++)
+                {
+                    var cell=new Vector2Int(x,z);var target=LightingBridgeGrid.Cell(x,z);var delta=target-support;delta.y=0;
+                    if(delta.magnitude<=4f&&LightingBridgeGrid.IsFrontier(game,cell)&&!LightingBridgeGrid.HasObstruction(cell,game))candidates[cell]=support;
+                }
+            }
+            var ordered=candidates.OrderBy(pair=>(LightingBridgeGrid.Cell(pair.Key.x,pair.Key.y)-pair.Value).sqrMagnitude).ThenBy(pair=>ForestLayoutGenerator.Hash(1907,pair.Key.x+"/"+pair.Key.y)).ToList();
+            foreach(var candidate in ordered)
+            {
+                Teleport(game,candidate.Value);
+                int tier=GameManager.RequiredTier(0,candidate.Key.x,candidate.Key.y);
+                if(!game.TrySpawnAtWisdomTree("island-1",out var block,tier))continue;
+                block.transform.position=LightingBridgeGrid.Cell(candidate.Key.x,candidate.Key.y);block.Box.Body.position=block.transform.position;Physics.SyncTransforms();
+                if(game.TryPlace(block))return block;
+                ForestWorld.Remove(block.gameObject);
+            }
+            throw new Exception("Could not build a supported test tile at a reachable hub or connected frontier");
+        }
+        static void CheckActualVoidLayout(ForestWorld forest)
+        {
+            var all=forest.State.islands.SelectMany(owner=>owner.slots.Select(slot=>(owner.id,slot))).ToArray();
+            int slots=forest.configuration.islands.Sum(i=>i.ParticleCount);
+            Assert(all.Length==slots&&slots==120,"The live scene has all "+slots+" particle slots (40 per hub)");
+            // Slots the ring could not fit yet wait, pending, for the respawn loop; only placed ones are laid out.
+            all=all.Where(a=>!a.slot.pending).ToArray();
+            Assert(all.Length>72,"More than the old 72 particles sit in the void at once ("+all.Length+")");
+            bool spaced=true;for(int a=0;a<all.Length;a++)for(int b=a+1;b<all.Length;b++)if((all[a].slot.position-all[b].slot.position).sqrMagnitude<16f)spaced=false;
+            Assert(spaced,"All live-scene particles remain globally spaced by at least four metres");
+            var distances=new List<int>();var sectorsPerHub=new List<int>();
+            foreach(var owner in forest.State.islands)
+            {
+                var footprints=PlatformSupport.ActivePlatforms.Where(p=>p!=null&&p.hubId==owner.id&&p.Surface!=null).Select(p=>p.Surface.bounds).ToArray();
+                Assert(footprints.Length>0,"Live hub "+owner.id+" has support bounds for void placement");
+                var bounds=footprints[0];foreach(var extra in footprints.Skip(1))bounds.Encapsulate(extra);
+                int x0=Mathf.FloorToInt((bounds.min.x-12)/LightingBridgeGrid.CellSize),x1=Mathf.CeilToInt((bounds.max.x+12)/LightingBridgeGrid.CellSize);
+                int z0=Mathf.FloorToInt((bounds.min.z-12)/LightingBridgeGrid.CellSize),z1=Mathf.CeilToInt((bounds.max.z+12)/LightingBridgeGrid.CellSize);
+                var steps=new Dictionary<Vector2Int,int>();var queue=new Queue<Vector2Int>();
+                for(int x=x0;x<=x1;x++)for(int z=z0;z<=z1;z++)
+                {
+                    var cell=new Vector2Int(x,z);if(LightingBridgeGrid.OverlapsPlatform(cell)||!LightingBridgeGrid.TouchesHub(cell,owner.id))continue;
+                    steps[cell]=1;queue.Enqueue(cell);
+                }
+                while(queue.Count>0)
+                {
+                    var cell=queue.Dequeue();int step=steps[cell];if(step>=6)continue;
+                    foreach(var next in LightingBridgeGrid.NeighborsOf(cell))if(next.x>=x0&&next.x<=x1&&next.y>=z0&&next.y<=z1&&!steps.ContainsKey(next)&&!LightingBridgeGrid.OverlapsPlatform(next)){steps[next]=step+1;queue.Enqueue(next);}
+                }
+                var radialSectors=new HashSet<int>();
+                foreach(var slot in owner.slots)
+                {
+                    if(slot.pending)continue;
+                    if(steps.TryGetValue(LightingBridgeGrid.CellOf(slot.position),out int step))distances.Add(step);else distances.Add(-1);
+                    var radial=slot.position-bounds.center;radialSectors.Add(Mathf.Clamp(Mathf.FloorToInt(Mathf.Repeat(Mathf.Atan2(radial.z,radial.x)+Mathf.PI,Mathf.PI*2)/(Mathf.PI*2)*8),0,7));
+                }
+                sectorsPerHub.Add(radialSectors.Count);
+            }
+            Assert(distances.Count==all.Length&&distances.All(step=>step>=2&&step<=6),"Every live-scene particle is two to six orthogonal grid tiles from a hub frontier (the extra slots use the 5-6 ring)");
+            Assert(sectorsPerHub.All(count=>count>=6),"Live particles are distributed around at least six sectors of each hub edge");
+            var starter=forest.State.islands[0].slots[0];
+            Assert(Vector3.Distance(starter.position,new Vector3(0,0,3))<=12f,"The deterministic live-scene starter particle is visible within twelve metres of spawn");
+        }
         static void Run(GameManager game)
         {
             var forest=ForestWorld.For(game);var system=game.GetComponent<LightingParticles>();
-            Assert(system!=null&&system.Receivers.Count==9,"Three color receivers per tree");
-            // LightingIntegrationCheck.RunChecks (just ran) leaves its own save round-trip state
-            // behind (forest.State.inventory==7); start from a known-clean slate here instead.
-            forest.State.inventory=0;
-            var sampleBlock=new MaterialPropertyBlock();forest.PickupVisuals[0].GetComponent<Renderer>().GetPropertyBlock(sampleBlock);
-            Assert(sampleBlock.GetColor("_BaseColor")==LightingParticles.ParticleColor,"Fundamental particles are painted the shared warm yellow (#FFD66B)");
-
-            // ---- walk-over pickup: 1.1-unit radius, pause/blocked-gameplay, capacity -----------------
-            var audio=game.GetComponent<LightingPickupAudio>();Assert(audio!=null&&audio.clips.All(c=>c!=null),"All four pickup clips are wired");int pickupSounds=audio.PlaybackCount;
+            Assert(system!=null&&system.Receivers.Count==9,"Three near-tree free color selectors per Wisdom Tree");
+            Assert(ForestWorld.ParticleUnitsPerParticle==4,"One particle is stored as four integer quarter units");
+            Assert(ForestWorld.FormatParticleUnits(0)=="0"&&ForestWorld.FormatParticleUnits(4)=="1"&&ForestWorld.FormatParticleUnits(5)=="1.25"&&ForestWorld.FormatParticleUnits(6)=="1.5"&&ForestWorld.FormatParticleUnits(7)=="1.75"&&ForestWorld.FormatParticleUnits(8)=="2","Quarter-particle wallet formatting is exact");
+            CheckActualVoidLayout(forest);
             var island=forest.configuration.islands[0];var owner=forest.Inventory(island.id);var slot=owner.slots[0];
+            Assert(forest.PickupVisuals.Count==forest.State.islands.Sum(i=>i.slots.Count),"Every saved void particle has one visual");
+            Assert(forest.PickupVisuals.All(t=>!LightingBridgeGrid.OverlapsPlatform(LightingBridgeGrid.CellOf(t.position))),"Visible particle positions stay outside every hub platform");
+            var sampleBlock=new MaterialPropertyBlock();forest.PickupVisuals[0].GetComponent<Renderer>().GetPropertyBlock(sampleBlock);
+            Assert(sampleBlock.GetColor("_BaseColor")==LightingParticles.ParticleColor,"Particles share the warm yellow material color");
+
+            // Wallet accepts quarter units without the former 30-particle cap.
+            forest.State.inventory=124;
+            Assert(forest.TryAddInventory(4)&&forest.SharedInventory==128&&forest.SharedInventoryLabel=="32","Particle wallet grows beyond thirty particles");
+            Assert(forest.TrySpendInventory(1)&&forest.SharedInventoryLabel=="31.75","Spending one quarter keeps fractional balance exact");
+            Assert(forest.TrySpendInventory(127)&&forest.SharedInventory==0,"Wallet spends integer quarter units exactly");
+            int beforeDeposit=forest.SharedInventory;
+            Assert(forest.Deposit(island.id,0)==ForestWorld.DepositResult.Empty&&forest.SharedInventory==beforeDeposit,"Legacy deposit calls cannot charge particles in Lighting");
+
+            int unsupportedIndex=owner.slots.FindIndex(s=>PlatformSupport.At(s.position)==null&&game.BlockUnder(s.position)==null);
+            Assert(unsupportedIndex>=0,"At least one initial void particle remains above unsupported ground");
+            slot=owner.slots[unsupportedIndex];var pickupVisual=forest.PickupVisuals[unsupportedIndex];
+            var audio=game.GetComponent<LightingPickupAudio>();Assert(audio!=null&&audio.clips.All(c=>c!=null),"All four pickup clips are wired");
             slot.remaining=0;slot.pending=false;
-            Teleport(game,slot.position+Vector3.right*100);
-            Assert(!forest.TryCollect(0),"Out-of-range walk-over pickup fails");
-            Teleport(game,slot.position+Vector3.right*.7f);
-            GameHUD.Current.ShowPause();
-            Assert(!forest.TryCollect(0),"Paused/blocked gameplay prevents collection");
-            GameHUD.Current.BeginJourney();
-            Assert(forest.TryCollect(0)&&forest.SharedInventory==1,"In-range pickup adds one particle to the shared inventory");
-            Assert(!forest.TryCollect(0),"Already-collected particle cannot be collected twice");
-            Assert(audio.PlaybackCount==pickupSounds+1,"Exactly one pickup sound for one successful collection; failed and duplicate pickups are silent");
-            forest.State.inventory=28;
-            Assert(!forest.TryAddInventory(3)&&forest.SharedInventory==28,"A refund that cannot fully fit is rejected, not partially applied");
-            Assert(forest.TryAddInventory(2)&&forest.SharedInventory==30,"A refund that exactly fits is applied");
-            var secondSlot=owner.slots[1];secondSlot.remaining=0;secondSlot.pending=false;Teleport(game,secondSlot.position+Vector3.right*.7f);
-            Assert(!forest.TryCollect(1)&&secondSlot.remaining==0,"A full shared inventory (30/30) refuses a pickup and leaves the world particle uncollected");
-            forest.State.inventory=0;
+            Teleport(game,slot.position);
+            Assert(!forest.TryCollect(unsupportedIndex)&&slot.remaining==0,"A void particle cannot be collected without standing on its supporting tile");
+            GameHUD.Current.ShowPause();Assert(!forest.TryCollect(unsupportedIndex),"Paused gameplay prevents collection");GameHUD.Current.BeginJourney();
+            var tree=forest.WisdomTrees[0];
+            var support=PlaceTestTile(game);
+            slot.position=support.transform.position;pickupVisual.gameObject.SetActive(true);audio.ResetSequence();
+            int[] yieldLevels={0,1,8};
+            foreach(int level in yieldLevels)
+            {
+                game.soulGainLevel=level;slot.remaining=0;slot.pending=false;slot.position=support.transform.position;
+                pickupVisual.position=slot.position+Vector3.up*.7f;pickupVisual.gameObject.SetActive(true);
+                Teleport(game,support.transform.position+Vector3.up*.205f);int before=forest.SharedInventory;int plays=audio.PlaybackCount;
+                Assert(forest.TryCollect(unsupportedIndex)&&forest.SharedInventory-before==4+level,"Pickup on a real connected tile yields "+(1+level*.25f).ToString("0.00")+" particles at Particle Yield "+level);
+                Assert(audio.PlaybackCount==plays+1,"Each successful pickup plays exactly one pickup voice");
+            }
+            Assert(slot.remaining==ForestWorld.LightingRespawnSeconds,"Collected particle enters the "+ForestWorld.LightingRespawnSeconds+"-second cooldown");
+            forest.Tick(ForestWorld.LightingRespawnSeconds-.1f,false);Assert(slot.remaining>0&&!slot.pending,"Pickup remains unavailable until its cooldown expires");
+            forest.Tick(.2f,false);for(int retry=0;slot.pending&&retry<12;retry++)forest.Tick(.51f,false);
+            Assert(!slot.pending&&slot.remaining==0&&slot.generation>0,"Expired pickup respawns successfully after bounded retries");
+            var connected=LightingBridgeGrid.Connected(game);var respawnCell=LightingBridgeGrid.CellOf(slot.position);
+            int pathDistance=connected.Min(c=>Math.Abs(c.x-respawnCell.x)+Math.Abs(c.y-respawnCell.y));
+            Assert(pathDistance>=2&&pathDistance<=4&&!LightingBridgeGrid.OverlapsPlatform(respawnCell),"Respawn lands two to four grid cells beyond the reachable bridge frontier");
 
-            // ---- focus loss blocks pickup: ForestWorld.Update passes collect=Application.isFocused,
-            // Tick(delta,collect) is the actual gate - exercise it directly, since a batch process has
-            // no real OS window to unfocus. ------------------------------------------------------------
-            var focusSlot=owner.slots[2];focusSlot.remaining=0;focusSlot.pending=false;Teleport(game,focusSlot.position+Vector3.right*.7f);
-            forest.Tick(1f,false);
-            Assert(forest.SharedInventory==0&&focusSlot.remaining==0,"Tick(collect:false) - the focus-loss path - does not collect a walked-over particle");
-            int soundBeforeFocus=audio.PlaybackCount;
-            forest.Tick(1f,true);
-            Assert(forest.SharedInventory==1&&focusSlot.remaining>0,"Tick(collect:true) collects it once focus (or the equivalent gate) returns");
-            forest.State.inventory=0;
-
-            Assert(audio.PlaybackCount==soundBeforeFocus+1,"Focus recovery collection plays one pickup sound");
-            int soundsBeforeDeposits=audio.PlaybackCount;
-            // ---- E-key deposit targeting: range, unobstructed path, nearest-of-several -------------
-            forest.State.inventory=10;
-            var blue=system.Receivers[0];var violet=system.Receivers[1];var amber=system.Receivers[2];
-            Assert(blue.Tree.Definition.id==island.id,"Island-1's tree receivers come first, in colour order");
-            Teleport(game,blue.transform.position+Vector3.right*100);
-            Assert(!system.TryDeposit(game.player),"Out-of-range receiver is not reached by E");
-            // Stand a metre off to the side (still well inside the 1.5-unit range) rather than
-            // exactly on top of the receiver, so the obstruction sits on a real outside-in ray
-            // instead of starting the raycast from inside the obstacle's own geometry.
-            Teleport(game,new Vector3(blue.transform.position.x,.025f,blue.transform.position.z)+Vector3.right*1f);
-            var origin=game.player.transform.position+Vector3.up*.7f;
-            var obstruction=GameObject.CreatePrimitive(PrimitiveType.Cube);obstruction.transform.localScale=Vector3.one*.5f;
-            obstruction.transform.position=Vector3.Lerp(origin,blue.transform.position,.5f);Physics.SyncTransforms();
-            Assert(!system.TryDeposit(game.player),"An obstructed path to an in-range receiver is refused");
-            obstruction.SetActive(false);UnityEngine.Object.Destroy(obstruction);Physics.SyncTransforms();
-            // Receivers sit 2.1 units apart (phase 2 spaces them further), so only one is ever in
-            // range at once here; this still proves Nearest() singles out the correct in-range
-            // receiver among all nine rather than any nearby-but-out-of-range one.
-            var nearestPick=system.Nearest(game.player.transform.position+Vector3.up*.7f,LightingParticles.DepositRange,game.player.transform);
-            Assert(nearestPick==blue,"Deposit resolves to the one reachable receiver, ignoring farther/out-of-range ones");
-
-            // ---- independent per-receiver charge (spec example: 2 blue + 1 amber => blue 2/3, amber 1/3) --
-            Assert(system.TryDeposit(game.player)&&blue.Charge==1&&forest.SharedInventory==9,"First deposit charges blue to 1/3 and spends one shared particle");
-            Assert(system.TryDeposit(game.player)&&blue.Charge==2,"Second deposit charges blue to 2/3");
-            Assert(amber.Deposit()&&amber.Charge==1,"An amber deposit charges amber independently, to 1/3");
-            Assert(violet.Charge==0&&blue.Charge==2&&amber.Charge==1,"Blue 2/3 and amber 1/3 - receivers never share one bank");
-
-            // ---- full receivers reject deposits; blocked outputs retain charge and queue entry -------
-            Assert(blue.Deposit()&&blue.Charge==3&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{0}),"Third blue deposit fills it to 3/3 and queues one blue reward");
-            int inventoryBeforeReject=forest.SharedInventory;
-            Assert(!blue.Deposit()&&blue.Charge==3&&forest.SharedInventory==inventoryBeforeReject,"A full receiver rejects further deposits and spends nothing");
-            var obstacles=island.outputOffsets.Select(offset=>{var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;o.transform.localScale=Vector3.one*.8f;return o;}).ToArray();Physics.SyncTransforms();
-            int blocksBefore=game.Blocks.Count;blue.Tree.Tick(1);
-            Assert(blue.Charge==3&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{0})&&game.Blocks.Count==blocksBefore,"A blocked output retains the receiver's charge and its queue entry");
-            foreach(var o in obstacles){o.SetActive(false);UnityEngine.Object.Destroy(o);}Physics.SyncTransforms();
-            blue.Tree.Tick(1);
-            Assert(blue.Charge==0&&owner.rewards.Count==0&&game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==0,"Clearing the output releases exactly one blue tile and consumes charge only now");
-            blue.Tree.Tick(1);Assert(game.Blocks.Count==blocksBefore+1,"No duplicate tile once the queue is empty");
-            Assert(amber.Charge==1,"Amber's still-partial charge was untouched by blue's production");
-
-            // ---- simultaneous completions: processed in completion order (FIFO), one per charge cycle --
-            for(int n=0;n<3;n++)Assert(violet.Deposit(),"Violet deposit "+n+" toward a simultaneous completion");
-            for(int n=0;n<2;n++)amber.Deposit(); // amber was already at 1/3; two more complete it in the same frame as violet
-            Assert(violet.Charge==3&&amber.Charge==3&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{1,2}),"Two receivers completed back-to-back queue in the order they completed");
-            blocksBefore=game.Blocks.Count;blue.Tree.Tick(1);
-            Assert(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==1&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{2}),"The earlier (violet) completion produces first");
-            blue.Tree.Tick(1);
-            Assert(game.Blocks.Count==blocksBefore+2&&game.Blocks.Last().tier==2&&owner.rewards.Count==0,"The later (amber) completion produces second, queue now empty");
-
-            Assert(audio.PlaybackCount==soundsBeforeDeposits,"Deposits and tile rewards do not play the pickup chime");
-            // ---- reload while a completed receiver's reward is still queued (mid-charge): no lost or
-            // duplicate tile. Only charge/queue are saved - WisdomTree's own 0.6s animation timer is
-            // not, so a reload simply restarts that countdown once Tick sees the queue again. -----------
-            forest.State.inventory=3;
-            Assert(blue.Deposit()&&blue.Deposit()&&blue.Deposit()&&blue.Charge==3&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{0}),"Blue fills to 3/3 and queues a reward again, for the reload check");
-            blue.Tree.Tick(.3f); // partial tick: Charging (remaining>0), no tile created yet
-            Assert(blue.Tree.Charging&&owner.rewards.Select(q=>q.color).SequenceEqual(new[]{0})&&blue.Charge==3,"Mid-charge: queue entry and charge both still held, no tile created yet");
-            string midCharge=game.ExportSave();int blocksBeforeReload=game.Blocks.Count;
-            Assert(game.ImportSave(midCharge),"A save taken mid-charge (queued reward, receiver still full) reloads");
-            var reloadedOwner=forest.Inventory(island.id);var reloadedBlue=system.Receivers[0];
-            Assert(reloadedOwner.charge[0]==3&&reloadedOwner.rewards.Select(q=>q.color).SequenceEqual(new[]{0})&&!reloadedBlue.Tree.Charging,"Charge and queue survive the reload exactly - only the un-saved charge timer resets");
-            reloadedBlue.Tree.Tick(1f);
-            Assert(game.Blocks.Count==blocksBeforeReload+1&&reloadedOwner.charge[0]==0&&reloadedOwner.rewards.Count==0,"Completing the reward after reload releases exactly one tile - no loss, no duplicate");
-
-            // ---- migration: particleVersion 1 -> 2, coloured + uncoloured banked rewards and leftovers --
-            string fresh=game.ExportSave();
-            var v1=JsonUtility.FromJson<GameManager.SaveData>(fresh);v1.forest.particleVersion=1;
-            v1.forest.islands[0].treeCharge=8;v1.forest.islands[0].hasChargeColor=true;v1.forest.islands[0].chargeColor=1;v1.forest.islands[0].inventory=4;
-            v1.forest.islands[1].treeCharge=5;v1.forest.islands[1].hasChargeColor=false;v1.forest.islands[1].inventory=6;
-            v1.forest.islands[2].treeCharge=0;v1.forest.islands[2].inventory=0;
-            Assert(game.ImportSave(JsonUtility.ToJson(v1)),"A particleVersion-1 save migrates to 3");
-            var m0=forest.Inventory(forest.configuration.islands[0].id);var m1=forest.Inventory(forest.configuration.islands[1].id);
-            Assert(m0.rewards.Select(q=>q.color).SequenceEqual(new[]{1,1})&&m0.charge[1]==2,"8 banked violet charge becomes two queued violet rewards plus a 2/3 violet leftover");
-            Assert(m1.rewards.Select(q=>q.color).SequenceEqual(new[]{-1})&&m1.charge.All(c=>c==0),"5 banked, uncoloured charge becomes one uncoloured (-1) queued reward, no leftover charge");
-            Assert(!m0.hasChargeColor&&m0.treeCharge==0&&!m1.hasChargeColor&&m1.treeCharge==0,"Legacy bank fields are cleared once migrated");
-            Assert(forest.SharedInventory==4+6+2,"Unspent island inventories and uncoloured leftover (5%3=2) combine into the shared inventory");
-
-            // Drain banked rewards, including one after completing the leftover receiver.
-            var migratedTree=system.Receivers[1].Tree;
-            foreach(var b in game.Blocks)b.transform.position+=Vector3.right*100;Physics.SyncTransforms();
-            int migratedBefore=game.Blocks.Count;
-            migratedTree.Tick(1);
-            Assert(m0.charge[1]==2&&m0.rewards.Count==1&&game.Blocks.Count==migratedBefore+1,"Migrated reward never erases partial receiver charge");
-            Assert(forest.Deposit(island.id,1)==ForestWorld.DepositResult.Success,"Leftover receiver accepts its third particle");
-            migratedTree.Tick(1);
-            Assert(m0.charge[1]==3&&m0.rewards.Count==1&&m0.rewards[0].consumesCharge,"Banked reward never consumes newly completed receiver charge");
-            migratedTree.Tick(1);
-            Assert(m0.charge[1]==0&&m0.rewards.Count==0&&game.Blocks.Count==migratedBefore+3,"Receiver-backed reward consumes charge exactly once after banked rewards");
-            var receiverBlock=new MaterialPropertyBlock();system.Receivers[1].GetComponent<Renderer>().GetPropertyBlock(receiverBlock);
-            Assert(receiverBlock.GetColor("_EmissionColor")==LightingParticles.Colors[1]*.55f,"Receiver brightness resets immediately after producing its tile");
-
-            var v2=JsonUtility.FromJson<GameManager.SaveData>(fresh);v2.forest.particleVersion=2;
-            foreach(var entry in v2.forest.islands){entry.queue.Clear();entry.rewards.Clear();entry.charge=new int[3];}
-            v2.forest.islands[0].queue=new List<int>{1,1,1};v2.forest.islands[0].charge[1]=3;
-            Assert(game.ImportSave(JsonUtility.ToJson(v2)),"Version 2 full receiver migrates");
-            var v2owner=forest.Inventory(island.id);
-            Assert(v2owner.rewards.Select(q=>q.color).SequenceEqual(new[]{1,1,1})&&v2owner.rewards.Select(q=>q.consumesCharge).SequenceEqual(new[]{false,false,true}),"Only the last matching v2 reward is receiver-backed");
-            Assert(game.ImportSave(game.ExportSave())&&forest.State.particleVersion==3,"Version 3 migration is stable on reload");
-
-            // ---- migration: particleVersion 0 -> 2, chained through 1 --------------------------------
-            var v0=JsonUtility.FromJson<GameManager.SaveData>(fresh);v0.forest.particleVersion=0;
-            v0.forest.islands[0].inventory=7;v0.forest.islands[1].inventory=0;v0.forest.islands[2].inventory=0;
-            Assert(game.ImportSave(JsonUtility.ToJson(v0)),"A particleVersion-0 save migrates all the way to 3 (chained through 1)");
-            var m0v0=forest.Inventory(forest.configuration.islands[0].id);
-            Assert(m0v0.rewards.Count==0&&m0v0.charge.All(c=>c==0)&&forest.SharedInventory==7,
-                "7 raw v0 particles remain unspent in shared inventory");
-
-            // ---- migration: unspent island inventories can combine into an over-capacity shared total --
-            var v1c=JsonUtility.FromJson<GameManager.SaveData>(fresh);v1c.forest.particleVersion=1;
-            v1c.forest.islands[0].treeCharge=0;v1c.forest.islands[0].inventory=25;
-            v1c.forest.islands[1].treeCharge=0;v1c.forest.islands[1].inventory=25;
-            v1c.forest.islands[2].treeCharge=0;v1c.forest.islands[2].inventory=0;
-            Assert(game.ImportSave(JsonUtility.ToJson(v1c)),"Combined island inventories exceeding capacity still migrate");
-            Assert(forest.SharedInventory==50,"Migrated balances may exceed capacity (50 > "+ForestWorld.InventoryCapacity+")");
-            Assert(!forest.TryAddInventory(1),"An over-capacity shared inventory refuses new collection");
-            Assert(forest.TrySpendInventory(21)&&forest.SharedInventory==29,"An over-capacity shared inventory can still be spent");
-            Assert(forest.TryAddInventory(1)&&forest.SharedInventory==30,"Collection resumes once back under capacity");
-
-            // ---- migration preserves respawn state, IDs and positions untouched by the bank rewrite ---
-            var v1b=JsonUtility.FromJson<GameManager.SaveData>(fresh);v1b.forest.particleVersion=1;
-            string pendingId=v1b.forest.islands[0].slots[3].id;v1b.forest.islands[0].slots[3].remaining=0;v1b.forest.islands[0].slots[3].pending=true;
-            Assert(game.ImportSave(JsonUtility.ToJson(v1b)),"A particleVersion-1 save with a mid-respawn fragment migrates");
-            var pendingSlot=forest.Inventory(island.id).slots.First(s=>s.id==pendingId);
-            Assert(pendingSlot.pending,"A pending (mid-respawn) fragment survives the particle-bank migration untouched");
-
-            // ---- save round-trip for the new v2 fields ------------------------------------------------
-            forest.State.inventory=17;
-            forest.Inventory(forest.configuration.islands[0].id).charge=new[]{2,0,1};
-            forest.Inventory(forest.configuration.islands[0].id).rewards=new List<ParticleRewardSave>{new ParticleRewardSave{color=0},new ParticleRewardSave{color=-1},new ParticleRewardSave{color=2}};
-            forest.Inventory(forest.configuration.islands[1].id).charge=new[]{0,3,0};
-            forest.Inventory(forest.configuration.islands[1].id).rewards=new List<ParticleRewardSave>{new ParticleRewardSave{color=1,consumesCharge=true}};
-            string roundTrip=game.ExportSave();
-            // Perturb every field the asserts below check - a match afterward proves ImportSave
-            // actually restored it from the string, not that it was merely left alone.
-            forest.State.inventory=0;forest.Inventory(forest.configuration.islands[0].id).charge=new[]{0,0,0};forest.Inventory(forest.configuration.islands[0].id).rewards.Clear();
-            forest.Inventory(forest.configuration.islands[1].id).charge=new[]{0,0,0};
-            Assert(game.ImportSave(roundTrip),"A hand-built v3 save reloads");
-            Assert(forest.SharedInventory==17,"Shared inventory round-trips exactly");
-            Assert(forest.Inventory(forest.configuration.islands[0].id).charge.SequenceEqual(new[]{2,0,1}),"Per-colour receiver charges round-trip exactly");
-            Assert(forest.Inventory(forest.configuration.islands[0].id).rewards.Select(q=>q.color).SequenceEqual(new[]{0,-1,2}),"The ordered pending-reward queue (including an uncoloured -1 entry) round-trips exactly");
-            Assert(forest.Inventory(forest.configuration.islands[1].id).charge[1]==3,"A second island's independent charge round-trips exactly");
-
-            // ---- Space still only carries bridge blocks - no particle/block grab arbitration left ----
-            Assert(game.TrySpawnAtWisdomTree(island.id,out var looseBlock,0),"Spawn a loose block for the Space regression");
-            Teleport(game,looseBlock.transform.position+Vector3.right*.6f);
-            Assert(game.player.TryGrab(looseBlock.Box)&&game.player.HeldBox==looseBlock.Box,"Space (BoxPlayer.TryGrab) still picks up a nearby bridge block directly");
-            game.player.Release();
-
-            // ---- a saved particle sitting on a receiver relocates on reload, id/respawn state intact --
-            var relocSlot=forest.Inventory(island.id).slots[5];
-            string relocId=relocSlot.id;float relocRemaining=relocSlot.remaining;bool relocPending=relocSlot.pending;int relocGeneration=relocSlot.generation;
-            var relocSite=forest.Layouts[0].receivers[0];
-            relocSlot.position=relocSite; // sit it exactly on the blue receiver's site
-
-            // Real complete bridge placements; verifies all three tiers on gap two round-trip.
-            foreach(var b in game.Blocks){b.gameObject.SetActive(false);UnityEngine.Object.Destroy(b.gameObject);}game.Blocks.Clear();game.Recalculate();
-            var place=typeof(LightingIntegrationCheck).GetMethod("PlaceAt",BindingFlags.Static|BindingFlags.NonPublic);
-            for(int gap=0;gap<2;gap++)for(int row=0;row<GameManager.Rows;row++)place.Invoke(null,new object[]{game,forest.configuration.islands[gap].id,gap,0,row});
-            Assert(game.Bridges[0]&&game.Bridges[1],"Both full mixed-color bridges complete");Assert(game.Blocks.Any(b=>b.gap==1&&b.tier==0),"Second bridge includes blue tiles");
-            // ImportSave -> Restore -> Build() is exactly the production path RelocateIfReserved runs on.
-            Assert(game.ImportSave(game.ExportSave()),"Complete bridges reload with all permitted colors");
-            var relocReloaded=forest.Inventory(island.id).slots.First(s=>s.id==relocId);
-            Assert(Vector3.Distance(relocReloaded.position,relocSite)>=LightingParticles.ReceiverClearance,"A saved particle sitting on a receiver's site relocates clear of its interaction area on reload");
-            Assert(relocReloaded.remaining==relocRemaining&&relocReloaded.pending==relocPending&&relocReloaded.generation==relocGeneration,"Relocation preserves the particle's id and respawn state (timer/pending/generation untouched)");
-            var voices=audio.GetComponentsInChildren<AudioSource>().Where(a=>a.name.StartsWith("Particle pickup voice")).ToArray();
-            Assert(voices.Length==4&&voices.All(a=>a.outputAudioMixerGroup!=null&&a.outputAudioMixerGroup.name=="Effects"),"Four pickup voices route through Effects");
-            audio.ResetSequence();for(int i=0;i<8;i++)audio.PlayPickup();
-            Assert(audio.SequenceStep==3&&voices.All(a=>a.volume<=.5f),"Rapid pickups cap their rising sequence and preserve burst headroom");
-            typeof(LightingPickupAudio).GetMethod("OnApplicationFocus",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(audio,new object[]{false});
-            Assert(audio.SequenceStep==0,"Focus loss resets pickup sequence");
-            audio.PlayPickup();GameHUD.Current.ShowPause();typeof(LightingPickupAudio).GetMethod("Update",BindingFlags.Instance|BindingFlags.NonPublic).Invoke(audio,null);
-            Assert(audio.SequenceStep==0,"Pause resets pickup sequence");GameHUD.Current.BeginJourney();
-            game.player.readInput=false;game.cameraRig.readInput=false;
+            forest.State.inventory=0;int speedBefore=game.speed;
+            Teleport(game,tree.transform.position+Vector3.right*2);
+            Assert(game.CanBuyLightingUpgrades()&&!game.Purchase("speed")&&game.speed==speedBefore,"Supported ground near a Wisdom Tree passes the purchase gate but an empty wallet cannot buy");
+            Teleport(game,tree.transform.position+Vector3.right*8);
+            Assert(game.CanStand(game.player.transform.position)&&!game.CanBuyLightingUpgrades()&&!game.Purchase("speed")&&game.speed==speedBefore,"Supported ground more than three metres from any tree cannot buy an upgrade");
+            var originalSpeed=game.speed;var originalYield=game.soulGainLevel;game.speed=0;game.soulGainLevel=0;
+            int speedPrice=(int)Math.Ceiling(game.Cost("speed")*ForestWorld.ParticleUnitsPerParticle);forest.State.inventory=speedPrice;
+            Teleport(game,tree.transform.position+Vector3.right*2);GameHUD.Current.SetView(GameHUD.ScreenView.Skills);
+            Assert(game.CanBuyLightingUpgrades(),"The near-tree gate remains valid while the Skills view is open");
+            Assert(game.Purchase("speed")&&game.speed==1&&forest.SharedInventory==0,"Speed purchase from Skills view spends exactly its quarter-unit price");
+            int yieldPrice=(int)Math.Ceiling(game.Cost("soulgain")*ForestWorld.ParticleUnitsPerParticle);forest.State.inventory=yieldPrice;
+            Assert(game.Purchase("soulgain")&&game.soulGainLevel==1&&forest.SharedInventory==0,"Particle Yield purchase from Skills view spends exactly its quarter-unit price");
+            game.speed=game.Cap("speed");game.soulGainLevel=game.Cap("soulgain");forest.State.inventory=400;int capWallet=forest.SharedInventory;
+            Assert(!game.Purchase("speed")&&!game.Purchase("soulgain")&&forest.SharedInventory==capWallet,"Max-level Speed and Particle Yield reject purchases without spending");
+            game.speed=originalSpeed;game.soulGainLevel=originalYield;game.ApplyUpgrades();forest.State.inventory=0;GameHUD.Current.BeginJourney();
+            // Each tree serves one free selected color only after its output clears.
+            owner.freeDeliveryColor=-1;owner.freeDeliveryColors.Clear();owner.charge=new[]{0,0,0};owner.rewards.Clear();
+            Teleport(game,tree.transform.position+Vector3.right*8);
+            Assert(!tree.RequestTile(2)&&owner.freeDeliveryColor==-1,"A remote direct tree request is rejected");
+            Teleport(game,tree.transform.position+Vector3.right*2);
+            Assert(tree.RequestTile(2)&&owner.freeDeliveryColor==2,"Supported ground within three metres requests a free matching tile");
+            Assert(!tree.RequestTile(1)&&owner.freeDeliveryColor==2,"Only one player-selected tile can wait at a tree");
+            int walletBefore=forest.SharedInventory,blocksBefore=game.Blocks.Count;
+            var obstacles=new List<GameObject>();foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
+            Physics.SyncTransforms();tree.Tick(.61f);
+            Assert(game.Blocks.Count==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output preserves the free request");
+            foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();tree.Tick(.61f);
+            Assert(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==2,"A clear output creates exactly the selected tile");
+            Assert(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Free delivery clears its request without particle charges or paid rewards");
+            Assert(forest.SharedInventory==walletBefore,"Free delivery leaves the wallet unchanged");
         }
         static void Capture(GameManager game)
         {

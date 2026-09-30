@@ -16,6 +16,7 @@ Shader "LightingBlocks/Lighting Fog"
             ZWrite Off
             ZTest Always
             Cull Off
+            Stencil { Ref 1 ReadMask 1 Comp NotEqual Pass Keep }
             HLSLPROGRAM
             #pragma vertex Vert
             #pragma fragment Frag

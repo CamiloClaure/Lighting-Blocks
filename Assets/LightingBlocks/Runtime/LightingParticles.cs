@@ -2,18 +2,15 @@ using System.Collections.Generic;
 using UnityEngine;
 namespace LightingBlocks
 {
-    // Owns each Wisdom Tree's three colour receivers and the E-key deposit interaction. Collection
-    // is walk-over (see ForestWorld.TryCollect) and Space still only carries bridge blocks - there is
-    // no particle dragging or particle/block grab arbitration here any more. Every charge/inventory
-    // change routes through ForestWorld.Deposit, the single place that can apply it.
+    // Owns each Wisdom Tree's three free colour selectors and the E-key tile request. Collection
+    // requires standing on the particle's supporting platform or bridge tile.
     public sealed class LightingParticles : MonoBehaviour
     {
         // How close a receiver must be, straight-line and unobstructed, for E to reach it.
-        public const float DepositRange = 1.5f;
+        public const float DepositRange = 3f;
         // Receiver placement (ForestLayoutGenerator.PlaceReceivers/RemoveReceiverClearance): the
-        // minimum distance kept between two receivers on the same island, and the radius around each
-        // one kept clear of particle placement/respawning so a pickup can never surface inside a
-        // receiver's interaction area.
+        // minimum distance between receiver sites in legacy layouts. Lighting selectors sit beside their
+        // Wisdom Tree and no longer reserve particle placement or charge inventory.
         public const float ReceiverSpacing = 8f;
         public const float ReceiverClearance = 2.2f;
         public readonly List<ColorReceiver> Receivers = new List<ColorReceiver>();
@@ -30,11 +27,13 @@ namespace LightingBlocks
         // rather than placing one somewhere unsupported or overlapping.
         public void AddTree(ForestWorld world, WisdomTree tree, Transform parent, IslandForestLayout layout)
         {
-            for (int color = 0; color < 3 && color < layout.receivers.Count; color++)
+            for (int color = 0; color < 3; color++)
             {
-                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube); cube.name = "Color receiver " + color; cube.transform.SetParent(parent, false);
-                cube.transform.position = layout.receivers[color] + Vector3.up * .55f; cube.transform.localScale = Vector3.one * .8f;
-                // Trigger volume accepts deposits but never blocks the player or the tree's output.
+                float angle = (color * 120f - 30f) * Mathf.Deg2Rad;
+                var selectorPosition = tree.transform.position + new Vector3(Mathf.Cos(angle) * 2.3f, .55f, Mathf.Sin(angle) * 2.3f);
+                var cube = GameObject.CreatePrimitive(PrimitiveType.Cube); cube.name = "Free tile selector " + color; cube.transform.SetParent(parent, false);
+                cube.transform.position = selectorPosition; cube.transform.localScale = Vector3.one * .8f;
+                // Trigger volume accepts E selection but never blocks the player or the tree's output.
                 cube.GetComponent<Collider>().isTrigger = true;
                 var receiver = cube.AddComponent<ColorReceiver>(); receiver.Tree = tree; receiver.World = world; receiver.ColorIndex = color;
                 receiver.Initialize(world.configuration.particleMaterial); Receivers.Add(receiver);
@@ -75,13 +74,12 @@ namespace LightingBlocks
             }
             return true;
         }
-        // E: one press deposits one particle into the single nearest reachable receiver. Edge-trigger
-        // (no repeat while held) is GameManager.Update's wasPressedThisFrame gate on the E key.
+        // E: one press asks the nearest tree selector for a free matching tile.
         public bool TryDeposit(BoxPlayer player)
         {
             if (GameHUD.GameplayBlocked || player == null) return false;
-            var receiver = Nearest(player.transform.position + Vector3.up * .7f, DepositRange, player.transform);
-            return receiver != null && receiver.Deposit();
+            var selector = Nearest(player.transform.position + Vector3.up * .7f, DepositRange, player.transform);
+            return selector != null && selector.RequestFreeTile();
         }
     }
     public sealed class ColorReceiver : MonoBehaviour
@@ -89,30 +87,23 @@ namespace LightingBlocks
         public WisdomTree Tree; public ForestWorld World; public int ColorIndex;
         MaterialPropertyBlock properties; Renderer surface; float rejection, pulse;
         GameObject spark;
-        public int Charge => World.Inventory(Tree.Definition.id).charge[ColorIndex];
+        public int Charge => 0;
         public void Initialize(Material material) { surface = GetComponent<Renderer>(); surface.sharedMaterial = material; properties = new MaterialPropertyBlock(); Refresh(); }
-        // The single place a receiver's own charge changes - see ForestWorld.Deposit for the actual
-        // inventory/charge/queue mutation; this only turns the result into feedback.
-        public bool Deposit()
+        // Requests one free matching tile and shows brief selection feedback.
+        public bool RequestFreeTile()
         {
-            var result = World.Deposit(Tree.Definition.id, ColorIndex);
-            if (result == ForestWorld.DepositResult.Success)
-            {
-                pulse = .5f;
-                if (spark == null) { spark = GameObject.CreatePrimitive(PrimitiveType.Sphere); Destroy(spark.GetComponent<Collider>()); spark.transform.SetParent(transform.parent, true); spark.transform.localScale = Vector3.one * .18f; spark.GetComponent<Renderer>().sharedMaterial = surface.sharedMaterial; }
-                spark.GetComponent<Renderer>().SetPropertyBlock(properties); spark.transform.position = transform.position; spark.SetActive(true);
-                ForestSoundscape.Play("collect", transform.position, .12f); Refresh(); return true;
-            }
-            // Full (3/3, awaiting its tile) or empty (nothing left to deposit): flash red only when
-            // the receiver itself refused it, not merely because there was nothing to give it.
-            if (result == ForestWorld.DepositResult.Full) rejection = .25f;
-            Refresh(); return false;
+            if (Tree == null || !Tree.RequestTile(ColorIndex)) { rejection = .25f; Refresh(); return false; }
+            pulse = .5f;
+            if (spark == null) { spark = GameObject.CreatePrimitive(PrimitiveType.Sphere); Destroy(spark.GetComponent<Collider>()); spark.transform.SetParent(transform.parent, true); spark.transform.localScale = Vector3.one * .18f; spark.GetComponent<Renderer>().sharedMaterial = surface.sharedMaterial; }
+            spark.GetComponent<Renderer>().SetPropertyBlock(properties); spark.transform.position = transform.position; spark.SetActive(true);
+            ForestSoundscape.Play("collect", transform.position, .12f); Refresh(); return true;
         }
+        public bool Deposit() => RequestFreeTile();
         public void Refresh()
         {
             if (surface == null) return;
             var c = rejection > 0 ? Color.red : LightingParticles.Colors[ColorIndex];
-            float glow = .55f + Charge / 3f * .65f;
+            float glow = .9f;
             properties.SetColor("_BaseColor", c); properties.SetColor("_EmissionColor", c * glow); surface.SetPropertyBlock(properties);
         }
         void Update()

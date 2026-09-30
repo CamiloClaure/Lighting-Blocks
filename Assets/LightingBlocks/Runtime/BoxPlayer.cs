@@ -32,7 +32,18 @@ namespace LightingBlocks
         AudioSource sfx;
         float strideDistance;
         float airborneTime;
+        float dashTimeRemaining, dashCooldownRemaining;
+        Vector3 dashDirection;
         const float StrideLength = 1.7f;
+        public const float DashCooldown = 1f;
+        public const float DashSpeed = 40f;
+        // Tiles covered per Dash level; a dash that runs off the edge lays these as bridge tiles.
+        public static readonly int[] DashTiles = { 3, 5, 7, 9, 12 };
+        public static float DashDistance(int level) => DashTiles[Mathf.Clamp(level, 1, DashTiles.Length) - 1] * LightingBridgeGrid.CellSize;
+        public static float DashDuration(int level) => DashDistance(level) / DashSpeed;
+        const float DashSupportStep = .2f;
+        public bool IsDashing => dashTimeRemaining > 0;
+        public float DashCooldownRemaining => dashCooldownRemaining;
         int animationState;
         static readonly int Idle = Animator.StringToHash("Base Layer.Idle");
         static readonly int Run = Animator.StringToHash("Base Layer.Run");
@@ -107,7 +118,7 @@ namespace LightingBlocks
             if (!readInput || GameHUD.GameplayBlocked) return;
             var keyboard = Keyboard.current;
             var mouse = Mouse.current;
-            if (!Application.isFocused) { Release(); return; }
+            if (!Application.isFocused) { Release(); CancelDash(); return; }
             UpdateNearby();
             if (keyboard != null && keyboard.qKey.wasPressedThisFrame) {
                 if (Orbiting) DropOrbit(true); else if(HeldBox!=null) Release();
@@ -127,8 +138,31 @@ namespace LightingBlocks
             Vector2 input = keyboard == null ? Vector2.zero : new Vector2(
                 (keyboard.dKey.isPressed ? 1 : 0) - (keyboard.aKey.isPressed ? 1 : 0),
                 (keyboard.wKey.isPressed ? 1 : 0) - (keyboard.sKey.isPressed ? 1 : 0));
+            if (BridgeProfile.Current.isLighting && keyboard != null && (keyboard.leftShiftKey.wasPressedThisFrame || keyboard.rightShiftKey.wasPressedThisFrame))
+                TryStartDash(input);
             StepMovement(input, Time.deltaTime);
         }
+
+        public bool TryStartDash(Vector2 input)
+        {
+            var game = GameManager.Instance;
+            if (!BridgeProfile.Current.isLighting || game == null || game.dashLevel <= 0 || GameHUD.GameplayBlocked ||
+                dashCooldownRemaining > 0 || HeldBox != null || !game.CanStand(transform.position)) return false;
+            Vector3 forward = viewCamera != null ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized : Vector3.forward;
+            if (forward.sqrMagnitude < .0001f) forward = Vector3.forward;
+            Vector3 right = Vector3.Cross(Vector3.up, forward);
+            Vector3 direction = forward * input.y + right * input.x;
+            // Standing still, the burst goes the way the character faces; the camera is only the fallback.
+            if (direction.sqrMagnitude < .0001f && visual != null) direction = Vector3.ProjectOnPlane(visual.forward, Vector3.up);
+            if (direction.sqrMagnitude < .0001f) direction = forward;
+            dashDirection = direction.normalized;
+            dashTimeRemaining = DashDuration(game.dashLevel);
+            dashCooldownRemaining = DashCooldown;
+            return true;
+        }
+
+        public void CancelDash() => dashTimeRemaining = 0;
+        public void ResetDash() { dashTimeRemaining = 0; dashCooldownRemaining = 0; }
 
         public void UpdateNearby()
         {
@@ -169,12 +203,18 @@ namespace LightingBlocks
             if (GameHUD.GameplayBlocked) return false;
             var soul = GameManager.Instance;
             var stone = box != null ? box.GetComponent<BridgeBlock>() : null;
+            if(stone!=null&&stone.placed&&BridgeProfile.Current.isLighting&&soul.TryReclaimTerminalTile(stone))
+            {
+                // ReclaimTerminalTile moves the now-loose terminal crystal beside the player so the
+                // same click can lift it; connected branches and hub links have already been checked.
+            }
             if (stone != null && !stone.CanLift)
             {
                 soul.Notify(stone.placed ? "BRIDGE BLOCK ANCHORED\nConnected blocks become the walkable bridge. Grab a loose block to extend it." : stone.Title.ToUpper() + " IS TOO HEAVY\nRequires Strength " + stone.RequiredStrength + "; yours is " + soul.strength + ". Upgrade in Skills [Tab].", false);
                 return false;
             }
             if (box == null || HeldBox != null || !CanReach(box) || !box.Grab(this)) return false;
+            CancelDash();
             HeldBox = box;
             HeldBoxes.Clear(); HeldBoxes.Add(box);
             if (soul != null)
@@ -218,21 +258,33 @@ namespace LightingBlocks
             input = Vector2.ClampMagnitude(input, 1);
             Vector3 forward = viewCamera != null ? Vector3.ProjectOnPlane(viewCamera.transform.forward, Vector3.up).normalized : Vector3.forward;
             Vector3 right = Vector3.Cross(Vector3.up, forward);
-            Vector3 motion = (forward * input.y + right * input.x) * (HeldBox != null ? pullSpeed : moveSpeed) * deltaTime;
             Vector3 before = transform.position;
             var soul = GameManager.Instance;
+            // The cooldown runs from the end of the burst, so every level gets the same full second between dashes.
+            if (dashTimeRemaining <= 0) dashCooldownRemaining = Mathf.Max(0, dashCooldownRemaining - deltaTime);
+            if (dashTimeRemaining > 0 && HeldBox != null) CancelDash();
+            bool dashFrame = dashTimeRemaining > 0 && BridgeProfile.Current.isLighting && HeldBox == null;
+            float dashSlice = dashFrame ? Mathf.Min(deltaTime, dashTimeRemaining) : 0;
+            float normalSlice = deltaTime - dashSlice;
+            if (dashFrame)
+            {
+                MoveSampledPlanar(dashDirection * (DashSpeed * dashSlice), soul, true);
+                dashTimeRemaining = Mathf.Max(0, dashTimeRemaining - dashSlice);
+            }
+            else normalSlice = deltaTime;
+            Vector3 motion = (forward * input.y + right * input.x) * (HeldBox != null ? pullSpeed : moveSpeed) * normalSlice;
             if (soul != null)
             {
                 // Stop at an unsupported edge, including while hauling a group.
                 string edgeReason = null;
-                if (motion.sqrMagnitude > .00001f && !soul.CanStand(before + motion))
+                if (!dashFrame && motion.sqrMagnitude > .00001f && !soul.CanStand(transform.position + motion))
                 {
                     // Bridge borders are support limits, not walls. Keep the supported component
                     // of a diagonal input so running along an edge never cancels forward movement.
                     Vector3 alongX = new Vector3(motion.x, 0, 0);
                     Vector3 alongZ = new Vector3(0, 0, motion.z);
-                    bool canX = alongX.sqrMagnitude > .00001f && soul.CanStand(before + alongX);
-                    bool canZ = alongZ.sqrMagnitude > .00001f && soul.CanStand(before + alongZ);
+                    bool canX = alongX.sqrMagnitude > .00001f && soul.CanStand(transform.position + alongX);
+                    bool canZ = alongZ.sqrMagnitude > .00001f && soul.CanStand(transform.position + alongZ);
                     motion = canX && (!canZ || alongX.sqrMagnitude > alongZ.sqrMagnitude) ? alongX
                         : canZ ? alongZ : Vector3.zero;
                     if (motion.sqrMagnitude <= .00001f)
@@ -245,7 +297,13 @@ namespace LightingBlocks
                     if (Time.unscaledTime >= nextEdgeNotice) { nextEdgeNotice = Time.unscaledTime + 3; soul.Notify(edgeReason, false); }
                 }
             }
-            if (HeldBox != null && !Orbiting)
+            if (dashFrame && motion.sqrMagnitude > .00001f)
+            {
+                // A frame that straddles the dash's expiry can contain regular walking too. Sample
+                // that remainder as well, so a large dt cannot skip a hole after the burst ends.
+                MoveSampledPlanar(motion, soul);
+            }
+            else if (HeldBox != null && !Orbiting)
             {
                 // Sweep both bodies before translating the pair. Neither can pass through a wall or another box.
                 float distance = motion.magnitude;
@@ -277,7 +335,7 @@ namespace LightingBlocks
                 foreach (var held in HeldBoxes) held.Translate(actual);
                 Physics.SyncTransforms();
             }
-            else controller.Move(motion);
+            else if (!dashFrame) controller.Move(motion);
             Vector3 planar = transform.position - before;
             planar.y = 0;
             MovementSpeed = planar.magnitude / deltaTime;
@@ -309,6 +367,36 @@ namespace LightingBlocks
             {
                 if (animationState != next) { animator.CrossFadeInFixedTime(next, .14f); animationState = next; }
                 animator.speed = HeldBox != null && !Orbiting && MovementSpeed < .08f ? 0f : 1f;
+            }
+        }
+
+        // Moves in short supported steps so a large dt cannot skip a hole. With buildTiles, a step
+        // into the void first lays a bridge tile there; the dash stops where no tile can go.
+        void MoveSampledPlanar(Vector3 desired, GameManager soul, bool buildTiles = false)
+        {
+            float distance = desired.magnitude;
+            if (distance <= .000001f) return;
+            if (HeldBox != null && !Orbiting) return; // dashing is disabled while hauling
+            Vector3 direction = desired / distance;
+            float moved = 0;
+            while (moved < distance - .0001f)
+            {
+                float segment = Mathf.Min(DashSupportStep, distance - moved);
+                Vector3 next = transform.position + direction * segment;
+                if (soul != null && !soul.CanStand(next) && !(buildTiles && soul.TryBuildDashTile(next))) break;
+                Vector3 safePosition = transform.position;
+                controller.Move(direction * segment);
+                Vector3 actual = transform.position - safePosition; actual.y = 0;
+                if (soul != null && !soul.CanStand(transform.position))
+                {
+                    controller.enabled = false; transform.position = safePosition; controller.enabled = true;
+                    Physics.SyncTransforms();
+                    break;
+                }
+                moved += segment;
+                // Stop after a wall or a collision slide; each subsequent sample starts from the
+                // actual character position and may not cut diagonally across unsupported ground.
+                if (actual.magnitude < segment - .025f || Vector3.Dot(actual, direction) < actual.magnitude * .85f) break;
             }
         }
 
@@ -370,7 +458,7 @@ namespace LightingBlocks
             }
             HeldBox=HeldBoxes.Count>0?HeldBoxes[0]:null; Orbiting=HeldBox!=null;
             if(!Orbiting)pickupPositions.Clear();
-            game.Notify(built>0?"BRIDGE EXTENDED · "+built+" STONES\n+"+GameManager.Format(game.Rate)+" Souls/sec total · "+dropped+" dropped nearby."
+            game.Notify(built>0?(BridgeProfile.Current.isLighting?"NETWORK EXTENDED · "+built+" TILES\n"+dropped+" blocks dropped nearby.":"BRIDGE EXTENDED · "+built+" STONES\n+"+GameManager.Format(game.Rate)+" Souls/sec total · "+dropped+" dropped nearby.")
                 : Orbiting?"DROP AREA BLOCKED\nMove to an open shore and press Q. Remaining stones stay safe in orbit."
                 :"STONES GROUNDED\n"+dropped+" stones dropped safely nearby. Click to gather again.",false);
             game.Save();

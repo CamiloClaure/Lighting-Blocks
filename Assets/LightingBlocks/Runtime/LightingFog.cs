@@ -19,14 +19,14 @@ namespace LightingBlocks
     {
         [Header("World fade (horizontal distance from the player)")]
         [Tooltip("Lighting only. The world reads at full brightness within this many metres.")]
-        [Min(0)] public float worldClearDistance = 6f;
+        [Min(0)] public float worldClearDistance = 12f;
         [Tooltip("Lighting only. The world is completely black at this many metres.")]
-        [Min(0)] public float worldBlackDistance = 12f;
+        [Min(0)] public float worldBlackDistance = 24f;
         [Header("Particle fade (narrower, applied before bloom)")]
         [Tooltip("Lighting only. Particles read at full colour within this many metres.")]
-        [Min(0)] public float particleClearDistance = 4f;
+        [Min(0)] public float particleClearDistance = 8f;
         [Tooltip("Lighting only. Particle renderers switch off beyond this many metres.")]
-        [Min(0)] public float particleHiddenDistance = 6f;
+        [Min(0)] public float particleHiddenDistance = 12f;
         [Tooltip("Lighting only. Visible base colour of fundamental particles; fades toward black.")]
         public Color particleColor = LightingParticles.ParticleColor;
 
@@ -34,15 +34,45 @@ namespace LightingBlocks
         static readonly int FogCenterId = Shader.PropertyToID("_LightingFogCenter");
         static readonly int WorldClearId = Shader.PropertyToID("_LightingWorldClear");
         static readonly int WorldBlackId = Shader.PropertyToID("_LightingWorldBlack");
+        const int WisdomFogLayer = 31;
+        static readonly int WisdomVisibleId = Shader.PropertyToID("_LightingWisdomVisible");
 
+        readonly Dictionary<Renderer, int> wisdomRendererLayers = new Dictionary<Renderer, int>();
+        readonly HashSet<Renderer> activeWisdomRenderers = new HashSet<Renderer>();
+        readonly List<Renderer> wisdomRenderList = new List<Renderer>();
+        readonly Dictionary<Renderer, int> wisdomMaterialCounts = new Dictionary<Renderer, int>();
+        readonly Dictionary<LODGroup, LOD[]> wisdomLods = new Dictionary<LODGroup, LOD[]>();
+        readonly HashSet<LODGroup> activeWisdomLods = new HashSet<LODGroup>();
+        MaterialPropertyBlock wisdomProperties;
+        ForestWorld cachedWisdomForest; uint cachedWisdomRevision; bool wisdomSynced;
         ForestWorld cachedWorld; uint cachedRevision;
         readonly List<Renderer> renderers = new List<Renderer>();
         readonly List<MaterialPropertyBlock> blocks = new List<MaterialPropertyBlock>();
+        Vector2Int cullCell; int cullRevision = -1;
+
+        void Awake() { wisdomProperties = new MaterialPropertyBlock(); }
 
         void OnDisable()
         {
             Shader.SetGlobalFloat(FogActiveId, 0);
             foreach (var r in renderers) if (r != null) r.enabled = true;
+            foreach (var pair in wisdomRendererLayers)
+            {
+                if (pair.Key == null) continue;
+                pair.Key.gameObject.layer = pair.Value;
+                if (wisdomProperties != null && wisdomMaterialCounts.TryGetValue(pair.Key, out int materials))
+                {
+                    for (int material = 0; material < materials; material++)
+                    {
+                        pair.Key.GetPropertyBlock(wisdomProperties, material);
+                        wisdomProperties.SetFloat(WisdomVisibleId, 0f);
+                        pair.Key.SetPropertyBlock(wisdomProperties, material);
+                    }
+                }
+            }
+            foreach (var pair in wisdomLods) if (pair.Key != null) pair.Key.SetLODs(pair.Value);
+            wisdomRendererLayers.Clear(); activeWisdomRenderers.Clear(); wisdomRenderList.Clear(); wisdomMaterialCounts.Clear(); wisdomLods.Clear(); activeWisdomLods.Clear();
+            cachedWisdomForest = null; wisdomSynced = false;
         }
 
         void LateUpdate()
@@ -54,9 +84,12 @@ namespace LightingBlocks
             Shader.SetGlobalVector(FogCenterId, player);
             Shader.SetGlobalFloat(WorldClearId, worldClearDistance);
             Shader.SetGlobalFloat(WorldBlackId, Mathf.Max(worldBlackDistance, worldClearDistance + .01f));
+            CullTiles(game);
 
             var forest = ForestWorld.For(game);
             if (forest == null) return;
+            SyncWisdomRenderers(forest);
+            UpdateWisdomEmission();
             var visuals = forest.PickupVisuals;
             if (cachedWorld != forest || cachedRevision != forest.VisualRevision || renderers.Count != visuals.Count)
             { Resync(visuals); cachedWorld=forest; cachedRevision=forest.VisualRevision; }
@@ -75,6 +108,97 @@ namespace LightingBlocks
                 block.SetColor("_BaseColor", Color.Lerp(particleColor, Color.black, t));
                 block.SetColor("_EmissionColor", particleColor * 1.6f * (1 - t));
                 r.SetPropertyBlock(block);
+            }
+        }
+        // A tile past the black band still costs its draw calls (3-4 renderers, whose property blocks
+        // keep them out of batching) only to be painted black. Stop drawing it; its collider, light
+        // and state stay. forceRenderingOff is separate from Renderer.enabled, which BlockArt owns.
+        // ponytail: O(tiles) per two-metre step of the player, cheap up to MaxPlacedTiles (4096).
+        public void CullTiles(GameManager game, bool force = false)
+        {
+            var cell = LightingBridgeGrid.CellOf(game.player.transform.position);
+            if (!force && cell == cullCell && game.lightingGridRevision == cullRevision) return;
+            cullCell = cell; cullRevision = game.lightingGridRevision;
+            // Two metres past black: a tile's nearest corner is then beyond it too.
+            float reach = (worldBlackDistance + 2f) / LightingBridgeGrid.CellSize; reach *= reach;
+            foreach (var b in game.Blocks)
+            {
+                if (b == null) continue;
+                int dx = b.column - cell.x, dz = b.row - cell.y;
+                bool hide = b.placed && dx * dx + dz * dz > reach;
+                if (hide == b.culled) continue;
+                b.culled = hide;
+                if (b.renderers == null) b.renderers = b.GetComponentsInChildren<Renderer>(true);
+                foreach (var r in b.renderers) if (r != null) r.forceRenderingOff = hide;
+            }
+        }
+        void SyncWisdomRenderers(ForestWorld forest)
+        {
+            if (wisdomSynced && cachedWisdomForest == forest && cachedWisdomRevision == forest.VisualRevision) return;
+            activeWisdomRenderers.Clear(); wisdomRenderList.Clear(); wisdomMaterialCounts.Clear(); activeWisdomLods.Clear();
+            foreach (var tree in forest.WisdomTrees)
+            {
+                if (tree == null) continue;
+                var lod = tree.GetComponent<LODGroup>();
+                if (lod != null)
+                {
+                    activeWisdomLods.Add(lod);
+                    if (!wisdomLods.ContainsKey(lod))
+                    {
+                        var originalLevels = lod.GetLODs();
+                        wisdomLods.Add(lod, originalLevels);
+                        var visibleLevels = (LOD[])originalLevels.Clone();
+                        if (visibleLevels.Length > 0)
+                        {
+                            visibleLevels[visibleLevels.Length - 1].screenRelativeTransitionHeight = .001f;
+                            lod.SetLODs(visibleLevels);
+                        }
+                    }
+                }
+                foreach (var r in tree.GetComponentsInChildren<Renderer>(true))
+                {
+                    if (r == null) continue;
+                    var materials = r.sharedMaterials;
+                    bool spectralLit = false;
+                    foreach (var material in materials)
+                        if (material != null && material.shader != null && material.shader.name == "LightingBlocks/Spectral Lit") { spectralLit = true; break; }
+                    if (!spectralLit) continue;
+                    activeWisdomRenderers.Add(r);
+                    wisdomRenderList.Add(r);
+                    wisdomMaterialCounts[r] = materials.Length;
+                    if (!wisdomRendererLayers.ContainsKey(r)) wisdomRendererLayers.Add(r, r.gameObject.layer);
+                    r.gameObject.layer = WisdomFogLayer;
+                }
+            }
+            var stale = new List<Renderer>();
+            foreach (var pair in wisdomRendererLayers)
+                if (pair.Key == null || !activeWisdomRenderers.Contains(pair.Key)) stale.Add(pair.Key);
+            foreach (var r in stale)
+            {
+                if (r != null && wisdomRendererLayers.TryGetValue(r, out int layer)) r.gameObject.layer = layer;
+                wisdomRendererLayers.Remove(r);
+            }
+            var staleLods = new List<LODGroup>();
+            foreach (var pair in wisdomLods) if (pair.Key == null || !activeWisdomLods.Contains(pair.Key)) staleLods.Add(pair.Key);
+            foreach (var lod in staleLods)
+            {
+                if (lod != null && wisdomLods.TryGetValue(lod, out var levels)) lod.SetLODs(levels);
+                wisdomLods.Remove(lod);
+            }
+            cachedWisdomForest = forest; cachedWisdomRevision = forest.VisualRevision; wisdomSynced = true;
+        }
+        void UpdateWisdomEmission()
+        {
+            for (int i = 0; i < wisdomRenderList.Count; i++)
+            {
+                var r = wisdomRenderList[i];
+                if (r == null || !wisdomMaterialCounts.TryGetValue(r, out int materials)) continue;
+                for (int material = 0; material < materials; material++)
+                {
+                    r.GetPropertyBlock(wisdomProperties, material);
+                    wisdomProperties.SetFloat(WisdomVisibleId, 1f);
+                    r.SetPropertyBlock(wisdomProperties, material);
+                }
             }
         }
         void Resync(IReadOnlyList<Transform> visuals)

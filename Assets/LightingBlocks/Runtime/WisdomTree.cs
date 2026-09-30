@@ -42,6 +42,19 @@ namespace LightingBlocks
         static readonly Color CordInk=new Color(.12f,.1f,.16f,1);
         void Awake(){properties=new MaterialPropertyBlock();}
         public void Initialize(ForestWorld world,IslandForestDefinition definition){forest=world;game=world.GetComponent<GameManager>();Definition=definition;}
+        public bool RequestTile(int color)
+        {
+            if(!BridgeProfile.Current.isLighting||GameHUD.GameplayBlocked||color<0||color>2||Charging)return false;
+            var player=game==null?null:game.player;
+            if(player==null||!game.CanStand(player.transform.position)||(new Vector2(player.transform.position.x-transform.position.x,player.transform.position.z-transform.position.z)).sqrMagnitude>9f)
+            {game?.Notify("RETURN TO A WISDOM TREE TO REQUEST A TILE",false);return false;}
+            var inventory=forest.Inventory(Definition.id);
+            if(inventory.freeDeliveryColor>=0){game.Notify("A TILE IS ALREADY WAITING AT THIS TREE",false);return false;}
+            inventory.freeDeliveryColor=color;remaining=0;channelled=false;
+            ForestSoundscape.Play("charge",transform.position,.1f);
+            game.Notify("THE TREE IS CALLING A "+BridgeBlock.TierColour(color).ToUpperInvariant()+" TILE",false);
+            game.Save();return true;
+        }
         public bool BeginCharge(bool silent=false)
         {
             if(BridgeProfile.Current.isLighting||GameHUD.GameplayBlocked||Charging)return false;
@@ -54,27 +67,23 @@ namespace LightingBlocks
         {
             if(GameHUD.SimulationPaused||delta<=0)return;
             var inventory=forest.Inventory(Definition.id);
-            // Lighting: the queue drives its own charging pass (no BeginCharge call needed - see
-            // ForestWorld.Deposit for how an entry gets queued). Legacy: unchanged, driven by
-            // BeginCharge/the held-channel key.
-            if(BridgeProfile.Current.isLighting&&remaining<=0&&inventory.rewards.Count>0&&forest.FindOutput(Definition,out _))remaining=.6f;
+            // Lighting serves any migrated free deliveries first, then one selected request; legacy remains a paid charge.
+            int migratedColor=BridgeProfile.Current.isLighting&&inventory.freeDeliveryColors!=null&&inventory.freeDeliveryColors.Count>0?inventory.freeDeliveryColors[0]:-1;
+            int requestedColor=migratedColor>=0?migratedColor:inventory.freeDeliveryColor;
+            bool lightingRequest=requestedColor>=0;
+            if(BridgeProfile.Current.isLighting&&remaining<=0&&lightingRequest&&forest.FindOutput(Definition,out _))remaining=.6f;
             if(remaining<=0)return;
             remaining=Mathf.Max(0,remaining-delta);
             if(remaining==0)
             {
-                bool ready=BridgeProfile.Current.isLighting?inventory.rewards.Count>0:inventory.inventory>=3;
-                // Lighting: the queued colour IS the required tile tier (queue holds -1 for an
-                // uncoloured legacy-migrated reward, which falls back to the usual weighted draw).
-                if(ready&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting?inventory.rewards[0].color:-1))
+                bool ready=BridgeProfile.Current.isLighting?lightingRequest:inventory.inventory>=3;
+                if(ready&&game.TrySpawnAtWisdomTree(Definition.id,out var block,BridgeProfile.Current.isLighting?requestedColor:-1))
                 {
                     if(BridgeProfile.Current.isLighting)
                     {
-                        // Charge is only ever consumed here, once the tile actually exists - a
-                        // blocked output (TrySpawnAtWisdomTree above fails) leaves both the charge
-                        // and the queue entry untouched, so it simply retries next Tick.
-                        var reward=inventory.rewards[0];inventory.rewards.RemoveAt(0);
-                        if(reward.consumesCharge)inventory.charge[reward.color]-=3;
-                        forest.RefreshReceivers(Definition.id);
+                        if(migratedColor>=0)inventory.freeDeliveryColors.RemoveAt(0);
+                        else inventory.freeDeliveryColor=-1;
+                        game.Save();
                     }
                     else inventory.inventory-=3;
                     ForestSoundscape.Play("release",block.transform.position,.12f);
@@ -82,20 +91,16 @@ namespace LightingBlocks
                     // A held channel completes a charge every .6 s. Chiming and writing the whole
                     // save that often turns the feature into a stutter, so a channelled stone is
                     // announced quietly and left to the ten second autosave.
-                    game.Notify("A BLOCK ANSWERS\nIt waits beside the Wisdom Tree.",!channelled);if(!channelled)game.Save();
+                    game.Notify(BridgeProfile.Current.isLighting?"A FREE TILE ANSWERS\nIt waits beside the Wisdom Tree.":"A BLOCK ANSWERS\nIt waits beside the Wisdom Tree.",!channelled);if(!channelled)game.Save();
                 }
-                else game.Notify("Move blocks away from the Wisdom Tree",false);
+                else game.Notify(BridgeProfile.Current.isLighting?"CLEAR A TILE SPACE BESIDE THE WISDOM TREE":"Move blocks away from the Wisdom Tree",false);
             }
         }
         void Update()
         {
             if(forest==null)return;
             if(game.autoTick)Tick(Time.deltaTime);
-            // Combined outstanding charge across all three receivers, capped at the existing
-            // full-charge brightness (3) - independent receivers no longer share one bank.
-            var chargeInventory=BridgeProfile.Current.isLighting?forest.Inventory(Definition.id):null;
-            float bank=BridgeProfile.Current.isLighting?Mathf.Min(3,chargeInventory.charge[0]+chargeInventory.charge[1]+chargeInventory.charge[2]):0;
-            float strength=1+bank*.4f+(Charging?Mathf.Sin((.6f-remaining)/.6f*Mathf.PI)*1.2f:0);
+            float strength=1+(Charging?Mathf.Sin((.6f-remaining)/.6f*Mathf.PI)*1.2f:0);
             if(BridgeProfile.Current.isLighting){displayedStrength=Mathf.Lerp(displayedStrength,strength,1-Mathf.Exp(-8*Time.deltaTime));strength=displayedStrength;}
             if(glowLight!=null)glowLight.intensity=baseIntensity*strength;
             if(rune!=null){float glow=Mathf.Max(.35f,strength);runeProperties.SetColor("_BaseColor",new Color(RuneInk.r*glow,RuneInk.g*glow,RuneInk.b*glow,1));rune.SetPropertyBlock(runeProperties);}

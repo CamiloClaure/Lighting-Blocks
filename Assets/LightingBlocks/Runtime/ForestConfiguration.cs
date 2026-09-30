@@ -8,6 +8,10 @@ namespace LightingBlocks
     {
         public string id;
         public int polygonIndex, blockTier, treeCount=120, animalCount=6, particleCount=24, rabbitCount=4, birdCount=6;
+        // ponytail: Lighting's own slot count lives here, not in the asset: ForestTerrain.asset is shared
+        // with SampleSceneTerrain, whose saves require its 24. Layouts still generate particleCount
+        // placeholders; Lighting slots take their positions from the void, not the layout.
+        public int ParticleCount => BridgeProfile.Current.isLighting ? 40 : particleCount;
         // Authored against the shipped island positions. Everything that consumes a wisdom position
         // wants it where the island actually IS under the active profile, and there are a dozen such
         // call paths (layout generation, navigation, the tree prefab, paving, audio) including
@@ -56,7 +60,7 @@ namespace LightingBlocks
     // see ForestWorld.MigrateToV2 and WisdomTree.Tick).
     // Version 3 distinguishes already-earned migration rewards from receiver-backed rewards.
     [Serializable] public sealed class ParticleRewardSave { public int color; public bool consumesCharge; }
-    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory,treeCharge;public int chargeColor;public bool hasChargeColor;public int[] charge=new int[3];public List<int> queue=new List<int>();public List<ParticleRewardSave> rewards=new List<ParticleRewardSave>();public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
+    [Serializable] public sealed class IslandParticleSave{public string id;public int inventory,treeCharge;public int chargeColor;public bool hasChargeColor;public int[] charge=new int[3];public List<int> queue=new List<int>();public List<ParticleRewardSave> rewards=new List<ParticleRewardSave>();public int freeDeliveryColor=-1;public List<int> freeDeliveryColors=new List<int>();public List<ParticleSlotSave> slots=new List<ParticleSlotSave>();}
     [Serializable] public sealed class ParticleSlotSave{public string id;public int color;public float remaining;public Vector3 position;public int generation;public bool positioned,pending;}
     public struct ForestPlacement{public Vector3 position;public float yaw,scale;public int variant,id;}
     public sealed class IslandForestLayout

@@ -29,7 +29,8 @@ namespace LightingBlocks
         {
             if(game==null||dt<=0)return;
             bool paused=GameHUD.SimulationPaused;float distance=(game.player.transform.position-transform.position).sqrMagnitude;
-            if(animator!=null)animator.enabled=!paused&&distance<3600;if(paused||distance>=3600)return;
+            float sleep=BridgeProfile.Current.isLighting?676:3600;// Lighting's fog is black by 24 m
+            if(animator!=null)animator.enabled=!paused&&distance<sleep;if(paused||distance>=sleep)return;
             timer-=dt;decision-=dt;cooldown=Mathf.Max(0,cooldown-dt);
             if(Airborne){Fly(dt);return;}
             if(launching){flightDelay-=dt;if(flightDelay<=0){launching=false;if(StartFlight())return;State=Mode.Recover;timer=1;}return;}
