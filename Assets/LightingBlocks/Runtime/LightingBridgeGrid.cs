@@ -69,9 +69,12 @@ namespace LightingBlocks
         static HubSnapshot Platforms() => sharedPlatforms ??= new HubSnapshot();
         public static int PlacedCount(GameManager game) => game.Tiles.Count;
         public static bool ReachesHub(GameManager game, string hubId) => game.Tiles.ReachesHub(hubId);
-        // The stored cell holding up this point: GameManager.BlockUnder's box test (.99 x, 1.02 z
-        // half-extents) over the point's cell and its z neighbours. Data only, so support never waits
-        // on a chunk's GameObjects.
+        // The stored cell holding up this point: a tile reaches 1.02 m from its centre on both axes, so
+        // the seam between two tiles is never void. (It used the legacy single-file bridge's .99 m on
+        // x, which left a 2 cm strip at every x seam: on wide grenade-laid ground a dash step landing
+        // in one found its own cell occupied and stopped dead.) The point's own cell is tried first,
+        // so TileAt names the tile actually underfoot. Data only: support never waits on a chunk's
+        // GameObjects.
         public static bool Supports(GameManager game, Vector3 point) => SupportingCell(game, point) != null;
         // The loaded tile GameObject holding up this point, or null.
         public static BridgeBlock TileAt(GameManager game, Vector3 point)
@@ -79,14 +82,16 @@ namespace LightingBlocks
             var cell = SupportingCell(game, point);
             return cell == null ? null : game.Tiles.Visual(cell.Value);
         }
-        static Vector2Int? SupportingCell(GameManager game, Vector3 point)
+        static readonly Vector2[] SeamProbes = { Vector2.zero, new Vector2(.02f, 0), new Vector2(-.02f, 0), new Vector2(0, .02f), new Vector2(0, -.02f),
+            new Vector2(.02f, .02f), new Vector2(.02f, -.02f), new Vector2(-.02f, .02f), new Vector2(-.02f, -.02f) };
+        public static Vector2Int? SupportingCell(GameManager game, Vector3 point)
         {
-            for(int i=0;i<3;i++)
+            foreach (var probe in SeamProbes)
             {
-                var cell=CellOf(point+new Vector3(0,0,i==1?.02f:i==2?-.02f:0));
-                if(!game.Tiles.Contains(cell))continue;
-                Vector3 p=Cell(cell.x,cell.y);
-                if(Mathf.Abs(point.x-p.x)<=.99f&&Mathf.Abs(point.z-p.z)<=1.02f)return cell;
+                var cell = CellOf(point + new Vector3(probe.x, 0, probe.y));
+                if (!game.Tiles.Contains(cell)) continue;
+                Vector3 p = Cell(cell.x, cell.y);
+                if (Mathf.Abs(point.x - p.x) <= 1.02f && Mathf.Abs(point.z - p.z) <= 1.02f) return cell;
             }
             return null;
         }
@@ -157,8 +162,10 @@ namespace LightingBlocks
             return false;
         }
 
-        public static bool HasObstruction(Vector2Int cell, GameManager game, BridgeBlock placementBlock = null)
+        public static bool HasObstruction(Vector2Int cell, GameManager game, BridgeBlock placementBlock = null) => HasObstruction(cell, game, placementBlock, out _);
+        public static bool HasObstruction(Vector2Int cell, GameManager game, BridgeBlock placementBlock, out Collider blocker)
         {
+            blocker = null;
             Vector3 center = Cell(cell.x, cell.y);
             var hits = Physics.OverlapBox(center + Vector3.up * .15f, new Vector3(.98f, .16f, .98f), Quaternion.identity, ~0, QueryTriggerInteraction.Ignore);
             foreach (var hit in hits)
@@ -167,7 +174,7 @@ namespace LightingBlocks
                 if (placementBlock != null && hit.GetComponentInParent<BridgeBlock>() == placementBlock) continue;
                 if (hit.GetComponentInParent<PlatformSupport>() != null) continue;
                 if (hit.transform == game.player.transform || hit.transform.IsChildOf(game.player.transform)) continue;
-                return true;
+                blocker = hit; return true;
             }
             return false;
         }

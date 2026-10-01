@@ -261,9 +261,12 @@ namespace LightingBlocks
             noticeText = Label("Action Feedback Text", feedback, "", 16, 8, 588, 68, 17, Mint, TextAnchor.MiddleCenter);
             if(BridgeProfile.Current.isLighting)
             {
-                // No floating world labels; resource and particle wallet panels remain visible.
+                // No floating world labels, resources panel, hint box or notice box (by request): the
+                // particle wallet, ability bar and quick menu are the whole HUD. Notify still records
+                // the message (GameManager.Notice); it is just not drawn.
                 WorldLabelRoot.gameObject.SetActive(false);location.gameObject.SetActive(false);
                 mission.gameObject.SetActive(false);keycaps.gameObject.SetActive(false);
+                calls.gameObject.SetActive(false);context.gameObject.SetActive(false);
             }
         }
         void BuildTitle()
@@ -410,7 +413,7 @@ namespace LightingBlocks
             bool journey = game.ConnectedCount > 0 || (BridgeProfile.Current.isLighting ? (ForestWorld.For(game)?.SharedInventory ?? 0) > 0 : game.souls > 0) || System.IO.File.Exists(game.SavePath);
             journeyLabel.text = journey ? "CONTINUE JOURNEY" : "BEGIN JOURNEY"; newButton.gameObject.SetActive(journey);
             bool showFeedback = Time.unscaledTime < game.NoticeUntil && !string.IsNullOrEmpty(game.Notice);
-            feedbackPanel.SetActive(showFeedback); noticeText.text = showFeedback ? game.Notice : "";
+            feedbackPanel.SetActive(showFeedback && !BridgeProfile.Current.isLighting); noticeText.text = showFeedback ? game.Notice : "";
             string hint = game.links>0 ? "Click to gather · Q to drop · Tab for powers" : "Hold left mouse to haul · Tab for powers";
             var box = game.player == null ? null : game.player.HeldBox;
             if (box != null)

@@ -663,14 +663,19 @@ namespace LightingBlocks
         {
             var cell = LightingBridgeGrid.CellOf(point);
             if (BuildDashTile(cell)) return true;
-            var here = LightingBridgeGrid.CellOf(player.transform.position);
+            // The tile actually underfoot: at a seam the rounded position can name the empty cell beside it.
+            var here = LightingBridgeGrid.SupportingCell(this, player.transform.position) ?? LightingBridgeGrid.CellOf(player.transform.position);
             if (cell.x == here.x || cell.y == here.y) return false;
             return (BuildDashTile(new Vector2Int(cell.x, here.y)) || BuildDashTile(new Vector2Int(here.x, cell.y))) && (CanStand(point) || BuildDashTile(cell));
         }
+        // Why the last BuildDashTile refused its cell; BoxPlayer.DashStop names it.
+        public string DashRefusal { get; private set; }
         bool BuildDashTile(Vector2Int cell)
         {
-            if (!BridgeProfile.Current.isLighting || !LightingBridgeGrid.InBounds(cell) || LightingBridgeGrid.OverlapsPlatform(cell)
-                || LightingBridgeGrid.IsOccupied(this, cell) || !LightingBridgeGrid.IsFrontier(this, cell) || LightingBridgeGrid.HasObstruction(cell, this)) return false;
+            DashRefusal = !BridgeProfile.Current.isLighting ? "not Lighting" : !LightingBridgeGrid.InBounds(cell) ? "out of bounds" : LightingBridgeGrid.OverlapsPlatform(cell) ? "platform"
+                : LightingBridgeGrid.IsOccupied(this, cell) ? "occupied" : !LightingBridgeGrid.IsFrontier(this, cell) ? "not frontier"
+                : LightingBridgeGrid.HasObstruction(cell, this, null, out var blocker) ? "obstructed by " + (blocker != null ? blocker.transform.root.name + "/" + blocker.name : "?") : null;
+            if (DashRefusal != null) { DashRefusal += " " + cell; return false; }
             var block = Tiles.Add(cell); Physics.SyncTransforms(); Recalculate(block);
             // A burst lays a tile every .05 s; one crystal per tile stacked into a loud clip that took
             // every pooled voice. One every .12 s reads as a run of ticks instead.

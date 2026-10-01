@@ -43,6 +43,13 @@ namespace LightingBlocks
         public static float DashDuration(int level) => DashDistance(level) / DashSpeed;
         const float DashSupportStep = .2f;
         public bool IsDashing => dashTimeRemaining > 0;
+        // Why the last dash ended before its full length, null when it did not: for the checks and
+        // for bug reports.
+        public string DashStop { get; private set; }
+        // The last side contact (not floor) of a controller move, named in DashStop.
+        Collider sideHit; Vector3 sideNormal;
+        void OnControllerColliderHit(ControllerColliderHit hit) { if (hit.normal.y < .7f) { sideHit = hit.collider; sideNormal = hit.normal; } }
+        static string PathOf(Transform t) => t == null ? "?" : t.parent == null ? t.name : PathOf(t.parent) + "/" + t.name;
         public float DashCooldownRemaining => dashCooldownRemaining;
         int animationState;
         static readonly int Idle = Animator.StringToHash("Base Layer.Idle");
@@ -155,7 +162,7 @@ namespace LightingBlocks
             // Standing still, the burst goes the way the character faces; the camera is only the fallback.
             if (direction.sqrMagnitude < .0001f && visual != null) direction = Vector3.ProjectOnPlane(visual.forward, Vector3.up);
             if (direction.sqrMagnitude < .0001f) direction = forward;
-            dashDirection = direction.normalized;
+            dashDirection = direction.normalized; DashStop = null;
             dashTimeRemaining = DashDuration(game.dashLevel);
             dashCooldownRemaining = DashCooldown;
             return true;
@@ -383,20 +390,27 @@ namespace LightingBlocks
             {
                 float segment = Mathf.Min(DashSupportStep, distance - moved);
                 Vector3 next = transform.position + direction * segment;
-                if (soul != null && !soul.CanStand(next) && !(buildTiles && soul.TryBuildDashTile(next))) break;
+                if (soul != null && !soul.CanStand(next) && !(buildTiles && soul.TryBuildDashTile(next))) { if (buildTiles) DashStop = "no tile: " + (soul.DashRefusal ?? "?") + " at " + LightingBridgeGrid.CellOf(next); break; }
                 Vector3 safePosition = transform.position;
+                sideHit = null;
                 controller.Move(direction * segment);
                 Vector3 actual = transform.position - safePosition; actual.y = 0;
                 if (soul != null && !soul.CanStand(transform.position))
                 {
                     controller.enabled = false; transform.position = safePosition; controller.enabled = true;
                     Physics.SyncTransforms();
+                    if (buildTiles) DashStop = "left support at " + LightingBridgeGrid.CellOf(transform.position + direction * segment);
                     break;
                 }
                 moved += segment;
                 // Stop after a wall or a collision slide; each subsequent sample starts from the
                 // actual character position and may not cut diagonally across unsupported ground.
-                if (actual.magnitude < segment - .025f || Vector3.Dot(actual, direction) < actual.magnitude * .85f) break;
+                if (actual.magnitude < segment - .025f || Vector3.Dot(actual, direction) < actual.magnitude * .85f)
+                {
+                    if (buildTiles) DashStop = (actual.magnitude < segment - .025f ? "blocked by " : "slid by ") + (sideHit != null ? PathOf(sideHit.transform) + " normal " + sideNormal.ToString("F2") : "no side contact")
+                        + " at " + transform.position.ToString("F2") + " y " + transform.position.y.ToString("F3");
+                    break;
+                }
             }
         }
 

@@ -100,6 +100,7 @@ namespace LightingBlocks.Editor
             CheckSkillTreeClick(game, forest);
             CheckDash(game, forest);
             CheckGrenade(game, forest);
+            CheckDashAfterGrenade(game, forest);
             CheckPull(game, forest);
             CheckSightAndReveal(game, forest);
             CheckAbilityHud(game);
@@ -591,6 +592,100 @@ namespace LightingBlocks.Editor
             }
         }
 
+        // ---- Dash after a grenade, diagonals included: no collider on the open network stops a dash ----
+        static void CheckDashAfterGrenade(GameManager game, ForestWorld forest)
+        {
+            var grenade = game.GetComponent<LightingGrenade>();
+            var bounds = HubBounds("island-1");
+            int oldDash = game.dashLevel, oldGrenade = game.grenadeLevel, oldInventory = forest.State.inventory;
+            Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
+            var baseline = Cells(game);
+            var stops = new System.Collections.Generic.Dictionary<string, int>(); var samples = new System.Collections.Generic.List<string>();
+            var other = new System.Collections.Generic.Dictionary<string, int>();
+            int dashes = 0;
+            void Look(Vector3 forward) { if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(forward, Vector3.up); }
+            void Note(string where)
+            {
+                var stop = game.player.DashStop; if (stop == null) return;
+                int at = stop.IndexOf(" at "); string key = at > 0 ? stop.Substring(0, at) : stop;
+                // An occupied cell refused as a dash tile means support missed a tile that is there; one not on
+                // the frontier means a diagonal skipped its stepping tile. From the network, neither may happen.
+                if (stop.StartsWith("blocked") || stop.StartsWith("slid") || stop.Contains("occupied") || stop.Contains("not frontier")) { stops[key] = stops.TryGetValue(key, out int n) ? n + 1 : 1; if (samples.Count < 5) samples.Add(where + ": " + stop); }
+                else
+                {
+                    // The refused cell is the last word of the reason; drop it so reasons group.
+                    if (key.StartsWith("no tile")) { int cell = key.LastIndexOf(" ("); if (cell > 0) key = key.Substring(0, cell); }
+                    if (key.StartsWith("left support")) key = "left support";
+                    other[key] = other.TryGetValue(key, out int n) ? n + 1 : 1;
+                    if (samples.Count < 12 && !samples.Any(s => s.Contains(key))) samples.Add(where + ": " + stop);
+                }
+            }
+            var inputs = new[] { new Vector2(1, 0), new Vector2(-1, 0), new Vector2(0, 1), new Vector2(0, -1), new Vector2(1, 1), new Vector2(1, -1), new Vector2(-1, 1), new Vector2(-1, -1) };
+            try
+            {
+                game.grenadeLevel = LightingGrenade.GrenadeTiles.Length; game.dashLevel = BoxPlayer.DashTiles.Length;
+                float rowZ = LightingBridgeGrid.Cell(0, Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize)).z;
+                var edge = new Vector3(bounds.min.x + .22f, .025f, rowZ);
+
+                // Dashing while the blast is still laying its tiles, from three spots on the edge.
+                for (int spot = -1; spot <= 1; spot++)
+                    foreach (var input in inputs)
+                    {
+                        RestoreTiles(game, baseline);
+                        var from = edge + Vector3.forward * (spot * 4f);
+                        Teleport(game, from); Look(Vector3.left); Physics.SyncTransforms();
+                        forest.State.inventory = LightingGrenade.ThrowCost * ForestWorld.ParticleUnitsPerParticle;
+                        if (!grenade.TryThrow(.5f)) continue;
+                        while (grenade.Flying) grenade.Tick(1f / 60);
+                        game.player.ResetDash(); Look(Vector3.forward);
+                        if (!game.player.TryStartDash(input)) continue;
+                        dashes++;
+                        for (int f = 0; f < 120 && (game.player.IsDashing || grenade.Busy); f++)
+                        { grenade.Tick(1f / 60); game.player.StepMovement(Vector2.zero, 1f / 60); Physics.SyncTransforms(); game.Tiles.Stream(game.player.transform.position); }
+                        Note("mid-blast from " + from.ToString("F1") + " input " + input);
+                    }
+
+                // Then from all over a finished level-3 blast: tile centres and near their corners.
+                RestoreTiles(game, baseline);
+                Teleport(game, edge); Look(Vector3.left); Physics.SyncTransforms();
+                forest.State.inventory = LightingGrenade.ThrowCost * ForestWorld.ParticleUnitsPerParticle;
+                Check(grenade.TryThrow(1), "Fixture: a full-charge level-3 grenade off the island-1 edge");
+                for (int i = 0; i < 240 && grenade.Busy; i++) grenade.Tick(1f / 60);
+                var blob = Cells(game); var laid = blob.Where(c => !baseline.Contains(c)).OrderBy(c => c.x).ThenBy(c => c.y).ToList();
+                Check(laid.Count > 60, "Fixture: the blast laid " + laid.Count + " tiles");
+                var pair = laid.First(c => blob.Contains(c + Vector2Int.right)); var seam = LightingBridgeGrid.Cell(pair.x, pair.y) + Vector3.right;
+                Check(new[] { -.015f, 0, .015f }.All(dx => game.CanStand(seam + new Vector3(dx, .2f, .3f))),
+                    "The 2 cm either side of an x seam between two tiles is ground (it was void, and stopped dashes)");
+                Look(Vector3.forward);
+                var offsets = new[] { Vector3.zero, new Vector3(.6f, 0, .6f), new Vector3(-.6f, 0, .6f), new Vector3(.6f, 0, -.6f), new Vector3(-.6f, 0, -.6f) };
+                for (int t = 0; t < laid.Count; t += 2)
+                    foreach (var offset in offsets)
+                        foreach (var input in inputs)
+                        {
+                            var from = LightingBridgeGrid.Cell(laid[t].x, laid[t].y) + offset;
+                            Teleport(game, from);
+                            if (!game.CanStand(game.player.transform.position)) continue;
+                            game.player.ResetDash();
+                            if (!game.player.TryStartDash(input)) continue;
+                            dashes++;
+                            for (int f = 0; f < 120 && game.player.IsDashing; f++) { game.player.StepMovement(Vector2.zero, 1f / 60); Physics.SyncTransforms(); game.Tiles.Stream(game.player.transform.position); }
+                            Note("from " + from.ToString("F2") + " input " + input);
+                            if (game.Tiles.Count != blob.Count) RestoreTiles(game, blob);
+                        }
+                report.AppendLine("INFO: " + dashes + " dashes after a grenade; other stops: " + string.Join(", ", other.OrderByDescending(kv => kv.Value).Select(kv => kv.Value + "x " + kv.Key)));
+                foreach (var sample in samples) report.AppendLine("INFO: " + sample);
+                Check(stops.Count == 0, "Across " + dashes + " dashes after a grenade (diagonals included), none stops against a collider, at a tile already there or off the frontier"
+                    + (stops.Count > 0 ? ": " + string.Join("; ", stops.OrderByDescending(kv => kv.Value).Select(kv => kv.Value + "x " + kv.Key)) + " | " + string.Join(" | ", samples) : ""));
+            }
+            finally
+            {
+                RestoreTiles(game, baseline);
+                game.dashLevel = oldDash; game.grenadeLevel = oldGrenade; forest.State.inventory = oldInventory; game.player.ResetDash();
+                if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
+                Physics.SyncTransforms();
+            }
+        }
+
         // ---- Spirit Pull: F takes every dot within the grenade radius, over the void too ----
         static void CheckPull(GameManager game, ForestWorld forest)
         {
@@ -773,6 +868,10 @@ namespace LightingBlocks.Editor
         {
             var hud = GameHUD.Current; var bar = hud.Abilities;
             Check(bar != null && string.Join("/", bar.Slots.Select(s => s.id)) == "dash/grenade/pull/reveal", "The ability bar holds the active skills: Dash, Light Grenade, Spirit Pull and Daybreak");
+            game.Notify("CHECK NOTICE"); hud.RefreshUI();
+            var hidden = hud.GetComponentsInChildren<Transform>(true).Where(t => t.name == "Fragment Calls" || t.name == "Interaction Hint" || t.name == "Action Feedback").ToArray();
+            Check(hidden.Length == 3 && hidden.All(t => !t.gameObject.activeSelf) && game.Notice == "CHECK NOTICE",
+                "Lighting draws no resources panel, hint box or notice box; a notice is still recorded");
             Check(bar.Slots.All(s => s.badge.Icon.sprite != null && s.badge.Icon.sprite.texture.name == SkillBadge.IconName(s.id) && s.padlock.sprite.texture.name == "padlock"),
                 "Every ability shows its game-icons.net icon and padlock from Resources/UI/Icons");
             Check(SkillBadge.Tier(0, 3) == 0 && SkillBadge.Tier(1, 3) == 1 && SkillBadge.Tier(2, 3) == 2 && SkillBadge.Tier(3, 3) == 3
