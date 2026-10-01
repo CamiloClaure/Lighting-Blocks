@@ -621,6 +621,17 @@ namespace LightingBlocks.Editor
             if (pickup != null) pickup.PlayPickup();
             Check(pickup != null && pickup.PlaybackCount == played + 1 && pickup.GetComponentsInChildren<AudioSource>().Any(s => s.name.StartsWith("Particle pickup voice") && s.isPlaying),
                 "A particle pickup plays its chime");
+
+            // A device change that Unity fails to open is retried by ForestSoundscape.RecoverAudio: the
+            // loops keep playing, the mixer keeps its levels, and cues still start voices.
+            var soundscape = game.GetComponent<ForestSoundscape>();
+            Check(soundscape != null, "The Lighting GameManager carries the soundscape that recovers audio");
+            soundscape.RecoverAudio();
+            Check(music.isPlaying && wind.isPlaying, "Music and the wind loop play again after an audio device reset");
+            Check(mixer.GetFloat("Master", out float masterDb) && Mathf.Abs(masterDb - Mathf.Log10(Mathf.Max(.001f, ForestSoundscape.Volume("Master"))) * 20) < .1f,
+                "The mixer keeps the saved Master level after a reset (" + masterDb.ToString("0.0") + " dB)");
+            ForestSoundscape.Play("crystal", game.player.transform.position, .12f);
+            Check(CrystalVoices() >= 1, "A cue starts a voice after the reset");
         }
 
         // A big network must not make Dash, respawn or drawing stutter. About 2000 connected tiles

@@ -47,5 +47,24 @@ namespace LightingBlocks
             if(music!=null)music.volume=Mathf.MoveTowards(music.volume,GameAudio.MusicVolume*(near?.55f:.8f),Time.unscaledDeltaTime*.012f);
             float amount=island==null?.06f:.10f;if(leaves!=null)leaves.volume=Mathf.MoveTowards(leaves.volume,amount,Time.unscaledDeltaTime*.02f);}
         void OnDestroy(){if(current==this)current=null;}
+        // A default-device change (headset in or out) whose own reset Unity fails to open leaves FMOD on a
+        // silent emulated output until restart. Retry once the new device has settled; a reset started
+        // here reports deviceWasChanged false, so it never re-arms itself.
+        // ponytail: one retry 1 s after a device change; add backoff retries if a slow device still loses it.
+        float resetAt=-1;
+        void OnEnable()=>AudioSettings.OnAudioConfigurationChanged+=DeviceChanged;
+        void OnDisable()=>AudioSettings.OnAudioConfigurationChanged-=DeviceChanged;
+        void DeviceChanged(bool deviceWasChanged){if(deviceWasChanged)resetAt=Time.unscaledTime+1;}
+        void Update(){if(resetAt>=0&&Time.unscaledTime>=resetAt){resetAt=-1;RecoverAudio();}}
+        // Reopens the current default device. Loops that were playing (music, wind, leaves) start again;
+        // one-shots are dropped. The mixer levels are applied again on the fresh mixer.
+        public void RecoverAudio()
+        {
+            var loops=new List<AudioSource>();
+            foreach(var source in FindObjectsByType<AudioSource>())if(source.loop&&source.isPlaying)loops.Add(source);
+            AudioSettings.Reset(AudioSettings.GetConfiguration());
+            foreach(var source in loops)if(source!=null&&!source.isPlaying)source.Play();
+            foreach(var group in new[]{"Master","Music","Ambience","Effects"})SetVolume(group,Volume(group));
+        }
     }
 }
