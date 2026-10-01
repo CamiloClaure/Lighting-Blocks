@@ -513,6 +513,20 @@ namespace LightingBlocks.Editor
             for (int i = 0; i < 30; i++) { rig.SendMessage("LateUpdate"); yield return null; }
             SceneCapture.CaptureCamera(rig.GetComponent<Camera>(), folder + "/gameplay.png");
 
+            // UI review shots (Library, not committed): the ability bar mid-cooldown and the skill tree
+            // with a locked, bronze, silver and gold skill. Overlay UI needs the Game view, so no batch mode.
+            if (!Application.isBatchMode)
+            {
+                string ui = "Library/LightingUiCaptures"; Directory.CreateDirectory(ui);
+                var hud = GameHUD.Current; hud.BeginJourney();
+                game.dashLevel = 0; game.grenadeLevel = 3; game.pullLevel = 2; game.speed = 1; game.soulGainLevel = 5;
+                var pull = game.GetComponent<LightingPull>(); if (pull != null) pull.CooldownLeft = 6;
+                hud.SetView(GameHUD.ScreenView.Playing); for (int i = 0; i < 10; i++) yield return null;
+                ScreenCapture.CaptureScreenshot(ui + "/hud.png"); yield return null; yield return null;
+                hud.SetView(GameHUD.ScreenView.Skills); for (int i = 0; i < 90; i++) yield return null;
+                ScreenCapture.CaptureScreenshot(ui + "/skills.png"); yield return null; yield return null;
+            }
+
             File.WriteAllText(CaptureResult, "SUCCESS: captures in " + folder);
             Debug.Log("Lighting captures written to " + folder);
             EditorApplication.isPlaying = false;

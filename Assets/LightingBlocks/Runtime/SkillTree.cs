@@ -5,9 +5,9 @@ using UnityEngine.UI;
 
 namespace LightingBlocks
 {
-    // The powers screen is an actual tree: a trunk with the stone sources at its base, two
-    // branches that grow as their parent awakens, and a burst on the node you just bought.
-    // Everything is drawn from procedural circle sprites, so it needs no imported art.
+    // The powers screen is an actual tree: roots under the base node, a tapered trunk, curved side
+    // branches with sap that grows in as their parent awakens, a violet crown behind the skills, and a
+    // burst on the node you just bought. Skills with an icon (SkillBadge) show it dressed by level.
     public sealed class SkillTree : MonoBehaviour
     {
         public GameManager game;
@@ -20,6 +20,7 @@ namespace LightingBlocks
         static readonly Color Mint = new Color(.90f, .72f, .36f);
         static readonly Color Gold = new Color(1f, .84f, .48f);
         static readonly Color Dormant = new Color(.34f, .30f, .26f);
+        static readonly Color Bark = new Color(.30f, .22f, .15f), Sap = new Color(.78f, .58f, .28f), Crown = new Color(.35f, .22f, .55f, .14f);
         static readonly string[] Numerals = { "·", "I", "II", "III", "IV", "V", "VI", "VII", "VIII" };
 
         sealed class Node
@@ -32,6 +33,7 @@ namespace LightingBlocks
             public Image ring, disc, burst;
             public Text numeral, label, price;
             public Image[] pips;
+            public SkillBadge badge;
             public Button button;
             public int shown;
             public float punch, hover;
@@ -39,9 +41,9 @@ namespace LightingBlocks
         sealed class Edge
         {
             public Node from, to;
-            public RectTransform rect;
-            public Image line, spark;
-            public float length, grown;
+            public BranchGraphic bark, sap;
+            public Image spark;
+            public float grown;
         }
 
         readonly List<Node> nodes = new List<Node>();
@@ -96,8 +98,12 @@ namespace LightingBlocks
                 Connect("links", "strength"); Connect("radiance", "strength");
             }
 
-            // Branches are drawn first so the nodes always sit on top of them.
+            // Back to front: crown, roots, bark, sap, then the nodes on top.
+            foreach (var node in nodes)
+                if (node.id != "root") Graphic("Crown " + node.id, Rect("Crown host " + node.id, root, node.centre.x - node.size * 1.3f, node.centre.y - node.size * 1.3f, node.size * 2.6f, node.size * 2.6f), Dot(), Crown);
+            BuildRoots(Get("root"));
             foreach (var edge in edges) BuildEdge(edge);
+            foreach (var edge in edges) BuildSap(edge);
             foreach (var node in nodes) BuildNode(node);
             BuildDetail();
 
@@ -113,30 +119,48 @@ namespace LightingBlocks
         Node Get(string id) { foreach (var node in nodes) if (node.id == id) return node; return null; }
         void Connect(string from, string to) => edges.Add(new Edge { from = Get(from), to = Get(to) });
 
+        // Bark: the dormant branch, always whole. A trunk edge (same x) is straight and thick; a side branch
+        // sprouts from the trunk just above its parent, leaves sideways and curls up into its node.
         void BuildEdge(Edge edge)
         {
-            Vector2 delta = edge.to.centre - edge.from.centre;
-            edge.length = delta.magnitude - (edge.from.size + edge.to.size) * .42f;
-            var rect = Rect("Branch " + edge.from.id + " to " + edge.to.id, root, 0, 0, edge.length, 9);
-            rect.pivot = new Vector2(0, .5f);
-            Vector2 direction = delta.normalized;
-            Vector2 start = edge.from.centre + direction * edge.from.size * .46f;
-            rect.anchoredPosition = new Vector2(start.x, -start.y);
-            // Canvas Y grows upward, the layout numbers grow downward, so the angle is negated.
-            rect.localRotation = Quaternion.Euler(0, 0, -Mathf.Atan2(delta.y, delta.x) * Mathf.Rad2Deg);
-            var ghost = Rect("Branch ghost", root, 0, 0, edge.length, 5);
-            ghost.pivot = rect.pivot; ghost.anchoredPosition = rect.anchoredPosition; ghost.localRotation = rect.localRotation;
-            var ghostImage = ghost.gameObject.AddComponent<Image>();
-            ghostImage.color = new Color(Dormant.r, Dormant.g, Dormant.b, .45f); ghostImage.raycastTarget = false;
-            ghost.SetSiblingIndex(rect.GetSiblingIndex());
-            edge.line = rect.gameObject.AddComponent<Image>();
-            edge.line.color = Dormant; edge.line.raycastTarget = false;
-            var spark = Rect("Branch spark", rect, 0, 0, 16, 16);
-            spark.anchorMin = spark.anchorMax = new Vector2(0, .5f); spark.pivot = new Vector2(.5f, .5f);
+            Vector2 to = edge.to.centre;
+            bool trunk = Mathf.Abs(to.x - edge.from.centre.x) < 1;
+            Vector2 from = trunk ? edge.from.centre : edge.from.centre + new Vector2(0, -(edge.from.size * .5f + 16));
+            Vector2 control = trunk ? (from + to) * .5f : new Vector2(Mathf.Lerp(from.x, to.x, .75f), Mathf.Lerp(from.y, to.y, .25f));
+            edge.bark = Branch("Branch " + edge.from.id + " to " + edge.to.id, from, control, to, trunk ? (edge.from.id == "root" ? 28 : 20) : 14, trunk ? 18 : 7, Bark);
+        }
+        // Sap: the same curve at 45% width, grown in as the parent awakens, with a spark travelling along it.
+        void BuildSap(Edge edge)
+        {
+            var bark = edge.bark;
+            edge.sap = Branch("Sap " + edge.from.id + " to " + edge.to.id, Flip(bark.a), Flip(bark.control), Flip(bark.b), bark.baseWidth * .45f, bark.tipWidth * .45f, Dormant);
+            edge.sap.SetGrown(0);
+            var spark = Rect("Branch spark", root, 0, 0, 16, 16); spark.pivot = new Vector2(.5f, .5f);
             edge.spark = spark.gameObject.AddComponent<Image>();
             edge.spark.sprite = Dot(); edge.spark.color = new Color(1, .85f, .5f, 0); edge.spark.raycastTarget = false;
-            edge.rect = rect;
         }
+        // Four roots fan down and out under the base node.
+        void BuildRoots(Node node)
+        {
+            if (node == null) return;
+            foreach (var end in new[] { new Vector2(-140, 40), new Vector2(140, 40), new Vector2(-80, 75), new Vector2(80, 75) })
+            {
+                Vector2 tip = node.centre + end;
+                Branch("Root", node.centre, new Vector2(node.centre.x + end.x * .25f, tip.y), tip, 16, 3, new Color(Bark.r, Bark.g, Bark.b, .5f));
+            }
+        }
+        BranchGraphic Branch(string name, Vector2 from, Vector2 control, Vector2 to, float baseWidth, float tipWidth, Color color)
+        {
+            var rect = Rect(name, root, 0, 0, PanelWidth, PanelHeight);
+            var branch = rect.gameObject.AddComponent<BranchGraphic>();
+            branch.raycastTarget = false; branch.color = color;
+            branch.a = Flip(from); branch.control = Flip(control); branch.b = Flip(to); branch.baseWidth = baseWidth; branch.tipWidth = tipWidth;
+            return branch;
+        }
+        // Layout numbers grow downward, canvas Y grows upward.
+        static Vector2 Flip(Vector2 p) => new Vector2(p.x, -p.y);
+        public int RootCount => root.GetComponentsInChildren<BranchGraphic>(true).Length - edges.Count * 2;
+        public IEnumerable<(BranchGraphic bark, BranchGraphic sap)> Branches { get { foreach (var edge in edges) yield return (edge.bark, edge.sap); } }
         void BuildNode(Node node)
         {
             var circle = Rect("Power " + node.id, root, node.centre.x - node.size * .5f, node.centre.y - node.size * .5f, node.size, node.size);
@@ -147,6 +171,7 @@ namespace LightingBlocks
             node.numeral = Label("Level", circle, "·", 0, 0, node.size, node.size, Mathf.RoundToInt(node.size * .34f), Gold, TextAnchor.MiddleCenter);
             node.numeral.rectTransform.anchorMin = Vector2.zero; node.numeral.rectTransform.anchorMax = Vector2.one;
             node.numeral.rectTransform.offsetMin = node.numeral.rectTransform.offsetMax = Vector2.zero;
+            if (SkillBadge.IconName(node.id) != null) { node.badge = SkillBadge.Build(circle, node.id, node.size); node.numeral.enabled = false; }
 
             float below = node.centre.y + node.size * .5f;
             int cap = Cap(node);
@@ -158,6 +183,8 @@ namespace LightingBlocks
                 node.pips[i] = pip.gameObject.AddComponent<Image>();
                 node.pips[i].sprite = Dot(); node.pips[i].color = Dormant; node.pips[i].raycastTarget = false;
             }
+            // A soft dark backing keeps the name and price readable where a branch runs behind them.
+            Graphic("Label shade", Rect("Label shade host " + node.id, root, node.centre.x - 150, below + 14, 300, 56), Dot(), new Color(.05f, .04f, .03f, .85f));
             node.label = Label("Name " + node.id, root, node.title, node.centre.x - 110, below + 22, 220, 22, 16, White, TextAnchor.MiddleCenter);
             node.price = Label("Price " + node.id, root, "", node.centre.x - 110, below + 42, 220, 20, 15, Mint, TextAnchor.MiddleCenter);
 
@@ -240,11 +267,11 @@ namespace LightingBlocks
                 node.burst.color = new Color(1, .93f, .74f, node.punch * .85f);
                 node.burst.rectTransform.localScale = Vector3.one * (1 + (1 - node.punch) * 1.9f);
 
+                Color tier = node.badge != null ? node.badge.Apply(level, cap, time) : level > 0 ? new Color(.62f, .50f, .32f) : Dormant;
                 Color ring = maxed ? Gold
                     : locked ? new Color(.30f, .27f, .27f)
                     : affordable ? Color.Lerp(Dormant, Mint, .5f + Mathf.Sin(time * 3.4f) * .5f) // breathes from dim: available, not learned
-                    : level > 0 ? new Color(.62f, .50f, .32f)
-                    : Dormant;
+                    : tier;
                 if (node.id == "root") ring = Gold;
                 node.ring.color = Color.Lerp(ring, Color.white, pop);
                 node.disc.color = Color.Lerp(new Color(.10f, .085f, .07f, .96f), new Color(.24f, .17f, .08f, .97f), level > 0 ? 1 : 0);
@@ -272,11 +299,11 @@ namespace LightingBlocks
                 bool live = Level(edge.from) > 0;
                 edge.grown = Mathf.MoveTowards(edge.grown, live ? 1 : 0, step * 2.2f);
                 float eased = Mathf.SmoothStep(0, 1, edge.grown);
-                edge.rect.sizeDelta = new Vector2(Mathf.Max(2, edge.length * eased), 9);
-                edge.line.color = Color.Lerp(Dormant, new Color(.78f, .58f, .28f), eased);
+                edge.sap.SetGrown(eased);
+                edge.sap.color = Color.Lerp(Dormant, Sap, eased);
                 bool flowing = eased > .98f;
                 float travel = Mathf.Repeat(time * .42f + edge.from.centre.x * .003f, 1);
-                edge.spark.rectTransform.anchoredPosition = new Vector2(edge.length * travel, 0);
+                edge.spark.rectTransform.anchoredPosition = edge.sap.Point(travel);
                 edge.spark.color = new Color(1, .88f, .56f, flowing ? Mathf.Sin(travel * Mathf.PI) * .85f : 0);
             }
 
@@ -368,9 +395,9 @@ namespace LightingBlocks
             return button;
         }
 
-        static Sprite Disc() => discSprite != null ? discSprite : discSprite = Paint(d => Mathf.InverseLerp(1f, .94f, d));
-        static Sprite Ring() => ringSprite != null ? ringSprite : ringSprite = Paint(d => Mathf.Clamp01(1 - Mathf.Abs(d - .87f) / .1f));
-        static Sprite Dot() => dotSprite != null ? dotSprite : dotSprite = Paint(d => Mathf.InverseLerp(1f, .55f, d));
+        internal static Sprite Disc() => discSprite != null ? discSprite : discSprite = Paint(d => Mathf.InverseLerp(1f, .94f, d));
+        internal static Sprite Ring() => ringSprite != null ? ringSprite : ringSprite = Paint(d => Mathf.Clamp01(1 - Mathf.Abs(d - .87f) / .1f));
+        internal static Sprite Dot() => dotSprite != null ? dotSprite : dotSprite = Paint(d => Mathf.InverseLerp(1f, .55f, d));
         static Sprite Paint(System.Func<float, float> alpha)
         {
             const int size = 128;

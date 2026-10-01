@@ -89,6 +89,7 @@ namespace LightingBlocks.Editor
             CheckDash(game, forest);
             CheckGrenade(game, forest);
             CheckPull(game, forest);
+            CheckAbilityHud(game);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
             CheckDotSaveMigration(game, forest);
@@ -643,6 +644,47 @@ namespace LightingBlocks.Editor
                 forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
                 for (int i = 0; i < 30; i++) dots.Tick(1f / 60, false);
                 game.pullLevel = oldLevel; pull.CooldownLeft = 0;
+            }
+        }
+
+        // ---- Ability bar and skill badges: game-icons.net icons, a richer frame per level, a tree-shaped tree ----
+        static void CheckAbilityHud(GameManager game)
+        {
+            var hud = GameHUD.Current; var bar = hud.Abilities;
+            Check(bar != null && string.Join("/", bar.Slots.Select(s => s.id)) == "dash/grenade/pull", "The ability bar holds Dash, Light Grenade and Spirit Pull");
+            Check(bar.Slots.All(s => s.badge.Icon.sprite != null && s.badge.Icon.sprite.texture.name == SkillBadge.IconName(s.id) && s.padlock.sprite.texture.name == "padlock"),
+                "Every ability shows its game-icons.net icon and padlock from Resources/UI/Icons");
+            Check(SkillBadge.Tier(0, 3) == 0 && SkillBadge.Tier(1, 3) == 1 && SkillBadge.Tier(2, 3) == 2 && SkillBadge.Tier(3, 3) == 3
+                && string.Join(",", Enumerable.Range(1, 5).Select(l => SkillBadge.Tier(l, 5))) == "1,1,2,2,3", "Badge tiers run locked, bronze, silver, gold at max (Dash spreads its five levels)");
+            var grenade = game.GetComponent<LightingGrenade>(); var pull = game.GetComponent<LightingPull>();
+            var charge = typeof(LightingGrenade).GetField("charge", BindingFlags.Instance | BindingFlags.NonPublic);
+            int oldDash = game.dashLevel, oldGrenade = game.grenadeLevel, oldPull = game.pullLevel;
+            try
+            {
+                game.dashLevel = 0; game.grenadeLevel = 1; game.pullLevel = 3; pull.CooldownLeft = 0; bar.Refresh(0);
+                var dash = bar.Slots[0]; var throwSlot = bar.Slots[1]; var pullSlot = bar.Slots[2];
+                Check(dash.padlock.enabled && dash.badge.Icon.color.a < .6f && !throwSlot.padlock.enabled && throwSlot.badge.Icon.color.a > .99f,
+                    "A locked ability is grey with a padlock; a learned one is lit without it");
+                Check(throwSlot.ring.color == SkillBadge.Bronze && !throwSlot.badge.Outer.enabled && pullSlot.ring.color == SkillBadge.Gold && pullSlot.badge.Outer.enabled,
+                    "Level 1 wears a bronze frame, max level a gold double ring");
+                pull.CooldownLeft = LightingPull.Cooldown * .5f; charge.SetValue(grenade, .5f); bar.Refresh(0);
+                Check(Math.Abs(pullSlot.cooldown.fillAmount - .5f) < .01f && Math.Abs(throwSlot.charge.fillAmount - .5f) < .01f,
+                    "The Spirit Pull slot sweeps dark for its remaining cooldown and the grenade slot rings its charge");
+
+                hud.SetView(GameHUD.ScreenView.Skills);
+                var tree = UnityEngine.Object.FindAnyObjectByType<SkillTree>(FindObjectsInactive.Include);
+                for (int i = 0; i < 200; i++) tree.Refresh();
+                var branches = tree.Branches.ToArray();
+                Check(branches.Length == 5 && branches.All(b => b.bark != null && b.sap != null && b.bark.Grown == 1) && tree.RootCount == 4,
+                    "The skill tree draws 5 curved bark branches with sap over them, and 4 roots");
+                Check(branches.Where(b => b.sap.name.StartsWith("Sap root")).All(b => b.sap.Grown > .99f && (b.sap.Point(1) - b.bark.b).sqrMagnitude < .01f),
+                    "Sap grows the whole way along the branches from the always-awake base");
+                Check(tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Count(i => i.name == "Badge icon") == 5, "Every Lighting skill node shows its icon");
+            }
+            finally
+            {
+                hud.SetView(GameHUD.ScreenView.Playing); charge.SetValue(grenade, -1f);
+                game.dashLevel = oldDash; game.grenadeLevel = oldGrenade; game.pullLevel = oldPull; pull.CooldownLeft = 0;
             }
         }
 

@@ -22,6 +22,7 @@ namespace LightingBlocks
         // In flight or still laying its blast (GameManager.GrenadeBlast runs a few tiles a frame).
         public bool Busy => Flying || blast != null;
         public bool Charging => charge >= 0;
+        public float Charge => Mathf.Max(0, charge);
         public Vector3 Landing => to;
         public static int Radius(int level) => GrenadeTiles[Mathf.Clamp(level, 1, GrenadeTiles.Length) - 1];
 

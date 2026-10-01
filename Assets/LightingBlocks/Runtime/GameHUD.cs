@@ -37,6 +37,8 @@ namespace LightingBlocks
         ScreenView controlsReturn = ScreenView.Title, confirmReturn = ScreenView.Title;
         readonly List<PurchaseBinding> purchases = new List<PurchaseBinding>();
         SkillTree skillTree;
+        AbilityBar abilityBar;
+        public AbilityBar Abilities => abilityBar;
         readonly List<RaycastResult> raycasts = new List<RaycastResult>();
         PointerEventData pointer;
         EventSystem eventSystem;
@@ -235,6 +237,7 @@ namespace LightingBlocks
             placeChip.GetComponent<Image>().raycastTarget = false;
             Label("Place Prompt Text", placeChip, "[E] Place block", 8, 0, 154, 38, 15, White, TextAnchor.MiddleCenter);
             placeChip.gameObject.SetActive(false);
+            if (BridgeProfile.Current.isLighting && game != null) abilityBar = AbilityBar.Build(playRoot.transform, game, font);
 
             shade = FullRect("Menu Backdrop", canvas).gameObject; shade.AddComponent<Image>().color = new Color(.008f, .016f, .04f, .9f);
             BuildTitle(); BuildPause(); BuildControls(); BuildSkills(); BuildMemories(); BuildConfirmation();
@@ -274,6 +277,7 @@ namespace LightingBlocks
             newButton = Button("New Journey", panel, "NEW JOURNEY", 70, 400, 460, 48, () => ConfirmNew(ScreenView.Title));
             Button("Title Controls", panel, "CONTROLS", 70, 458, 460, 48, ShowControls);
             Button("Quit", panel, "QUIT", 70, 516, 460, 48, Quit);
+            Label("Icon Credits", panel, "Ability icons: Lorc, Delapouite · game-icons.net · CC BY 3.0", 40, 574, 520, 22, 12, Muted, TextAnchor.MiddleCenter);
         }
         void BuildPause()
         {
@@ -429,6 +433,7 @@ namespace LightingBlocks
                 + (game.completed ? "III · The light you carried was never yours alone. Every soul you guided became part of the next dawn." : "III · Build through the darkness to reach the next dawn.");
             foreach (var binding in purchases) UpdatePurchase(binding);
             if (skillTree != null) skillTree.Refresh();
+            if (abilityBar != null && playRoot.activeSelf) abilityBar.Refresh(Time.unscaledTime);
         }
         // Lighting only: the nearest nearby tree selector's colour, or a fallback when
         // none is in range. Shared by the resources panel and the E-key context hint below.
@@ -545,10 +550,14 @@ namespace LightingBlocks
             var caption = button.GetComponentInChildren<Text>().rectTransform;
             caption.anchoredPosition = new Vector2(6, -38); caption.sizeDelta = new Vector2(54, 26);
         }
-        static Sprite IconSprite(string name)
+        // Resources/UI/Icons: a Sprite import wins; the game-icons.net PNGs import as plain textures and are
+        // wrapped here (ponytail: no importer settings); a missing file falls back to a drawn glyph.
+        internal static Sprite IconSprite(string name)
         {
             if (iconSprites.TryGetValue(name, out var cached) && cached != null) return cached;
             var authored = Resources.Load<Sprite>("UI/Icons/" + name);
+            if (authored == null && Resources.Load<Texture2D>("UI/Icons/" + name) is Texture2D texture)
+                authored = Sprite.Create(texture, new UnityEngine.Rect(0, 0, texture.width, texture.height), new Vector2(.5f, .5f), 100, 0, SpriteMeshType.FullRect);
             return iconSprites[name] = authored != null ? authored : DrawIcon(name);
         }
         // ponytail: 48x48 hard-edged glyphs drawn in code so the HUD needs no art import.
