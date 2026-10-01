@@ -12,7 +12,7 @@ namespace LightingBlocks
     public sealed class LightingDots : MonoBehaviour
     {
         public const int DensityPerMille = 180, MaxVisible = 40, DotLights = 4;
-        public const float StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f;
+        public const float StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f, PullSeconds = .35f;
         // The reference soul's emission, (1, .72, .08) x 4; LightingFog fades it with distance.
         public static readonly Color Emission = new Color(4f, 2.88f, .32f);
         static readonly Color LightColor = new Color(1f, .8f, .15f);
@@ -24,6 +24,9 @@ namespace LightingBlocks
         readonly bool[] used = new bool[MaxVisible];
         readonly int[] litDots = new int[DotLights];
         readonly float[] appear = new float[MaxVisible];
+        // A dot taken by LightingPull keeps its visual while it flies to the player: progress 0..1, 0 = idle.
+        readonly float[] flight = new float[MaxVisible];
+        readonly Vector3[] flyFrom = new Vector3[MaxVisible];
         readonly List<(Vector2Int cell, int distance)> candidates = new List<(Vector2Int, int)>();
         readonly HashSet<Vector2Int> wanted = new HashSet<Vector2Int>(), shown = new HashSet<Vector2Int>(), collected = new HashSet<Vector2Int>();
         Vector2Int streamCell; bool dirty = true;
@@ -68,7 +71,7 @@ namespace LightingBlocks
                 ForestWorld.Remove(dot.GetComponent<Collider>());
                 dot.transform.SetParent(root, false); dot.transform.localScale = Vector3.zero;
                 var r = dot.GetComponent<Renderer>(); r.sharedMaterial = material; r.shadowCastingMode = ShadowCastingMode.Off; r.receiveShadows = false;
-                dot.SetActive(false); visuals.Add(dot.transform); used[i] = false;
+                dot.SetActive(false); visuals.Add(dot.transform); used[i] = false; flight[i] = 0;
             }
             // Its own objects, not children of a dot: a light never rides a hidden or fading visual.
             for (int i = 0; i < DotLights; i++)
@@ -106,6 +109,14 @@ namespace LightingBlocks
                 appear[i] = Mathf.Min(1, appear[i] + delta / AppearSeconds);
                 visuals[i].position = Position(cells[i]) + Vector3.up * (Mathf.Sin(time * 2 + cells[i].x * .7f + cells[i].y * 1.3f) * Bob);
                 visuals[i].localScale = Vector3.one * (Size * Mathf.SmoothStep(0, 1, appear[i]));
+            }
+            var catcher = game.player.transform.position + Vector3.up;
+            for (int i = 0; i < MaxVisible; i++)
+            {
+                if (flight[i] <= 0) continue;
+                flight[i] = Mathf.Min(1, flight[i] + delta / PullSeconds); float t = Mathf.SmoothStep(0, 1, flight[i]);
+                visuals[i].position = Vector3.Lerp(flyFrom[i], catcher, t); visuals[i].localScale = Vector3.one * (Size * (1 - .6f * t));
+                if (flight[i] >= 1) { flight[i] = 0; visuals[i].gameObject.SetActive(false); dirty = true; }
             }
             lightTimer -= delta; if (lightTimer <= 0) { lightTimer = .2f; PlaceLights(); }
             collectTimer -= delta;
@@ -155,7 +166,9 @@ namespace LightingBlocks
             foreach (var c in wanted)
             {
                 if (shown.Contains(c)) continue;
-                while (used[free]) free++;
+                // ponytail: a dot left without a slot while pulled dots fly shows on the restream when they land.
+                while (free < MaxVisible && (used[free] || flight[free] > 0)) free++;
+                if (free == MaxVisible) break;
                 used[free] = true; cells[free] = c; appear[free] = 0;
                 visuals[free].position = Position(c); visuals[free].localScale = Vector3.zero; visuals[free].gameObject.SetActive(true);
             }
@@ -195,13 +208,44 @@ namespace LightingBlocks
             if (dx * dx + dz * dz > 1.1025f || Mathf.Abs(player.y - dot.y) > 1.5f) return false;
             var tile = game.BlockUnder(new Vector3(dot.x, 0, dot.z));
             if (tile == null || tile != game.BlockUnder(player)) return false;
+            return Take(cell, false);
+        }
+
+        // Spirit Pull: every dot whose cell centre lies within radius of center, over a tile or the open
+        // void. Returns how many were taken; each shown one flies to the player.
+        public int Pull(Vector3 center, float radius)
+        {
+            if (GameHUD.GameplayBlocked || world == null || world.State == null || game == null || game.player == null) return 0;
+            if (world.State.dots == null) world.State.dots = new List<DotSave>();
+            int reach = Mathf.CeilToInt(radius / LightingBridgeGrid.CellSize), taken = 0;
+            var middle = LightingBridgeGrid.CellOf(center);
+            for (int x = -reach; x <= reach; x++)
+                for (int z = -reach; z <= reach; z++)
+                {
+                    var c = new Vector2Int(middle.x + x, middle.y + z); var p = Position(c);
+                    if ((p.x - center.x) * (p.x - center.x) + (p.z - center.z) * (p.z - center.z) > radius * radius || !IsDot(c)) continue;
+                    if (Take(c, true)) taken++;
+                }
+            return taken;
+        }
+
+        // Credits one dot and starts its respawn timer. A walked-over dot vanishes with a chime; a pulled
+        // one flies in silently (LightingPull plays one chime for the whole pull).
+        bool Take(Vector2Int cell, bool fly)
+        {
             if (!world.TryAddInventory(ForestWorld.ParticleUnitsPerParticle + Mathf.Clamp(game.soulGainLevel, 0, 8))) return false;
             world.State.dots.Add(new DotSave { x = cell.x, z = cell.y, remaining = ForestWorld.LightingRespawnSeconds });
-            for (int i = 0; i < MaxVisible; i++) if (used[i] && cells[i] == cell) { used[i] = false; visuals[i].gameObject.SetActive(false); }
+            for (int i = 0; i < MaxVisible; i++)
+            {
+                if (!used[i] || cells[i] != cell) continue;
+                used[i] = false;
+                if (fly) { flight[i] = .0001f; flyFrom[i] = visuals[i].position; } else visuals[i].gameObject.SetActive(false);
+            }
             dirty = true;
-            var audio = GetComponent<LightingPickupAudio>(); if (audio != null) audio.PlayPickup();
+            if (!fly) { var audio = GetComponent<LightingPickupAudio>(); if (audio != null) audio.PlayPickup(); }
             return true;
         }
+        public bool Flying { get { for (int i = 0; i < MaxVisible; i++) if (flight[i] > 0) return true; return false; } }
 
         void OnDestroy() => ForestWorld.Remove(material);
     }

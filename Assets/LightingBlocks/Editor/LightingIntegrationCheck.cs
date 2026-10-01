@@ -88,6 +88,7 @@ namespace LightingBlocks.Editor
             CheckSkillTreeClick(game, forest);
             CheckDash(game, forest);
             CheckGrenade(game, forest);
+            CheckPull(game, forest);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
             CheckDotSaveMigration(game, forest);
@@ -571,6 +572,77 @@ namespace LightingBlocks.Editor
                 game.Recalculate(); game.grenadeLevel = oldLevel;
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 Physics.SyncTransforms();
+            }
+        }
+
+        // ---- Spirit Pull: F takes every dot within the grenade radius, over the void too ----
+        static void CheckPull(GameManager game, ForestWorld forest)
+        {
+            var pull = game.GetComponent<LightingPull>();
+            Check(pull != null, "Spirit Pull rides on the Lighting GameManager");
+            var tree = forest.WisdomTrees.First(t => t != null);
+            int oldLevel = game.pullLevel; game.pullLevel = 0;
+            Check(Math.Abs(game.Cost("pull") - 30) < .001 && game.Cap("pull") == 3 && LightingPull.Radius(1) == 5 && LightingPull.Radius(3) == 7,
+                "Spirit Pull costs 30 particles and has three levels with the grenade's 5/6/7-tile radius");
+            forest.State.inventory = 30 * ForestWorld.ParticleUnitsPerParticle;
+            Teleport(game, tree.transform.position + Vector3.right * 8);
+            Check(!game.Purchase("pull") && game.pullLevel == 0, "Spirit Pull cannot be bought away from a Wisdom Tree");
+            Teleport(game, tree.transform.position + Vector3.right * 2);
+            Check(game.Purchase("pull") && game.pullLevel == 1 && forest.SharedInventory == 0, "Buying Spirit Pull at a tree spends exactly 30 particles");
+            string save = game.ExportSave(); game.pullLevel = 0;
+            Check(game.ImportSave(save) && game.pullLevel == 1, "The Spirit Pull level survives save and load");
+            var invalid = JsonUtility.FromJson<GameManager.SaveData>(save); invalid.pullLevel = 4;
+            Check(!game.ImportSave(JsonUtility.ToJson(invalid)) && game.pullLevel == 1, "A Spirit Pull level past the cap is rejected");
+            game.pullLevel = 3; forest.State.inventory = 100000;
+            Check(!game.Purchase("pull") && game.pullLevel == 3 && forest.SharedInventory == 100000, "The three-level cap refuses a fourth Spirit Pull purchase");
+            game.pullLevel = 1;
+
+            // From the island-1 west edge, half the 10 m circle is open void.
+            var dots = forest.Dots; int oldSeed = forest.State.seed;
+            var bounds = HubBounds("island-1");
+            float rowZ = LightingBridgeGrid.Cell(0, Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize)).z;
+            var at = new Vector3(bounds.min.x + .22f, .025f, rowZ);
+            float radius = LightingPull.Radius(1) * LightingBridgeGrid.CellSize;
+            var middle = LightingBridgeGrid.CellOf(at);
+            Func<Vector2Int, float> distance = c => { var p = LightingDots.Position(c); return new Vector2(p.x - at.x, p.z - at.z).magnitude; };
+            var near = new System.Collections.Generic.List<Vector2Int>(); var outside = new System.Collections.Generic.List<Vector2Int>();
+            try
+            {
+                for (int i = 0; i < 1000; i++)
+                {
+                    near.Clear(); outside.Clear();
+                    for (int x = -8; x <= 8; x++)
+                        for (int z = -8; z <= 8; z++)
+                        {
+                            var c = new Vector2Int(middle.x + x, middle.y + z);
+                            if (!dots.IsDot(c)) continue;
+                            if (distance(c) <= radius) near.Add(c); else if (distance(c) <= radius + 4) outside.Add(c);
+                        }
+                    if (near.Count(c => game.BlockUnder(LightingDots.Position(c)) == null) >= 3 && outside.Count > 0) break;
+                    forest.State.seed++;
+                }
+                Check(near.Count(c => game.BlockUnder(LightingDots.Position(c)) == null) >= 3 && outside.Count > 0,
+                    "Fixture: at least 3 dots over the open void within 5 tiles, and one just beyond");
+                Teleport(game, at); dots.Refresh(); pull.CooldownLeft = 0;
+                int perDot = ForestWorld.ParticleUnitsPerParticle + Mathf.Clamp(game.soulGainLevel, 0, 8), walletBefore = forest.SharedInventory;
+                Check(pull.TryPull(), "Spirit Pull fires with dots in range");
+                Check(forest.SharedInventory - walletBefore == near.Count * perDot && near.All(c => !dots.IsDot(c) && forest.State.dots.Any(d => d.x == c.x && d.z == c.y)),
+                    "Spirit Pull takes every dot within 5 tiles, over the void too (" + near.Count + " dots, wallet +" + (forest.SharedInventory - walletBefore) + ")");
+                Check(outside.All(c => dots.IsDot(c)), "Dots beyond 5 tiles stay (" + outside.Count + ")");
+                Check(dots.Flying && !dots.ShownCells.Any(c => near.Contains(c)), "Pulled dots leave the field and fly to the player");
+                for (int i = 0; i < 30; i++) dots.Tick(1f / 60, false);
+                Check(!dots.Flying, "Every pulled dot lands within " + LightingDots.PullSeconds + " s");
+                int walletAfter = forest.SharedInventory;
+                Check(!pull.TryPull() && forest.SharedInventory == walletAfter && pull.CooldownLeft > LightingPull.Cooldown - .1f,
+                    "A second pull inside the " + LightingPull.Cooldown + "-second cooldown is refused");
+                pull.CooldownLeft = 0;
+                Check(!pull.TryPull() && pull.CooldownLeft == 0 && forest.SharedInventory == walletAfter, "A pull with no dots in range is refused and costs no cooldown");
+            }
+            finally
+            {
+                forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
+                for (int i = 0; i < 30; i++) dots.Tick(1f / 60, false);
+                game.pullLevel = oldLevel; pull.CooldownLeft = 0;
             }
         }
 

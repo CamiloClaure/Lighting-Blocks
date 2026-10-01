@@ -79,7 +79,8 @@ namespace LightingBlocks
                 Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(430, 375), 104);
                 Add("root", BridgeProfile.Current.isLighting ? "THE BRIDGE PATH" : "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
                 Add("grenade", "LIGHT GRENADE", "Throw a charged spirit into the void: it lays tiles where it bursts and relights the tiles already there.", new Vector2(430, 200), 104);
-                Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash"); Connect("dash", "grenade");
+                Add("pull", "SPIRIT PULL", "Draw every particle around you to you, even over the open void.", new Vector2(645, 375), 104);
+                Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash"); Connect("dash", "grenade"); Connect("soulgain", "pull");
             }
             else
             {
@@ -314,6 +315,7 @@ namespace LightingBlocks
                     + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
                 case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n0.3-second cooldown. Unavailable while hauling.";
                 case "grenade": return "Hold right mouse to charge, release to throw along the camera. Costs " + LightingGrenade.ThrowCost + " particles per throw.\nReach and blast radius: " + LightingGrenade.Radius(game.grenadeLevel) + " tiles (levels: " + string.Join("/", LightingGrenade.GrenadeTiles) + ").\nThe blast lays tiles over the void that connect to your network and relights the tiles already there.";
+                case "pull": return "Press F to pull every particle within " + LightingPull.Radius(game.pullLevel) + " tiles (levels: " + string.Join("/", LightingGrenade.GrenadeTiles) + ", the Light Grenade's radius).\nIt takes particles over the open void too.\n" + LightingPull.Cooldown + "-second cooldown.";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";

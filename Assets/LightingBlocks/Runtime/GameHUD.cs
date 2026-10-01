@@ -316,14 +316,15 @@ namespace LightingBlocks
             var panel = CenterPanel("Controls View", 850, 730); controlsPanel = panel.gameObject;
             Heading("Controls Heading", panel, "CONTROLS", 32, 28, 786, 52, 36, White, TextAnchor.MiddleCenter);
             Label("Controls Subtitle", panel, "Keyboard and mouse", 32, 82, 786, 26, 18, Muted, TextAnchor.MiddleCenter);
-            // Lighting keeps Speed, Particle Yield, and Dash (hotkeys 1/2 plus Shift); the other legacy powers,
+            // Lighting keeps Speed, Particle Yield, Dash, Light Grenade and Spirit Pull; the other legacy powers,
             // and Soul Links' click-to-gather grab mode, do not exist there.
             string[,] rows = BridgeProfile.Current.isLighting ? new[,] {
-                {"Move", "W / A / S / D"}, {"Carry block", "Hold Space"},
-                {"Place tile", "Release Space"}, {"Rotate / zoom camera", "Move mouse / wheel"},
+                {"Move", "W / A / S / D"}, {"Carry block / place tile", "Hold / release Space"},
+                {"Rotate / zoom camera", "Move mouse / wheel"},
                 {"Collect particles", "Stand on their supporting tile"}, {"Request matching free tile", "E at a Wisdom Tree"},
                 {"Return unused blocks", "R near a Wisdom Tree"}, {"Open / close skill tree", "Tab or K"},
-                {"Pause / resume / go back", "Esc"}, {"Speed", "1"}, {"Particle Yield", "2"}, {"Dash (after unlock)", "Shift"},
+                {"Pause / resume / go back", "Esc"}, {"Speed / Particle Yield", "1 / 2"}, {"Dash (after unlock)", "Shift"},
+                {"Light Grenade (after unlock)", "Hold / release right mouse"}, {"Spirit Pull (after unlock)", "F"},
                 {"Fullscreen / expand Game view", "F1"}
             } : new[,] {
                 {"Move", "W / A / S / D"}, {"Grab / gather floating stones", "Left mouse (hold before Soul Links)"},
