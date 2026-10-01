@@ -113,7 +113,7 @@ namespace LightingBlocks
         // A tile past the black band still costs its draw calls (3-4 renderers, whose property blocks
         // keep them out of batching) only to be painted black. Stop drawing it; its collider, light
         // and state stay. forceRenderingOff is separate from Renderer.enabled, which BlockArt owns.
-        // ponytail: O(tiles) per two-metre step of the player, cheap up to MaxPlacedTiles (4096).
+        // O(loaded tiles) per two-metre step of the player: LightingTiles keeps only the chunks near it.
         public void CullTiles(GameManager game, bool force = false)
         {
             var cell = LightingBridgeGrid.CellOf(game.player.transform.position);

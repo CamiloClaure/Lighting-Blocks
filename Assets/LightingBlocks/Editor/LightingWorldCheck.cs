@@ -280,7 +280,7 @@ namespace LightingBlocks.Editor
             GameHUD.Current.BeginJourney();
             var forest=ForestWorld.For(game);var island=forest.configuration.islands[0];var tree=forest.WisdomTrees[0];
             var owner=forest.Inventory(island.id);owner.freeDeliveryColor=-1;owner.freeDeliveryColors.Clear();owner.charge=new[]{0,0,0};owner.rewards.Clear();
-            forest.State.inventory=13;int walletBefore=forest.SharedInventory;int blocksBefore=game.Blocks.Count;
+            forest.State.inventory=13;int walletBefore=forest.SharedInventory;int blocksBefore=game.Blocks.Count(b=>!b.placed);
             Teleport(game,tree.transform.position+Vector3.right*8);
             Check(!tree.RequestTile(2)&&owner.freeDeliveryColor==-1,"A direct remote tree request is refused");
             Teleport(game,tree.transform.position+Vector3.right*2);
@@ -290,10 +290,10 @@ namespace LightingBlocks.Editor
             var obstacles=new List<GameObject>();
             foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
             Physics.SyncTransforms();tree.Tick(.61f);
-            Check(game.Blocks.Count==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output keeps the selected free tile pending");
+            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output keeps the selected free tile pending");
             foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();
             tree.Tick(.61f);
-            Check(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==2,"A clear output releases exactly the selected free tile after its delay");
+            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output releases exactly the selected free tile after its delay");
             Check(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Successful free delivery clears only its request and creates no particle charge");
             Check(forest.SharedInventory==walletBefore,"Free tile creation leaves the particle wallet unchanged");
         }

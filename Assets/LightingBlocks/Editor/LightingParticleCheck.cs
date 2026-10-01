@@ -187,12 +187,12 @@ namespace LightingBlocks.Editor
             Teleport(game,tree.transform.position+Vector3.right*2);
             Assert(tree.RequestTile(2)&&owner.freeDeliveryColor==2,"Supported ground within three metres requests a free matching tile");
             Assert(!tree.RequestTile(1)&&owner.freeDeliveryColor==2,"Only one player-selected tile can wait at a tree");
-            int walletBefore=forest.SharedInventory,blocksBefore=game.Blocks.Count;
+            int walletBefore=forest.SharedInventory,blocksBefore=game.Blocks.Count(b=>!b.placed);
             var obstacles=new List<GameObject>();foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
             Physics.SyncTransforms();tree.Tick(.61f);
-            Assert(game.Blocks.Count==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output preserves the free request");
+            Assert(game.Blocks.Count(b=>!b.placed)==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output preserves the free request");
             foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();tree.Tick(.61f);
-            Assert(game.Blocks.Count==blocksBefore+1&&game.Blocks.Last().tier==2,"A clear output creates exactly the selected tile");
+            Assert(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output creates exactly the selected tile");
             Assert(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Free delivery clears its request without particle charges or paid rewards");
             Assert(forest.SharedInventory==walletBefore,"Free delivery leaves the wallet unchanged");
         }

@@ -125,7 +125,7 @@ namespace LightingBlocks
             // own v3/v4 inventory conversions.
             if(BridgeProfile.Current.isLighting&&old?.islands!=null)foreach(var island in old.islands)island?.slots?.Clear();
             if(old!=null&&old.dots==null)old.dots=new List<DotSave>();
-            if(version==5)
+            if(version>=5)
             {
                 if(!Valid(old)||BridgeProfile.Current.isLighting&&old.particleVersion<4)return null;
                 foreach(var island in old.islands)if(island.freeDeliveryColors==null)island.freeDeliveryColors=new List<int>();

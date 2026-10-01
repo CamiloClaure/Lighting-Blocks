@@ -9,35 +9,12 @@ namespace LightingBlocks
     public static class LightingBridgeGrid
     {
         public const float CellSize = 2f;
-        public const int MaxPlacedTiles = 4096;
-        public const float HubMargin = 1024f;
+        // ponytail: build room around the hubs. Float error is about 1 mm at 8 km; past that the world
+        // needs a floating origin.
+        public const float HubMargin = 8192f;
         static readonly Vector2Int[] Neighbors = { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down };
-        sealed class BoardCache { public GameManager game; public int revision; public HashSet<Vector2Int> occupied, connected; public HashSet<string> hubs; public Dictionary<Vector2Int, BridgeBlock> tiles; public HubSnapshot platforms; }
-        static BoardCache boardCache;
-
-        static BoardCache Cache(GameManager game)
-        {
-            unchecked
-            {
-                int revision=game.lightingGridRevision;
-                if(boardCache!=null&&boardCache.game==game&&boardCache.revision==revision)return boardCache;
-                var tiles=new Dictionary<Vector2Int,BridgeBlock>();
-                foreach(var b in game.Blocks)if(b!=null&&b.placed)tiles[new Vector2Int(b.column,b.row)]=b;
-                var occupied=new HashSet<Vector2Int>(tiles.Keys);
-                var platforms=new HubSnapshot();
-                var connected=new HashSet<Vector2Int>(); var hubs=new HashSet<string>{"island-1"}; var queue=new Queue<Vector2Int>();
-                foreach(var cell in occupied)if(TouchesHub(cell,"island-1",platforms)&&connected.Add(cell))queue.Enqueue(cell);
-                while(queue.Count>0)
-                {
-                    var current=queue.Dequeue();
-                    foreach(var hub in OuterHubs)if(TouchesHub(current,hub,platforms)&&hubs.Add(hub))
-                        foreach(var tile in occupied)if(TouchesHub(tile,hub,platforms)&&connected.Add(tile))queue.Enqueue(tile);
-                    foreach(var next in NeighborsOf(current))if(occupied.Contains(next)&&connected.Add(next))queue.Enqueue(next);
-                }
-                return boardCache=new BoardCache{game=game,revision=revision,occupied=occupied,connected=connected,hubs=hubs,tiles=tiles,platforms=platforms};
-            }
-        }
-        static readonly string[] OuterHubs = { "island-2", "island-3" };
+        // The placed cells live in GameManager.Tiles (LightingTiles); every one of them is connected.
+        internal static readonly string[] OuterHubs = { "island-2", "island-3" };
         // Collider.bounds is an engine call and there are ~100 hub platforms: read them once per
         // flood, not once per tile per hub (~600k reads at 2000 tiles). Each hub's XZ extent, grown by
         // a tile, rejects the far tiles (nearly all of them) before the per-platform test.
@@ -88,30 +65,41 @@ namespace LightingBlocks
                 return p.x >= world.min.x - HubMargin && p.x <= world.max.x + HubMargin && p.z >= world.min.z - HubMargin && p.z <= world.max.z + HubMargin;
             }
         }
-        static HubSnapshot sharedPlatforms; // TouchesHub's public overload; dropped by Invalidate
-        public static int PlacedCount(GameManager game) => Cache(game).occupied.Count;
-        public static bool ReachesHub(GameManager game, string hubId) => Cache(game).hubs.Contains(hubId);
-        // The connected tile holding up this point, or null: GameManager.BlockUnder's box test
-        // (.99 x, 1.02 z half-extents) over the tile's own cell and its z neighbours, not every tile.
+        static HubSnapshot sharedPlatforms; // platform bounds, read once; dropped by Invalidate
+        static HubSnapshot Platforms() => sharedPlatforms ??= new HubSnapshot();
+        public static int PlacedCount(GameManager game) => game.Tiles.Count;
+        public static bool ReachesHub(GameManager game, string hubId) => game.Tiles.ReachesHub(hubId);
+        // The stored cell holding up this point: GameManager.BlockUnder's box test (.99 x, 1.02 z
+        // half-extents) over the point's cell and its z neighbours. Data only, so support never waits
+        // on a chunk's GameObjects.
+        public static bool Supports(GameManager game, Vector3 point) => SupportingCell(game, point) != null;
+        // The loaded tile GameObject holding up this point, or null.
         public static BridgeBlock TileAt(GameManager game, Vector3 point)
         {
-            var tiles=Cache(game).tiles;
+            var cell = SupportingCell(game, point);
+            return cell == null ? null : game.Tiles.Visual(cell.Value);
+        }
+        static Vector2Int? SupportingCell(GameManager game, Vector3 point)
+        {
             for(int i=0;i<3;i++)
             {
-                if(!tiles.TryGetValue(CellOf(point+new Vector3(0,0,i==1?.02f:i==2?-.02f:0)),out var b)||b==null||!b.placed||!b.Connected)continue;
-                Vector3 p=b.transform.position;
-                if(Mathf.Abs(point.x-p.x)<=.99f&&Mathf.Abs(point.z-p.z)<=1.02f)return b;
+                var cell=CellOf(point+new Vector3(0,0,i==1?.02f:i==2?-.02f:0));
+                if(!game.Tiles.Contains(cell))continue;
+                Vector3 p=Cell(cell.x,cell.y);
+                if(Mathf.Abs(point.x-p.x)<=.99f&&Mathf.Abs(point.z-p.z)<=1.02f)return cell;
             }
             return null;
         }
-        // PlatformSupport enable/disable lands here too, so the shared platform snapshot goes with it.
-        public static void Invalidate(GameManager game=null) { sharedPlatforms=null; if(game==null||boardCache==null||boardCache.game==game)boardCache=null; }
+        // Recalculate and PlatformSupport enable/disable land here: the platform snapshot is re-read. The
+        // hubs the network touches are rebuilt (an O(tiles) scan) only when platforms changed, or in Edit
+        // Mode, where checks toggle colliders without OnEnable; a laid tile adds its own hub.
+        public static void Invalidate(GameManager game=null, bool hubs=true) { sharedPlatforms=null; if(hubs||!Application.isPlaying)game?.Tiles.InvalidateHubs(); }
 
         public static Vector3 Cell(int x, int z) => new Vector3(x * CellSize, -.18f, z * CellSize);
         public static Vector2Int CellOf(Vector3 point) => new Vector2Int(Mathf.RoundToInt(point.x / CellSize), Mathf.RoundToInt(point.z / CellSize));
         public static IEnumerable<Vector2Int> NeighborsOf(Vector2Int cell)
         { for (int i = 0; i < Neighbors.Length; i++) yield return cell + Neighbors[i]; }
-        public static bool IsOccupied(GameManager game, Vector2Int cell) => Cache(game).occupied.Contains(cell);
+        public static bool IsOccupied(GameManager game, Vector2Int cell) => game.Tiles.Contains(cell);
         public static bool OverlapsPlatform(Vector2Int cell) => PlatformSupport.OverlapsCell(Cell(cell.x, cell.y), CellSize);
 
         public static bool InBounds(Vector2Int cell)
@@ -122,7 +110,7 @@ namespace LightingBlocks
                    p.z >= bounds.min.z - HubMargin && p.z <= bounds.max.z + HubMargin;
         }
 
-        public static HashSet<Vector2Int> Connected(GameManager game) => Cache(game).connected;
+        public static HashSet<Vector2Int> Connected(GameManager game) => game.Tiles.Cells;
 
         public static HashSet<Vector2Int> ConnectedCells(IEnumerable<Vector2Int> source)
         {
@@ -139,7 +127,7 @@ namespace LightingBlocks
             return reached;
         }
 
-        public static bool TouchesHub(Vector2Int cell, string hubId) => TouchesHub(cell, hubId, sharedPlatforms ??= new HubSnapshot());
+        public static bool TouchesHub(Vector2Int cell, string hubId) => TouchesHub(cell, hubId, Platforms());
         static bool TouchesHub(Vector2Int cell, string hubId, HubSnapshot hubs)
         {
             Vector3 center = Cell(cell.x, cell.y);
@@ -159,10 +147,9 @@ namespace LightingBlocks
 
         public static bool IsFrontier(GameManager game, Vector2Int cell, HashSet<Vector2Int> connected = null)
         {
-            var data=Cache(game); if (connected == null) connected = data.connected;
-            if (data.occupied.Contains(cell) || data.platforms.Overlaps(cell) || !data.platforms.InBounds(cell)) return false;
-            if (connected.Count >= MaxPlacedTiles) return false;
-            foreach (var h in data.hubs) if (TouchesHub(cell, h, data.platforms)) return true;
+            var platforms=Platforms(); if (connected == null) connected = game.Tiles.Cells;
+            if (game.Tiles.Contains(cell) || platforms.Overlaps(cell) || !platforms.InBounds(cell)) return false;
+            foreach (var h in game.Tiles.Hubs) if (TouchesHub(cell, h, platforms)) return true;
             foreach (var n in NeighborsOf(cell)) if (connected.Contains(n)) return true;
             return false;
         }

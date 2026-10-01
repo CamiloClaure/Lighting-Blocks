@@ -63,7 +63,17 @@ namespace LightingBlocks.Editor
         }
 
         static void Check(bool condition, string message) { if (!condition) throw new Exception(message); report.AppendLine("PASS: " + message); }
-        static void Teleport(GameManager game, Vector3 p) { var c = game.player.GetComponent<CharacterController>(); c.enabled = false; game.player.transform.position = new Vector3(p.x, .025f, p.z); c.enabled = true; Physics.SyncTransforms(); }
+        // Streams the tile chunks around the new spot at once (stream false leaves that to the caller).
+        static void Teleport(GameManager game, Vector3 p, bool stream = true) { var c = game.player.GetComponent<CharacterController>(); c.enabled = false; game.player.transform.position = new Vector3(p.x, .025f, p.z); c.enabled = true; if (stream) game.Tiles.Stream(game.player.transform.position, true); Physics.SyncTransforms(); }
+        // The placed network, loaded or not: a snapshot, and every cell with the colour it was laid in.
+        static System.Collections.Generic.HashSet<Vector2Int> Cells(GameManager game) => new System.Collections.Generic.HashSet<Vector2Int>(game.Tiles.Cells);
+        static (Vector2Int cell, int tier)[] PlacedCells(GameManager game) => game.Tiles.Cells.Select(c => (cell: c, tier: GameManager.RequiredTier(0, c.x, c.y))).OrderBy(t => t.cell.x).ThenBy(t => t.cell.y).ToArray();
+        // Takes back every tile laid since the snapshot.
+        static void RestoreTiles(GameManager game, System.Collections.Generic.HashSet<Vector2Int> before)
+        {
+            foreach (var c in game.Tiles.Cells.Where(c => !before.Contains(c)).ToArray()) game.Tiles.Remove(c);
+            game.Recalculate(); Physics.SyncTransforms();
+        }
         // Places a freshly-spawned block at (gap,column,row) via the real TryPlace path (mirrors
         // TwilightEvidence.cs's own proven full-bridge fixture), not a hand-set placed flag.
         static BridgeBlock PlaceAt(GameManager game, string islandId, int gap, int column, int row)
@@ -92,6 +102,7 @@ namespace LightingBlocks.Editor
             CheckAbilityHud(game);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
+            CheckUnboundedWorld(game, forest);
             CheckDotSaveMigration(game, forest);
             CheckLegacyLightingMigration(game, forest);
             CheckEdgeMovement(game);
@@ -182,8 +193,8 @@ namespace LightingBlocks.Editor
             CheckSharedPreviewAndFade(game,forest,start);
             CheckConnectedNetworkStress(start);
             var diagonalCandidates=new[]{start+Vector2Int.right+Vector2Int.up,start+Vector2Int.right+Vector2Int.down,start+Vector2Int.left+Vector2Int.up,start+Vector2Int.left+Vector2Int.down};
-            var diagonal=diagonalCandidates.FirstOrDefault(c=>LightingBridgeGrid.InBounds(c)&&!LightingBridgeGrid.OverlapsPlatform(c)&&!LightingBridgeGrid.TouchesHub(c,null)&&!LightingBridgeGrid.NeighborsOf(c).Any(n=>game.Blocks.Any(b=>b.placed&&b.column==n.x&&b.row==n.y)));
-            Check(!LightingBridgeGrid.NeighborsOf(diagonal).Any(n=>game.Blocks.Any(b=>b.placed&&b.column==n.x&&b.row==n.y)),"Diagonal test cell has no orthogonal tile connection");int diagonalTier=GameManager.RequiredTier(0,diagonal.x,diagonal.y);
+            var diagonal=diagonalCandidates.FirstOrDefault(c=>LightingBridgeGrid.InBounds(c)&&!LightingBridgeGrid.OverlapsPlatform(c)&&!LightingBridgeGrid.TouchesHub(c,null)&&!LightingBridgeGrid.NeighborsOf(c).Any(game.Tiles.Contains));
+            Check(!LightingBridgeGrid.NeighborsOf(diagonal).Any(game.Tiles.Contains),"Diagonal test cell has no orthogonal tile connection");int diagonalTier=GameManager.RequiredTier(0,diagonal.x,diagonal.y);
             SpawnGridTile(game,diagonal,diagonalTier,false,"PATH DISCONNECTED");
             var wrongCell=start+Vector2Int.right;int wanted=GameManager.RequiredTier(0,wrongCell.x,wrongCell.y);
             SpawnGridTile(game,wrongCell,(wanted+1)%3,false,"THIS TILE ASKS FOR");
@@ -193,7 +204,7 @@ namespace LightingBlocks.Editor
             SpawnGridTile(game,northTurn,GameManager.RequiredTier(0,northTurn.x,northTurn.y));
             var southBranch=straight+Vector2Int.down;
             SpawnGridTile(game,southBranch,GameManager.RequiredTier(0,southBranch.x,southBranch.y));
-            Check(game.Blocks.Count(b=>b.placed&&b.Connected)>=7,"Connected tiles can turn and branch around a loop-capable network");
+            Check(game.Tiles.Count>=7,"Connected tiles can turn and branch around a loop-capable network");
             Vector2Int towardHub2=HubBounds("island-2").center.z>=origin.z?Vector2Int.up:Vector2Int.down;
             if(Mathf.Abs(HubBounds("island-2").center.x-origin.x)>Mathf.Abs(HubBounds("island-2").center.z-origin.z))towardHub2=HubBounds("island-2").center.x>=origin.x?Vector2Int.right:Vector2Int.left;
             Vector2Int route=EdgeFor(edgeCells,towardHub2,origin);int steps=0;
@@ -208,11 +219,11 @@ namespace LightingBlocks.Editor
             Check(LightingBridgeGrid.IsFrontier(game,opposite),"A reached hub exposes its opposite platform edge to the same network");
             var terminal=SpawnGridTile(game,opposite,GameManager.RequiredTier(0,opposite.x,opposite.y));
             Teleport(game,SupportedNear(game,opposite-towardHub2));
-            Check(game.TryReclaimTerminalTile(terminal)&&!terminal.placed,"An empty terminal tile can be reclaimed while preserving the remaining network");
-            var articulation=straight;var articulationBlock=game.Blocks.First(b=>b.placed&&b.column==articulation.x&&b.row==articulation.y);
-            Teleport(game,SupportedNear(game,northTurn));
+            Check(game.TryReclaimTerminalTile(terminal)&&!terminal.placed&&!game.Tiles.Contains(opposite)&&game.Blocks.Contains(terminal),"An empty terminal tile can be reclaimed as a loose stone while preserving the remaining network");
+            var articulation=straight;
+            Teleport(game,SupportedNear(game,northTurn));var articulationBlock=game.Tiles.Visual(articulation);
             Check(!game.TryReclaimTerminalTile(articulationBlock)&&articulationBlock.placed,"An articulation tile cannot be reclaimed");
-            var occupied=game.Blocks.First(b=>b.placed&&b.column==northTurn.x&&b.row==northTurn.y);
+            var occupied=game.Tiles.Visual(northTurn);
             Teleport(game,LightingBridgeGrid.Cell(northTurn.x,northTurn.y));
             Check(!game.TryReclaimTerminalTile(occupied)&&occupied.placed,"A terminal tile occupied by the player cannot be reclaimed");
         }
@@ -281,10 +292,10 @@ namespace LightingBlocks.Editor
         static void CheckConnectedNetworkStress(Vector2Int anchor)
         {
             var fixture=new System.Collections.Generic.HashSet<Vector2Int>();
-            for(int x=0;x<64;x++)for(int z=-31;z<=32;z++)fixture.Add(anchor+new Vector2Int(x,z));
+            for(int x=0;x<320;x++)for(int z=-159;z<=160;z++)fixture.Add(anchor+new Vector2Int(x,z));
             var timer=System.Diagnostics.Stopwatch.StartNew();var connected=LightingBridgeGrid.ConnectedCells(fixture);timer.Stop();
-            Check(fixture.Count==LightingBridgeGrid.MaxPlacedTiles&&connected.Count==fixture.Count&&timer.Elapsed.TotalSeconds<10,
-                "A connected 4,096-cell fixture floods without dropping tiles ("+fixture.Count+" cells in "+timer.Elapsed.TotalSeconds.ToString("0.000")+" s)");
+            Check(fixture.Count>100000&&connected.Count==fixture.Count&&timer.Elapsed.TotalSeconds<10,
+                "A connected 100,000-cell fixture floods without dropping tiles ("+fixture.Count+" cells in "+timer.Elapsed.TotalSeconds.ToString("0.000")+" s)");
         }
 
         // ---- save/reload round trip: souls, upgrades, inventory, a pending fragment, block state --
@@ -296,7 +307,7 @@ namespace LightingBlocks.Editor
             // A dot taken 7.75 s ago: its cell comes back in 7.25 s.
             var takenCell = Enumerable.Range(0, 400).Select(i => new Vector2Int(60 + i % 20, i / 20)).First(c => forest.Dots.IsDot(c));
             forest.State.dots.Clear(); forest.State.dots.Add(new DotSave { x = takenCell.x, z = takenCell.y, remaining = 7.25f });
-            var placedBefore=game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).OrderBy(b=>b.cell.x).ThenBy(b=>b.cell.y).ToArray();
+            var placedBefore=PlacedCells(game);
             Check(placedBefore.Length>0,"Branching fixture has placed tiles to round-trip");
 
             Check(game.TrySpawnAtWisdomTree(island.id, out var looseBlock, 1), "Spawned a loose (unplaced) block for the save check");
@@ -332,12 +343,13 @@ namespace LightingBlocks.Editor
             Check(forest.State.inventory == 28&&forest.SharedInventoryLabel=="7", "Quarter-particle wallet survives save/reload (" + forest.SharedInventoryLabel + " particles)");
             Check(forest.State.particleVersion == 5 && forest.State.dots.Count == 1 && forest.State.dots[0].x == takenCell.x && forest.State.dots[0].z == takenCell.y && Math.Abs(forest.State.dots[0].remaining - 7.25f) < .001f,
                 "A collected dot's return timer survives save/reload");
-            var placedAfter=game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).OrderBy(b=>b.cell.x).ThenBy(b=>b.cell.y).ToArray();
+            var placedAfter=PlacedCells(game);
             Check(placedBefore.SequenceEqual(placedAfter),"Every placed grid cell and its saved color survive save/reload");
             var malformedSave=JsonUtility.FromJson<GameManager.SaveData>(game.ExportSave());
-            malformedSave.blocks.First(b=>b.placed).column=2048;
+            Check(malformedSave.version==6&&!malformedSave.blocks.Any(b=>b.placed)&&malformedSave.tiles.Length==2*game.Tiles.Count,"A version-6 save lists the placed tiles as cells and keeps only loose stones as blocks");
+            malformedSave.tiles[0]=1000000; // far past the build margin
             int walletBefore=forest.SharedInventory;var cellsBefore=placedAfter.ToArray();
-            Check(!game.ImportSave(JsonUtility.ToJson(malformedSave))&&forest.SharedInventory==walletBefore&&cellsBefore.SequenceEqual(game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).OrderBy(b=>b.cell.x).ThenBy(b=>b.cell.y)),"A rejected malformed grid import leaves the active wallet and network untouched");
+            Check(!game.ImportSave(JsonUtility.ToJson(malformedSave))&&forest.SharedInventory==walletBefore&&cellsBefore.SequenceEqual(PlacedCells(game)),"A rejected malformed grid import leaves the active wallet and network untouched");
             var reloadedLoose = game.Blocks.FirstOrDefault(b => b.id == looseId);
             Check(reloadedLoose != null && !reloadedLoose.placed && Vector3.Distance(reloadedLoose.transform.position, loosePos) < .1f, "Loose (unplaced) block position survives save/reload");
         }
@@ -392,7 +404,7 @@ namespace LightingBlocks.Editor
             Check(game.ImportSave(unlockedSave) && game.dashLevel == 1, "Dash unlock survives save and load");
             string oldSave = unlockedSave.Replace("\"dashLevel\":1", "\"retiredDashLevel\":1");
             game.dashLevel = 1;
-            Check(game.ImportSave(oldSave) && game.dashLevel == 0, "Older version-5 saves without Dash data load with Dash locked");
+            Check(game.ImportSave(oldSave) && game.dashLevel == 0, "Saves without Dash data load with Dash locked");
             Check(game.ImportSave(unlockedSave) && game.dashLevel == 1, "Reloading the current save restores the Dash unlock");
             var invalid = JsonUtility.FromJson<GameManager.SaveData>(unlockedSave); invalid.dashLevel = 6;
             int walletBeforeInvalid = forest.SharedInventory;
@@ -408,6 +420,7 @@ namespace LightingBlocks.Editor
             var bounds = HubBounds("island-1");
             Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
             GameObject wall = null;
+            var baseline = Cells(game);
             try
             {
                 float startX = bounds.min.x + .22f;
@@ -416,18 +429,16 @@ namespace LightingBlocks.Editor
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
                 Physics.SyncTransforms();
                 float xBefore = game.player.transform.position.x;
-                int tilesBefore = game.Blocks.Count(b => b.placed);
                 Check(game.player.TryStartDash(Vector2.up), "Unlocked Dash starts from supported ground");
                 game.player.StepMovement(Vector2.zero, BoxPlayer.DashDuration(1) * 2); // one oversized frame
                 Physics.SyncTransforms();
-                var laid = game.Blocks.Where(b => b.placed && b.id.StartsWith("dash-")).ToArray();
-                Check(laid.Length >= 2 && laid.Length == game.Blocks.Count(b => b.placed) - tilesBefore && laid.All(b => b.Connected),
+                var laid = game.Tiles.Cells.Where(c => !baseline.Contains(c)).Select(game.Tiles.Visual).ToArray();
+                Check(laid.Length >= 2 && laid.All(b => b != null && b.placed && b.Connected),
                     "Dashing into the void lays connected bridge tiles (" + laid.Length + " laid)");
                 Check(xBefore - game.player.transform.position.x > BoxPlayer.DashDistance(1) - .5f && game.CanStand(game.player.transform.position),
                     "Level-1 Dash covers 3 tiles into the void and lands on a laid tile");
                 Teleport(game, new Vector3(startX, .025f, bounds.center.z));
-                foreach (var b in laid) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
-                game.Recalculate();
+                RestoreTiles(game, baseline);
                 Check(!game.player.TryStartDash(Vector2.up) && game.player.DashCooldownRemaining > BoxPlayer.DashCooldown - .1f,
                     "Dash enters its " + BoxPlayer.DashCooldown + "-second cooldown after the burst");
                 for (int i = 0; i < 42; i++) game.player.StepMovement(Vector2.zero, .05f);
@@ -466,8 +477,7 @@ namespace LightingBlocks.Editor
                 Physics.SyncTransforms();
                 Check(game.player.visual != null && standingX - game.player.transform.position.x > BoxPlayer.DashDistance(1) - .5f,
                     "A standing Dash bursts the way the character faces, not the camera");
-                foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("dash-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
-                game.Recalculate(); game.player.ResetDash();
+                RestoreTiles(game, baseline); game.player.ResetDash();
 
                 // Dashing through a dot collects it: a pickup poll tests the whole path since the last
                 // poll, not only the spot where the burst ended 6 m later.
@@ -496,8 +506,7 @@ namespace LightingBlocks.Editor
                 finally
                 {
                     forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
-                    foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("dash-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
-                    game.Recalculate(); game.player.ResetDash();
+                    RestoreTiles(game, baseline); game.player.ResetDash();
                 }
             }
             finally
@@ -533,6 +542,7 @@ namespace LightingBlocks.Editor
             // Full charge from the island-1 west edge, the camera looking west, out over the void.
             var bounds = HubBounds("island-1");
             Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
+            var baseline = Cells(game);
             try
             {
                 float rowZ = LightingBridgeGrid.Cell(0, Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize)).z;
@@ -540,17 +550,18 @@ namespace LightingBlocks.Editor
                 Teleport(game, edge);
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
                 Physics.SyncTransforms();
-                int price = LightingGrenade.ThrowCost * ForestWorld.ParticleUnitsPerParticle, tilesBefore = game.Blocks.Count;
+                int price = LightingGrenade.ThrowCost * ForestWorld.ParticleUnitsPerParticle, tilesBefore = game.Tiles.Count;
                 forest.State.inventory = price - 1;
-                Check(!grenade.TryThrow(1) && !grenade.Flying && forest.SharedInventory == price - 1 && game.Blocks.Count == tilesBefore, "A throw without 10 particles is refused and spends nothing");
+                Check(!grenade.TryThrow(1) && !grenade.Flying && forest.SharedInventory == price - 1 && game.Tiles.Count == tilesBefore, "A throw without 10 particles is refused and spends nothing");
                 forest.State.inventory = price;
                 Check(grenade.TryThrow(1) && grenade.Flying && forest.SharedInventory == 0, "A full-charge throw spends exactly 10 particles");
                 var landing = LightingBridgeGrid.CellOf(grenade.Landing); var thrower = LightingBridgeGrid.CellOf(game.player.transform.position);
                 Check(Mathf.Abs(((Vector2)(landing - thrower)).magnitude - 5) <= 1, "Full charge at level 1 lands 5 tiles out");
                 for (int i = 0; i < 240 && grenade.Busy; i++) grenade.Tick(1f / 60);
                 Check(!grenade.Busy, "The grenade lands and its blast finishes within four seconds");
-                var laid = game.Blocks.Where(b => b.id != null && b.id.StartsWith("grenade-")).ToArray();
-                Check(laid.Length > 20 && laid.All(b => b.placed && b.Connected && (new Vector2Int(b.column, b.row) - landing).sqrMagnitude <= 25),
+                var laidCells = game.Tiles.Cells.Where(c => !baseline.Contains(c)).ToArray();
+                var laid = laidCells.Select(game.Tiles.Visual).ToArray();
+                Check(laid.Length > 20 && laid.All(b => b != null && b.placed && b.Connected && (new Vector2Int(b.column, b.row) - landing).sqrMagnitude <= 25),
                     "The blast lays connected tiles within 5 tiles of where it lands (" + laid.Length + " laid)");
                 Check(laid.All(b => b.lit == 1), "Every tile in the blast lights up");
                 var body = laid[0].GetComponent<BlockArt>().bodies.First(r => r != null); var props = new MaterialPropertyBlock(); body.GetPropertyBlock(props);
@@ -558,19 +569,20 @@ namespace LightingBlocks.Editor
                 Check(Math.Abs(props.GetFloat("_LitGain") - BlockArt.LightingLitGain) < .001f && lamp != null && Math.Abs(lamp.intensity - WorldDressing.LightingStepLight) < .01f,
                     "A lit Lighting tile shines at twice the crystal brightness with an intensity-8 step light");
                 Check(game.ImportSave(game.ExportSave()), "A save taken after the blast reloads: every blast tile is connected");
+                laid = laidCells.Select(game.Tiles.Visual).ToArray(); // the reload streamed fresh GameObjects in
+                Check(laid.All(b => b != null), "The reload streams every blast tile back in around the player");
 
                 // A second throw at the same spot finds no free cell it can reach; it relights the old tiles.
                 foreach (var b in laid) { b.lit = 0; WorldDressing.StepGlow(b, 0); }
-                int before = game.Blocks.Count; forest.State.inventory = price;
+                int before = game.Tiles.Count; forest.State.inventory = price;
                 Teleport(game, edge);
                 Check(grenade.TryThrow(1), "A second throw starts");
                 for (int i = 0; i < 240 && grenade.Busy; i++) grenade.Tick(1f / 60);
-                Check(!grenade.Busy && game.Blocks.Count == before && laid.All(b => b.lit == 1), "A blast over placed tiles lays nothing new and relights them");
+                Check(!grenade.Busy && game.Tiles.Count == before && laid.All(b => b.lit == 1), "A blast over placed tiles lays nothing new and relights them");
             }
             finally
             {
-                foreach (var b in game.Blocks.Where(b => b.id != null && b.id.StartsWith("grenade-")).ToArray()) { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
-                game.Recalculate(); game.grenadeLevel = oldLevel;
+                RestoreTiles(game, baseline); game.grenadeLevel = oldLevel;
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 Physics.SyncTransforms();
             }
@@ -757,7 +769,8 @@ namespace LightingBlocks.Editor
             var bounds = HubBounds("island-1");
             int x0 = HubEdges("island-1").Where(c => LightingBridgeGrid.Cell(c.x, c.y).x > bounds.max.x).Min(c => c.x);
             int zc = Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize);
-            var fixture = new System.Collections.Generic.List<BridgeBlock>();
+            var fixture = new System.Collections.Generic.List<Vector2Int>();
+            var baseline = Cells(game);
             int oldDash = game.dashLevel;
             Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
             float oldDistance = game.cameraRig.distance;
@@ -769,21 +782,18 @@ namespace LightingBlocks.Editor
                     if (x != x0 && (z - zc) % 2 != 0) continue;
                     var cell = new Vector2Int(x, z);
                     if (LightingBridgeGrid.OverlapsPlatform(cell) || LightingBridgeGrid.IsOccupied(game, cell)) continue;
-                    var block = UnityEngine.Object.Instantiate(game.blockPrefabs[Mathf.Clamp(GameManager.RequiredTier(0, x, z), 0, game.blockPrefabs.Length - 1)], LightingBridgeGrid.Cell(x, z), Quaternion.identity, game.blocksRoot);
-                    block.id = "perf-" + x + "_" + z; block.placed = true; block.gap = 0; block.column = x; block.row = z;
-                    game.Blocks.Add(block); game.ConfigureBlock(block); fixture.Add(block);
+                    game.Tiles.Add(cell); fixture.Add(cell);
                 }
                 var watch = System.Diagnostics.Stopwatch.StartNew();
                 game.Recalculate(); double recalculateMs = watch.Elapsed.TotalMilliseconds;
                 watch.Restart(); string bigSave = game.ExportSave(); double exportMs = watch.Elapsed.TotalMilliseconds;
-                int connected = fixture.Count(b => b.Connected);
-                Check(connected >= 1800, "Performance fixture holds " + connected + " connected tiles");
-                // Nothing changed: a full Recalculate (start, load) floods the network but repaints no tile.
+                int connected = fixture.Count(game.Tiles.Contains);
+                Check(connected >= 1800 && LightingBridgeGrid.ConnectedCells(game.Tiles.Cells).Count == game.Tiles.Count, "Performance fixture holds " + connected + " connected tiles");
+                // Nothing changed: a full Recalculate (start, load) repaints no tile.
                 watch.Restart(); game.Recalculate(); double repaintMs = watch.Elapsed.TotalMilliseconds;
                 Check(repaintMs < 1000.0 / 60, "A full Recalculate with nothing changed fits a 60 FPS frame at " + connected + " tiles (" + repaintMs.ToString("0.0") + " ms)");
-                // Reloading the same save reuses every tile by id.
                 watch.Restart(); bool reloaded = game.ImportSave(bigSave); double reloadMs = watch.Elapsed.TotalMilliseconds;
-                Check(reloaded && fixture.All(b => b != null && b.Connected), "The " + connected + "-tile save reloads onto the same tiles");
+                Check(reloaded && fixture.All(game.Tiles.Contains), "The " + connected + "-tile save reloads every tile");
 
                 // Dots restream on every cell the player enters; the network size must not matter.
                 double restreamMs = -1;
@@ -793,32 +803,34 @@ namespace LightingBlocks.Editor
                 // submission, with the zero-intensity directional light casting shadows (the old scene
                 // state) and without.
                 var middle = fixture[fixture.Count / 2];
-                Teleport(game, middle.transform.position + Vector3.up * .205f);
+                Teleport(game, LightingBridgeGrid.Cell(middle.x, middle.y) + Vector3.up * .205f);
+                var shown = fixture.Select(game.Tiles.Visual).Where(b => b != null).ToArray();
+                Check(shown.Length > 0 && shown.Length < fixture.Count, "Only the comb's chunks near the player have GameObjects (" + shown.Length + " of " + fixture.Count + ")");
                 var camera = game.cameraRig.GetComponent<Camera>();
                 game.cameraRig.distance = 42; game.cameraRig.CenterOnPlayer(); game.cameraRig.SendMessage("Apply", 1f);
                 var sun = UnityEngine.Object.FindObjectsByType<Light>(FindObjectsSortMode.None).First(l => l.type == LightType.Directional);
                 var sunShadows = sun.shadows;
                 Check(sunShadows == LightShadows.None, "The zero-intensity Lighting sun casts no shadows");
-                // Old state: sun shadows on, every tile drawn. Then each fix on its own.
+                // Old state: sun shadows on, every loaded tile drawn. Then each fix on its own.
                 fog.worldBlackDistance = 1e6f; fog.CullTiles(game, true);
                 sun.shadows = LightShadows.Soft; double shadowedMs = RenderMs(camera);
                 sun.shadows = sunShadows; double unshadowedMs = RenderMs(camera);
                 fog.worldBlackDistance = black; fog.CullTiles(game, true); double culledMs = RenderMs(camera);
-                int drawn = fixture.Count(b => !b.culled);
+                int drawn = shown.Count(b => !b.culled);
                 Vector3 eye = game.player.transform.position; float Flat(BridgeBlock b) => new Vector2(b.transform.position.x - eye.x, b.transform.position.z - eye.z).magnitude;
-                Check(fixture.All(b => Flat(b) > black - 1.5f || !b.culled && (b.renderers == null || b.renderers.All(r => r == null || !r.forceRenderingOff))),
+                Check(shown.All(b => Flat(b) > black - 1.5f || !b.culled && (b.renderers == null || b.renderers.All(r => r == null || !r.forceRenderingOff))),
                     "Every tile inside the " + black + " m fog stays drawn");
-                Check(fixture.All(b => Flat(b) <= black + 3.5f || b.culled && b.renderers.All(r => r == null || r.forceRenderingOff)),
-                    "Every tile past the fog stops drawing (" + drawn + " of " + fixture.Count + " comb tiles drawn)");
+                Check(shown.All(b => Flat(b) <= black + 3.5f || b.culled && b.renderers.All(r => r == null || r.forceRenderingOff)),
+                    "Every loaded tile past the fog stops drawing (" + drawn + " of " + shown.Length + " loaded comb tiles drawn)");
 
                 game.dashLevel = BoxPlayer.DashTiles.Length; game.player.ResetDash();
                 Teleport(game, new Vector3(bounds.min.x + .22f, .025f, bounds.center.z));
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
                 Physics.SyncTransforms();
-                watch.Restart(); LightingBridgeGrid.Invalidate(game); LightingBridgeGrid.Connected(game); double floodMs = watch.Elapsed.TotalMilliseconds;
+                watch.Restart(); LightingBridgeGrid.ConnectedCells(game.Tiles.Cells); double floodMs = watch.Elapsed.TotalMilliseconds;
                 // Earlier checks placed tiles in this same frame; only this dash's crystals count.
                 foreach (var voice in UnityEngine.Object.FindObjectsByType<AudioSource>(FindObjectsSortMode.None)) if (voice.name.StartsWith("Forest sound")) voice.Stop();
-                int before = game.Blocks.Count;
+                int before = game.Tiles.Count;
                 Check(game.player.TryStartDash(Vector2.up), "Level-5 Dash starts beside the big network");
                 double worst = 0, total = 0; int frames = 0;
                 while (game.player.IsDashing && frames < 120)
@@ -826,8 +838,9 @@ namespace LightingBlocks.Editor
                     watch.Restart(); game.player.StepMovement(Vector2.zero, 1f / 60); Physics.SyncTransforms();
                     double ms = watch.Elapsed.TotalMilliseconds; worst = Math.Max(worst, ms); total += ms; frames++;
                 }
-                int laid = game.Blocks.Count - before;
+                int laid = game.Tiles.Count - before;
                 // A level-3 Light Grenade (radius 7) into the comb's open rows beside the spine column.
+                Teleport(game, LightingBridgeGrid.Cell(x0, zc));
                 var blast = game.GrenadeBlast(new Vector2Int(x0 + 10, zc), LightingGrenade.GrenadeTiles[LightingGrenade.GrenadeTiles.Length - 1]);
                 int blastLaid = 0, blastFrames = 0; double blastWorst = 0, blastTotal = 0; var blastMs = new System.Collections.Generic.List<string>();
                 while (true)
@@ -838,8 +851,8 @@ namespace LightingBlocks.Editor
                 report.AppendLine("PERF: grenade blast laid " + blastLaid + " tiles over " + blastFrames + " frames, worst frame " + blastWorst.ToString("0.0") + " ms, total " + blastTotal.ToString("0.0") + " ms (the one save at the end excluded; ExportSave below)");
                 Check(blastLaid >= 40 && blastWorst < 1000.0 / 60, "A level-3 Light Grenade beside a " + connected + "-tile network lays " + blastLaid + " tiles, every frame under 60 FPS (" + blastWorst.ToString("0.0") + " ms worst; frames " + string.Join("/", blastMs) + ")");
                 report.AppendLine("PERF: dot restream " + restreamMs.ToString("0.00") + " ms; zoom-42 render CPU "
-                    + shadowedMs.ToString("0.0") + " ms before (sun shadows, all tiles), " + unshadowedMs.ToString("0.0") + " ms without shadows, " + culledMs.ToString("0.0") + " ms with the fog cull too; "
-                    + drawn + " of " + fixture.Count + " comb tiles drawn");
+                    + shadowedMs.ToString("0.0") + " ms before (sun shadows, all loaded tiles), " + unshadowedMs.ToString("0.0") + " ms without shadows, " + culledMs.ToString("0.0") + " ms with the fog cull too; "
+                    + drawn + " of " + shown.Length + " loaded comb tiles drawn");
                 Check(forest.Dots == null || restreamMs < 2, "A dot restream beside a " + connected + "-tile comb stays under 2 ms (" + restreamMs.ToString("0.00") + " ms)");
                 report.AppendLine("PERF: " + connected + " tiles, first paint " + recalculateMs.ToString("0.0") + " ms, unchanged Recalculate " + repaintMs.ToString("0.0") + " ms, reload " + reloadMs.ToString("0.0") + " ms, ExportSave " + exportMs.ToString("0.0")
                     + " ms, network flood " + floodMs.ToString("0.0") + " ms, dash laid " + laid + " tiles over " + frames + " frames, worst frame " + worst.ToString("0.0") + " ms, total " + total.ToString("0.0") + " ms");
@@ -849,12 +862,128 @@ namespace LightingBlocks.Editor
             }
             finally
             {
-                foreach (var b in game.Blocks.Where(b => b.id != null && (b.id.StartsWith("perf-") || b.id.StartsWith("dash-") || b.id.StartsWith("grenade-"))).ToArray())
-                { game.Blocks.Remove(b); b.gameObject.SetActive(false); UnityEngine.Object.Destroy(b.gameObject); }
-                game.Recalculate();
+                RestoreTiles(game, baseline);
                 game.dashLevel = oldDash; game.player.ResetDash();
                 if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 game.cameraRig.distance = oldDistance; fog.worldBlackDistance = black;
+                Physics.SyncTransforms();
+            }
+        }
+
+        // No tile cap: a 100,000-tile network west of island-1 keeps Dash and the grenade laying tiles,
+        // keeps GameObjects to the chunks near the player (pooled on the way back), keeps every frame
+        // under 60 FPS, and saves as cells (version 6). An older version-5 save moves its placed blocks over.
+        static void CheckUnboundedWorld(GameManager game, ForestWorld forest)
+        {
+            string baselineSave = game.ExportSave(); var baseline = Cells(game);
+            int oldDash = game.dashLevel;
+            Quaternion oldCameraRotation = game.player.viewCamera != null ? game.player.viewCamera.transform.rotation : Quaternion.identity;
+            try
+            {
+                // Version 5 kept every placed tile as a block with an id and a position.
+                var old = JsonUtility.FromJson<GameManager.SaveData>(baselineSave);
+                old.version = 5; var recoloured = baseline.First();
+                int oddTier = (LightingBridgeGrid.RequiredTier(recoloured.x, recoloured.y) + 1) % 3, overrides = 0;
+                foreach (var c in baseline)
+                {
+                    int tier = c == recoloured ? oddTier : GameManager.RequiredTier(0, c.x, c.y), hashed = LightingBridgeGrid.RequiredTier(c.x, c.y);
+                    if (tier != hashed) overrides++;
+                    old.blocks.Add(new GameManager.BlockSave { id = "v5-" + c.x + "_" + c.y, tier = tier, cellTierOverride = tier != hashed ? tier : -1, placed = true, column = c.x, row = c.y, position = LightingBridgeGrid.Cell(c.x, c.y) });
+                }
+                old.tiles = null; old.tileTiers = null;
+                Check(game.ImportSave(JsonUtility.ToJson(old)) && game.Tiles.Cells.SetEquals(baseline) && GameManager.RequiredTier(0, recoloured.x, recoloured.y) == oddTier,
+                    "A version-5 save moves its " + baseline.Count + " placed blocks into the tile store, colour overrides included");
+                var upgraded = JsonUtility.FromJson<GameManager.SaveData>(game.ExportSave());
+                Check(upgraded.version == 6 && !upgraded.blocks.Any(b => b.placed) && upgraded.tiles.Length == 2 * baseline.Count && upgraded.tileTiers.Length == 3 * overrides,
+                    "It saves back as version 6: cells plus its colour overrides");
+                Check(game.ImportSave(baselineSave), "The current save reloads after the version-5 check");
+
+                // The fixture: a 320 x 320 block of cells a short spine west of the island-1 edge.
+                var bounds = HubBounds("island-1");
+                var edge = HubEdges("island-1").Where(c => LightingBridgeGrid.Cell(c.x, c.y).x < bounds.min.x).OrderBy(c => Math.Abs(c.y - Mathf.RoundToInt(bounds.center.z / LightingBridgeGrid.CellSize))).First();
+                Teleport(game, SupportedNear(game, edge));
+                var watch = System.Diagnostics.Stopwatch.StartNew();
+                for (int x = 0; x < 4; x++) game.Tiles.Add(edge + Vector2Int.left * x);
+                int west = edge.x - 3 - 320;
+                for (int x = edge.x - 4; x > west; x--) for (int z = edge.y - 160; z < edge.y + 160; z++)
+                {
+                    var c = new Vector2Int(x, z);
+                    if (!LightingBridgeGrid.OverlapsPlatform(c)) game.Tiles.Add(c);
+                }
+                game.Recalculate(); double addMs = watch.Elapsed.TotalMilliseconds;
+                int count = game.Tiles.Count;
+                watch.Restart(); int linked = LightingBridgeGrid.ConnectedCells(game.Tiles.Cells).Count; double floodMs = watch.Elapsed.TotalMilliseconds;
+                Check(count > 100000 && linked == count, "A " + count + "-tile network stays connected with no cap (" + addMs.ToString("0") + " ms to add, " + floodMs.ToString("0") + " ms to flood)");
+                int visuals = game.Tiles.VisualCount;
+                Check(visuals > 0 && visuals < 6400, "Only the chunks near the player have tile GameObjects (" + visuals + " of " + count + ")");
+
+                // Far west side: the tile underfoot streams in with a collider, and the start's chunks go.
+                var far = new Vector2Int(west + 1, edge.y);
+                watch.Restart(); Teleport(game, LightingBridgeGrid.Cell(far.x, far.y)); double teleportMs = watch.Elapsed.TotalMilliseconds;
+                var under = game.Tiles.Visual(far);
+                bool hit = Physics.Raycast(game.player.transform.position + Vector3.up, Vector3.down, out var ground, 3f, ~0, QueryTriggerInteraction.Ignore);
+                Check(under != null && hit && ground.collider.GetComponentInParent<BridgeBlock>() == under && game.Tiles.Visual(edge) == null && game.CanStand(game.player.transform.position),
+                    "Teleporting 640 m west streams the tile underfoot in with its collider and unloads the start");
+                int created = game.Tiles.Created;
+                Teleport(game, SupportedNear(game, edge)); Teleport(game, LightingBridgeGrid.Cell(far.x, far.y));
+                Check(game.Tiles.Created - created <= LightingTiles.ChunkSize * LightingTiles.ChunkSize,
+                    "The round trip reuses pooled tiles (" + (game.Tiles.Created - created) + " new GameObjects)");
+
+                // Walking 160 m east at 30 m/s streams chunks in and out; no frame may stall.
+                double streamWorst = 0; var streamMs = new System.Collections.Generic.List<double>();
+                for (int i = 0; i < 320; i++)
+                {
+                    var p = LightingBridgeGrid.Cell(far.x, far.y) + Vector3.right * (i * .5f);
+                    Teleport(game, p, false);
+                    watch.Restart(); game.Tiles.Stream(game.player.transform.position); double ms = watch.Elapsed.TotalMilliseconds;
+                    streamWorst = Math.Max(streamWorst, ms); streamMs.Add(ms);
+                }
+                report.AppendLine("PERF: teleport 640 m (stream the whole radius) " + teleportMs.ToString("0") + " ms; walking stream frames over 2 ms: "
+                    + string.Join("/", streamMs.Where(ms => ms > 2).Select(ms => ms.ToString("0.0"))));
+                Check(streamWorst < 1000.0 / 60 && game.Tiles.VisualCount < 6400, "Streaming while walking across the network fits a 60 FPS frame (" + streamWorst.ToString("0.0") + " ms worst, " + game.Tiles.VisualCount + " loaded)");
+
+                // Dash west off the far edge, then a level-3 blast past it: both lay tiles at 100k.
+                game.dashLevel = BoxPlayer.DashTiles.Length; game.player.ResetDash();
+                Teleport(game, LightingBridgeGrid.Cell(far.x, far.y) + Vector3.left * .78f);
+                if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+                Physics.SyncTransforms();
+                int before = game.Tiles.Count; double worst = 0; int frames = 0;
+                Check(game.player.TryStartDash(Vector2.up), "Level-5 Dash starts at the edge of the 100,000-tile network");
+                while (game.player.IsDashing && frames < 120)
+                {
+                    watch.Restart(); game.player.StepMovement(Vector2.zero, 1f / 60); Physics.SyncTransforms(); game.Tiles.Stream(game.player.transform.position);
+                    worst = Math.Max(worst, watch.Elapsed.TotalMilliseconds); frames++;
+                }
+                int laid = game.Tiles.Count - before;
+                Check(laid >= 10 && worst < 1000.0 / 60, "Dash lays " + laid + " tiles past " + before + ", worst frame " + worst.ToString("0.0") + " ms");
+                Teleport(game, LightingBridgeGrid.Cell(far.x, far.y));
+                before = game.Tiles.Count; double blastWorst = 0; int blastLaid = 0;
+                var blast = game.GrenadeBlast(far + new Vector2Int(-3, 9), LightingGrenade.GrenadeTiles[LightingGrenade.GrenadeTiles.Length - 1]);
+                while (true)
+                {
+                    watch.Restart(); bool more = blast.MoveNext(); blastWorst = Math.Max(blastWorst, watch.Elapsed.TotalMilliseconds);
+                    if (!more) break; blastLaid = blast.Current;
+                }
+                Check(blastLaid > 0 && game.Tiles.Count == before + blastLaid && blastWorst < 1000.0 / 60,
+                    "A Light Grenade lays " + blastLaid + " tiles past " + before + ", worst frame " + blastWorst.ToString("0.0") + " ms");
+
+                // Save and load at this size.
+                bool island2 = game.Bridges[0], island3 = game.Bridges[1]; var cells = Cells(game);
+                watch.Restart(); string big = game.ExportSave(); double exportMs = watch.Elapsed.TotalMilliseconds;
+                var data = JsonUtility.FromJson<GameManager.SaveData>(big);
+                Check(data.version == 6 && data.tiles.Length == 2 * cells.Count && !data.blocks.Any(b => b.placed), "The " + cells.Count + "-tile save lists every tile as a cell");
+                watch.Restart(); bool reloaded = game.ImportSave(big); double importMs = watch.Elapsed.TotalMilliseconds;
+                Check(reloaded && game.Tiles.Cells.SetEquals(cells) && game.Bridges[0] == island2 && game.Bridges[1] == island3 && game.Tiles.Visual(LightingBridgeGrid.CellOf(game.player.transform.position)) != null,
+                    "It reloads the same network and streams the player's chunk in (" + exportMs.ToString("0") + " ms export, " + importMs.ToString("0") + " ms import)");
+                report.AppendLine("PERF: " + cells.Count + " tiles: add " + addMs.ToString("0") + " ms, flood " + floodMs.ToString("0") + " ms, stream worst " + streamWorst.ToString("0.0") + " ms, dash worst " + worst.ToString("0.0")
+                    + " ms, blast worst " + blastWorst.ToString("0.0") + " ms, ExportSave " + exportMs.ToString("0") + " ms (" + (big.Length / 1024) + " KB), ImportSave " + importMs.ToString("0") + " ms");
+                Check(exportMs < 500 && importMs < 5000, "A 100,000-tile save exports under 0.5 s and loads under 5 s");
+            }
+            finally
+            {
+                game.ImportSave(baselineSave);
+                game.dashLevel = oldDash; game.player.ResetDash();
+                if (game.player.viewCamera != null) game.player.viewCamera.transform.rotation = oldCameraRotation;
                 Physics.SyncTransforms();
             }
         }
@@ -922,7 +1051,7 @@ namespace LightingBlocks.Editor
             var migratedFirst=forest.Inventory(first.id);
             Check(migratedFirst.charge.All(c=>c==0)&&migratedFirst.rewards.Count==0,"migration clears refunded receiver charge and reward queues");
             Check(forest.State.islands.All(i=>i.slots.Count==0),"migration drops the old slots for the seeded dot field");
-            int before=forest.SharedInventory;var malformed="{\"version\":6,\"schema\":\"lighting-v1\"}";
+            int before=forest.SharedInventory;var malformed="{\"version\":7,\"schema\":\"lighting-v1\"}";
             Check(!game.ImportSave(malformed)&&forest.SharedInventory==before,"unsupported future schema is rejected without mutating the active wallet");
 
             var corridorForest=forest.NewState(1908);corridorForest.particleVersion=3;
@@ -941,7 +1070,7 @@ namespace LightingBlocks.Editor
             int expectedPlatformDeliveries=oldBlocks.Count(b=>LightingBridgeGrid.OverlapsPlatform(new Vector2Int(b.column,Mathf.FloorToInt(Landscape.BridgeStart(b.gap)/2f)+b.row)));
             var corridorSave=new GameManager.SaveData{version=4,schema="lighting-v1",forest=corridorForest,blocks=oldBlocks,souls=0,player=game.player.transform.position};
             Check(game.ImportSave(JsonUtility.ToJson(corridorSave)),"A complete old two-corridor save migrates across both hubs");
-            var migratedCells=game.Blocks.Where(b=>b.placed).Select(b=>(cell:new Vector2Int(b.column,b.row),tier:b.tier)).ToArray();
+            var migratedCells=PlacedCells(game);
             int pendingPlatformDeliveries=forest.State.islands.Sum(i=>(i.freeDeliveryColor>=0?1:0)+(i.freeDeliveryColors?.Count??0));
             bool sampleRowsMigrated=Enumerable.Range(0,3).All(row=>
             {

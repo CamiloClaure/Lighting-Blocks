@@ -40,10 +40,16 @@ namespace LightingBlocks
         // into Cost/Level/Purchase, gated on BridgeProfile.Current.isLighting.
         public int soulGainLevel;
         public bool completed;
+        // Loose stones, plus (Lighting) the tile GameObjects of the chunks loaded near the player.
         public readonly List<BridgeBlock> Blocks = new List<BridgeBlock>();
+        // Lighting: every placed tile, loaded or not; see LightingTiles.
+        LightingTiles tiles;
+        public LightingTiles Tiles => tiles ??= new LightingTiles(this);
         public readonly bool[] Bridges = new bool[2];
         public int ConnectedCount { get; private set; }
         public int lightingGridRevision { get; private set; }
+        // LightingTiles: a tile GameObject came or went, so LightingFog.CullTiles looks again.
+        internal void TilesChanged() => lightingGridRevision++;
         public double PathRate { get; private set; }
         public double GeneratorRate => BridgeProfile.Current.isLighting ? 0 : 3 * (Math.Pow(1.6, generator) - 1) / .6;
         public double Rate => BridgeProfile.Current.isLighting ? 0 : PathRate + GeneratorRate;
@@ -219,6 +225,7 @@ namespace LightingBlocks
         {
             if (!initialized) return;
             if (dashSavePending && !player.IsDashing) { dashSavePending = false; Save(); }
+            if (BridgeProfile.Current.isLighting) Tiles.Stream(player.transform.position);
             if (GameHUD.SimulationPaused) { if(ghost!=null)ghost.gameObject.SetActive(false);ghostFade=0;return; }
             if (autoTick) Advance(Time.deltaTime);
             if (!GameHUD.GameplayBlocked && player.readInput && Application.isFocused && Keyboard.current != null)
@@ -438,7 +445,7 @@ namespace LightingBlocks
         public bool TrySpawnAtWisdomTree(string islandId, out BridgeBlock block, int forceTier = -1)
         {
             block = null;
-            if(BridgeProfile.Current.isLighting&&(Blocks.Count>=LightingBridgeGrid.MaxPlacedTiles+150||Blocks.Count(b=>!b.placed)>=150))return false;
+            if(BridgeProfile.Current.isLighting&&Blocks.Count(b=>!b.placed)>=150)return false;
             var forest = ForestWorld.For(this);
             if (forest == null) return false;
             var definition = forest.configuration.Find(islandId);
@@ -543,7 +550,6 @@ namespace LightingBlocks
             Vector3 playerDelta = cell - player.transform.position; playerDelta.y=0;
             if (playerDelta.magnitude > 4f) { reason = "TOO FAR TO REACH\nBuild from a nearby supported edge."; return false; }
             if (!LightingBridgeGrid.InBounds(cellCoord)) { reason = "VOID EDGE REACHED\nThe bridge is at the supported building limit."; return false; }
-            if (LightingBridgeGrid.PlacedCount(this) >= LightingBridgeGrid.MaxPlacedTiles) { reason = "BUILD LIMIT REACHED\nThis connected world already holds 4,096 tiles."; return false; }
             if (LightingBridgeGrid.OverlapsPlatform(cellCoord)) { reason = "PLATFORM ALREADY OCCUPIES THIS TILE\nChoose an empty edge beyond the hub."; return false; }
             if (LightingBridgeGrid.HasObstruction(cellCoord, this, block)) { reason = "TILE BLOCKED\nClear the space before placing a bridge tile."; return false; }
             if (LightingBridgeGrid.IsOccupied(this, cellCoord)) { reason = "TILE OCCUPIED\nMove to an empty edge of the connected network."; return false; }
@@ -616,7 +622,7 @@ namespace LightingBlocks
             ConfigureBlock(block);
             if (BridgeProfile.Current.isLighting)
             {
-                Recalculate(block);
+                Tiles.Adopt(new Vector2Int(x, z), block); Recalculate(block);
                 Notify(!Bridges[0] ? "BRIDGE EXTENDED\nKeep building from any connected edge." : !Bridges[1] ? "SECOND HUB REACHED\nContinue building from any connected edge." : "THIRD HUB REACHED\nYour network remains open for building.");
                 Save(); return true;
             }
@@ -633,12 +639,13 @@ namespace LightingBlocks
             if(occupied.magnitude>player.grabReach+1.5f)return false;
             foreach(var hit in Physics.OverlapBox(center+Vector3.up*.12f,new Vector3(.98f,.16f,.98f),Quaternion.identity,~0,QueryTriggerInteraction.Ignore))
                 if(hit!=null&&hit.GetComponentInParent<BridgeBlock>()!=block)return Deny("TILE IS OCCUPIED\nClear the terminal tile before reclaiming it.");
-            var oldCell=new Vector2Int(block.column,block.row);var remaining=new HashSet<Vector2Int>(Blocks.Where(b=>b.placed&&b!=block).Select(b=>new Vector2Int(b.column,b.row)));
+            // ponytail: one O(tiles) flood per reclaim, which is rare; it proves the rest stays connected.
+            var oldCell=new Vector2Int(block.column,block.row);var remaining=new HashSet<Vector2Int>(Tiles.Cells);remaining.Remove(oldCell);
             int degree=LightingBridgeGrid.NeighborsOf(oldCell).Count(remaining.Contains);
             if(degree>1)return Deny("TILE SUPPORTS A BRANCH\nOnly a terminal tile can be reclaimed.");
             var connected=LightingBridgeGrid.ConnectedCells(remaining);
             if(connected.Count!=remaining.Count)return Deny("TILE SUPPORTS THE NETWORK\nReclaiming it would disconnect another bridge.");
-            lightingTierOverrides.Remove(oldCell);block.placed=false;LightingBridgeGrid.Invalidate(this);
+            lightingTierOverrides.Remove(oldCell);Tiles.Detach(oldCell);block.placed=false;block.id="reclaim-"+Guid.NewGuid().ToString("N");
             Vector3 drop=player.transform.position+(player.visual!=null?player.visual.forward:Vector3.forward)*.95f;drop.y=.26f;
             block.gap=0;block.transform.position=drop;ConfigureBlock(block);Physics.SyncTransforms();Recalculate(block);Save();
             return true;
@@ -656,24 +663,13 @@ namespace LightingBlocks
         bool BuildDashTile(Vector2Int cell)
         {
             if (!BridgeProfile.Current.isLighting || !LightingBridgeGrid.InBounds(cell) || LightingBridgeGrid.OverlapsPlatform(cell)
-                || LightingBridgeGrid.IsOccupied(this, cell) || !LightingBridgeGrid.IsFrontier(this, cell) || LightingBridgeGrid.HasObstruction(cell, this)
-                || LightingBridgeGrid.PlacedCount(this) >= LightingBridgeGrid.MaxPlacedTiles) return false;
-            var block = LayTile(cell, "dash-"); Physics.SyncTransforms(); Recalculate(block);
+                || LightingBridgeGrid.IsOccupied(this, cell) || !LightingBridgeGrid.IsFrontier(this, cell) || LightingBridgeGrid.HasObstruction(cell, this)) return false;
+            var block = Tiles.Add(cell); Physics.SyncTransforms(); Recalculate(block);
             // A burst lays a tile every .05 s; one crystal per tile stacked into a loud clip that took
             // every pooled voice. One every .12 s reads as a run of ticks instead.
-            if (Time.unscaledTime >= nextDashChime) { nextDashChime = Time.unscaledTime + .12f; ForestSoundscape.Play("crystal", block.transform.position, .12f); }
+            if (Time.unscaledTime >= nextDashChime) { nextDashChime = Time.unscaledTime + .12f; ForestSoundscape.Play("crystal", LightingBridgeGrid.Cell(cell.x, cell.y), .12f); }
             dashSavePending = true; // saved once when the burst ends (Update), not once per tile
             return true;
-        }
-        // A free tile in the cell's own colour; the caller checks the cell and runs Recalculate.
-        BridgeBlock LayTile(Vector2Int cell, string prefix)
-        {
-            int tier = Mathf.Clamp(RequiredTier(0, cell.x, cell.y), 0, blockPrefabs.Length - 1);
-            var block = Instantiate(blockPrefabs[tier], LightingBridgeGrid.Cell(cell.x, cell.y), Quaternion.identity, blocksRoot);
-            block.id = prefix + Guid.NewGuid().ToString("N");
-            block.placed = true; block.gap = 0; block.column = cell.x; block.row = cell.y;
-            Blocks.Add(block); ConfigureBlock(block, false);
-            return block;
         }
         // Light Grenade: relights every tile already in the blast, then lays every free cell within radius
         // tiles of center that the network reaches through the blast itself: a flood fill from the
@@ -703,13 +699,13 @@ namespace LightingBlocks
             {
                 for (int end = Mathf.Min(old.Count, relit + BlastRelightsPerFrame); relit < end; relit++) Relight(old[relit]);
                 batch.Clear();
-                while (queue.Count > 0 && batch.Count < BlastTilesPerFrame && LightingBridgeGrid.PlacedCount(this) + batch.Count < LightingBridgeGrid.MaxPlacedTiles)
+                while (queue.Count > 0 && batch.Count < BlastTilesPerFrame)
                 {
                     var c = queue.Dequeue();
                     // Tested when laid, not when queued: a load or a reclaim between frames can change the network.
                     bool linked = LightingBridgeGrid.IsFrontier(this, c) || LightingBridgeGrid.NeighborsOf(c).Any(batch.Contains);
                     if (!linked || LightingBridgeGrid.IsOccupied(this, c) || LightingBridgeGrid.OverlapsPlatform(c) || !LightingBridgeGrid.InBounds(c) || LightingBridgeGrid.HasObstruction(c, this)) continue;
-                    LayTile(c, "grenade-"); batch.Add(c); laid++;
+                    Tiles.Add(c); batch.Add(c); laid++;
                     foreach (var n in LightingBridgeGrid.NeighborsOf(c)) if (InBlast(n) && seen.Add(n)) queue.Enqueue(n);
                 }
                 if (batch.Count > 0)
@@ -717,7 +713,7 @@ namespace LightingBlocks
                     Physics.SyncTransforms(); Recalculate();
                     foreach (var c in batch) Relight(LightingBridgeGrid.TileAt(this, LightingBridgeGrid.Cell(c.x, c.y)));
                 }
-                else if (relit >= old.Count) yield break; // nothing left to lay (or the tile cap is reached)
+                else if (relit >= old.Count) yield break; // nothing left to lay
                 yield return laid;
             }
         }
@@ -738,27 +734,21 @@ namespace LightingBlocks
         // its last paint, so a 12-tile dash or a reload does not repaint a 2000-tile network.
         public void Recalculate(BridgeBlock changed = null)
         {
-            lightingGridRevision++; LightingBridgeGrid.Invalidate(this);
+            lightingGridRevision++; LightingBridgeGrid.Invalidate(this, false);
             ConnectedCount = 0; PathRate = 0; Bridges[0] = Bridges[1] = false;
             if (BridgeProfile.Current.isLighting)
             {
-                var connected = LightingBridgeGrid.Connected(this);
                 Bridges[0] = LightingBridgeGrid.ReachesHub(this, "island-2");
                 Bridges[1] = LightingBridgeGrid.ReachesHub(this, "island-3");
-                if (emissionProperties == null) emissionProperties = new MaterialPropertyBlock();
+                // Blocks holds only the loaded tiles and the loose stones; every stored tile is connected.
                 foreach (var b in Blocks)
                 {
-                    bool now = b.placed && connected.Contains(new Vector2Int(b.column,b.row));
-                    if (now) ConnectedCount++;
+                    bool now = b.placed && Tiles.Contains(new Vector2Int(b.column,b.row));
                     b.Connected = now;
-                    var look = (b.placed, now, b.gap, b.row);
-                    if (b != changed && b.painted == look) continue;
-                    b.painted = look;
-                    var renderer = b.GetComponent<Renderer>(); renderer.GetPropertyBlock(emissionProperties);
-                    emissionProperties.SetColor("_EmissionColor", now ? WorldDressing.StepColor(0,b.row) : Color.black); renderer.SetPropertyBlock(emissionProperties);
-                    var art=b.GetComponent<BlockArt>(); if(art!=null)art.Refresh(); WorldDressing.StepLight(b);
+                    if (b != changed && b.painted == (b.placed, now, b.gap, b.row)) continue;
+                    Paint(b);
                 }
-                PathRate = 0;
+                ConnectedCount = Tiles.Count; PathRate = 0;
                 if (nextAreaGlow != null) nextAreaGlow.SetActive(Bridges[1]);
                 return;
             }
@@ -804,6 +794,15 @@ namespace LightingBlocks
             }
             if (nextAreaGlow != null) nextAreaGlow.SetActive(Bridges[1]);
         }
+        // Lighting: one block's look for its current state (lit cell colour when connected).
+        internal void Paint(BridgeBlock b)
+        {
+            b.painted = (b.placed, b.Connected, b.gap, b.row);
+            if (emissionProperties == null) emissionProperties = new MaterialPropertyBlock();
+            var renderer = b.GetComponent<Renderer>(); renderer.GetPropertyBlock(emissionProperties);
+            emissionProperties.SetColor("_EmissionColor", b.Connected ? WorldDressing.StepColor(0,b.row) : Color.black); renderer.SetPropertyBlock(emissionProperties);
+            var art=b.GetComponent<BlockArt>(); if(art!=null)art.Refresh(); WorldDressing.StepLight(b);
+        }
         public Vector3 NextCell()
         {
             if (BridgeProfile.Current.isLighting)
@@ -822,7 +821,8 @@ namespace LightingBlocks
             // outside visible crystal platforms or supported bridges counts as ground (see
             // PlatformSupport). Loose blocks never bridge the void either way.
             bool grounded = BridgeProfile.Current.platformGround ? PlatformSupport.Supports(point) : Landscape.Supports(point);
-            return grounded || BlockUnder(point) != null;
+            // Lighting asks the stored cells, so support never waits on a chunk's GameObjects.
+            return grounded || (BridgeProfile.Current.isLighting ? LightingBridgeGrid.Supports(this, point) : BlockUnder(point) != null);
         }
         // The connected bridge tile holding up this point, or null. Support and "what am I standing
         // on" are the same question, so they share one box test rather than two copies of it.
@@ -869,7 +869,7 @@ namespace LightingBlocks
         [Serializable] public class BlockSave { public string id; public int tier, gap, column, row; public int cellTierOverride = -1; public bool placed, rewarded; public Vector3 position; }
         [Serializable] public class SaveData
         {
-            public int version = BridgeProfile.Current.isLighting ? 5 : 4; public ForestSave forest; public double souls, rate; public long utc;
+            public int version = BridgeProfile.Current.isLighting ? 6 : 4; public ForestSave forest; public double souls, rate; public long utc;
             // Explicit save identity: null for every legacy profile (ImportSave then skips the check
             // entirely, so existing saves are unaffected), "lighting-v1" for Lighting. Rejecting a
             // mismatched schema without touching the file is what keeps an incompatible save from
@@ -877,14 +877,29 @@ namespace LightingBlocks
             public string schema;
             public int speed, links, strength, radiance, generator, summoned, soulGainLevel, dashLevel, grenadeLevel, pullLevel; public bool completed; public Vector3 player;
             public List<BlockSave> blocks = new List<BlockSave>();
+            // Lighting v6: placed tiles are cells, not blocks (blocks keeps the loose stones): x,z pairs,
+            // and the cells whose colour is not LightingBridgeGrid.RequiredTier's as x,z,tier triples.
+            // ponytail: rewritten whole on every save, about 10 B a tile (1 MB at 100k); past ~200k tiles
+            // move to per-region files written only when dirty.
+            public int[] tiles, tileTiers;
         }
         public string ExportSave()
         {
             var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), schema = BridgeProfile.Current.saveSchema, speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, soulGainLevel = soulGainLevel, dashLevel = dashLevel, grenadeLevel = grenadeLevel, pullLevel = pullLevel, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
+            bool lighting = BridgeProfile.Current.isLighting;
             foreach (var b in Blocks)
             {
+                if (lighting && b.placed) continue; // saved from Tiles below, loaded or not
                 int overrideTier=BridgeProfile.Current.isLighting&&lightingTierOverrides.TryGetValue(new Vector2Int(b.column,b.row),out int savedTier)?savedTier:-1;
                 data.blocks.Add(new BlockSave { id = b.id, tier = b.tier, cellTierOverride=overrideTier, placed = b.placed, rewarded = b.rewarded, gap = b.gap, column = b.column, row = b.row, position = player.SavedBlockPosition(b) });
+            }
+            if (lighting)
+            {
+                data.tiles = new int[Tiles.Count * 2]; int i = 0;
+                foreach (var c in Tiles.Cells) { data.tiles[i++] = c.x; data.tiles[i++] = c.y; }
+                var tiers = new List<int>();
+                foreach (var o in lightingTierOverrides) if (Tiles.Contains(o.Key)) { tiers.Add(o.Key.x); tiers.Add(o.Key.y); tiers.Add(o.Value); }
+                data.tileTiers = tiers.ToArray();
             }
             return JsonUtility.ToJson(data); // compact: pretty printing cost ~11 ms per save at 2000 tiles
         }
@@ -893,21 +908,21 @@ namespace LightingBlocks
             SaveData d; try { d = JsonUtility.FromJson<SaveData>(json); } catch { return false; }
             bool lighting=BridgeProfile.Current.isLighting;
             bool lightingV4=lighting&&d!=null&&d.version==4&&d.schema=="lighting-v1";
-            int maximumBlocks=lighting?LightingBridgeGrid.MaxPlacedTiles+150:150;
-            bool supportedVersion=d!=null&&(d.version==1||d.version==2||d.version==3||d.version==4||lighting&&d.version==5);
+            // Before v6 a Lighting save kept its placed tiles in blocks too; a v6 save holds loose stones only.
+            int maximumBlocks=lighting&&d!=null&&d.version<6?int.MaxValue:150;
+            bool supportedVersion=d!=null&&(d.version==1||d.version==2||d.version==3||d.version==4||lighting&&(d.version==5||d.version==6));
             if (d == null || !supportedVersion || d.blocks == null || d.blocks.Count > maximumBlocks || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.soulGainLevel < 0 || d.soulGainLevel > 8 || lighting && (d.dashLevel < 0 || d.dashLevel > BoxPlayer.DashTiles.Length || d.grenadeLevel < 0 || d.grenadeLevel > LightingGrenade.GrenadeTiles.Length || d.pullLevel < 0 || d.pullLevel > LightingGrenade.GrenadeTiles.Length) || d.summoned < 0 || !(lighting?LightingPositionValid(d.player):PositionValid(d.player))) return false;
             // A save whose schema does not match the active profile's is a different world's save
             // (or a legacy one, under Lighting): reject it without writing anything. Every legacy
             // profile leaves saveSchema null, so this never engages for them.
             if (BridgeProfile.Current.saveSchema != null && d.schema != BridgeProfile.Current.saveSchema) return false;
-            if(lighting&&!lightingV4&&d.version!=5)return false;
-            if(lighting&&d.version==5&&d.schema!="lighting-v1")return false;
+            if(lighting&&!lightingV4&&d.version!=5&&d.version!=6)return false;
+            if(lighting&&d.version>=5&&d.schema!="lighting-v1")return false;
             if(d.blocks.Any(b=>b==null||string.IsNullOrEmpty(b.id)||b.tier<0||b.tier>2||!lightingV4&&(b.cellTierOverride < -1||b.cellTierOverride>2)||!(lighting?LightingPositionValid(b.position):PositionValid(b.position))||b.placed&&(!lighting&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows)||lighting&&(!lightingV4&&(!LightingBridgeGrid.InBounds(new Vector2Int(b.column,b.row))||b.gap!=0)||lightingV4&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows))))||d.blocks.Select(b=>b.id).Distinct().Count()!=d.blocks.Count)return false;
             if(!lighting&&d.blocks.Where(b=>b.placed).Any(b=>!Accepts(b.gap,b.column,b.row,b.tier)))return false;
             if(lighting&&!lightingV4)
             {
                 var placed=d.blocks.Where(b=>b.placed).ToArray();
-                if(placed.Length>LightingBridgeGrid.MaxPlacedTiles)return false;
                 if(placed.Any(b=>LightingBridgeGrid.OverlapsPlatform(new Vector2Int(b.column,b.row))||(b.cellTierOverride>=0?b.tier!=b.cellTierOverride:b.tier!=LightingBridgeGrid.RequiredTier(b.column,b.row))))return false;
             }
             if(!lighting||!lightingV4) if(d.blocks.Where(b=>b.placed).GroupBy(b=>b.gap+":"+b.column+":"+b.row).Any(g=>g.Count()>1))return false;
@@ -959,9 +974,24 @@ namespace LightingBlocks
                     if(owner.freeDeliveryColor<0)owner.freeDeliveryColor=delivery.Item2;else owner.freeDeliveryColors.Add(delivery.Item2);
                 }
             }
+            // Lighting keeps its placed tiles as cells (LightingTiles): a v6 save lists them, an older one
+            // moves its placed blocks over here.
+            var placedCells=new HashSet<Vector2Int>(); var tileTiers=new Dictionary<Vector2Int,int>();
+            if(lighting&&d.version==6)
+            {
+                if(d.blocks.Any(b=>b.placed))return false;
+                var raw=d.tiles??Array.Empty<int>(); if(raw.Length%2!=0)return false;
+                for(int i=0;i<raw.Length;i+=2){var c=new Vector2Int(raw[i],raw[i+1]);if(!placedCells.Add(c)||!LightingBridgeGrid.InBounds(c)||LightingBridgeGrid.OverlapsPlatform(c))return false;}
+                var tiers=d.tileTiers??Array.Empty<int>(); if(tiers.Length%3!=0)return false;
+                for(int i=0;i<tiers.Length;i+=3){var c=new Vector2Int(tiers[i],tiers[i+1]);if(tiers[i+2]<0||tiers[i+2]>2||!placedCells.Contains(c)||!tileTiers.TryAdd(c,tiers[i+2]))return false;}
+            }
+            else if(lighting)
+            {
+                foreach(var b in d.blocks.Where(b=>b.placed)){var c=new Vector2Int(b.column,b.row);placedCells.Add(c);if(b.cellTierOverride>=0)tileTiers[c]=b.cellTierOverride;}
+                d.blocks.RemoveAll(b=>b.placed);
+            }
             if(lighting)
             {
-                var placedCells=new HashSet<Vector2Int>(d.blocks.Where(b=>b.placed).Select(b=>new Vector2Int(b.column,b.row)));
                 var connectedCells=LightingBridgeGrid.ConnectedCells(placedCells);
                 if(connectedCells.Count!=placedCells.Count)return false;
                 Vector3 requestedPlayer=new Vector3(d.player.x,.025f,d.player.z);
@@ -977,6 +1007,8 @@ namespace LightingBlocks
                 }
             }
             player.Release(); player.ResetDash();
+            lightingTierOverrides.Clear();
+            if(lighting){foreach(var t in tileTiers)lightingTierOverrides[t.Key]=t.Value;Tiles.Replace(placedCells);}
             var keep = new HashSet<string>(d.blocks.Select(b => b.id));
             foreach (var b in Blocks.Where(b => !keep.Contains(b.id)).ToArray()) { Blocks.Remove(b); b.gameObject.SetActive(false); Destroy(b.gameObject); }
             // By id, not Blocks.FirstOrDefault per saved block: that was O(tiles squared) on a big network.
@@ -988,11 +1020,11 @@ namespace LightingBlocks
                 b.id = saved.id; b.tier = saved.tier; b.placed = saved.placed; b.rewarded = saved.rewarded; b.gap = saved.gap; b.column = saved.column; b.row = saved.row; b.transform.position = saved.position; ConfigureBlock(b, false);
             }
             Physics.SyncTransforms();
-            lightingTierOverrides.Clear(); if(lighting)foreach(var saved in d.blocks)if(saved.placed&&saved.cellTierOverride>=0)lightingTierOverrides[new Vector2Int(saved.column,saved.row)]=saved.cellTierOverride;
             souls = d.souls; speed = d.speed; links = d.links; strength = d.strength; radiance = d.radiance; generator = d.generator; soulGainLevel = d.soulGainLevel; dashLevel = lighting ? d.dashLevel : 0; grenadeLevel = lighting ? d.grenadeLevel : 0; pullLevel = lighting ? d.pullLevel : 0; summoned = d.summoned; completed = d.completed;
             if(lighting&&lightingV4)souls=0;
             ApplyUpgrades(); Recalculate(); if(!lighting)completed &= Bridges[1];
             var cc = player.GetComponent<CharacterController>(); cc.enabled = false; player.transform.position = CanStand(d.player) ? d.player : new Vector3(0, .025f, 3); cc.enabled = true; safePosition = player.transform.position;
+            if (lighting) Tiles.Stream(player.transform.position, true);
             if (offline&&!lighting) { double seconds = Math.Min(3600, Math.Max(0, DateTimeOffset.UtcNow.ToUnixTimeSeconds() - d.utc)); double gain = Math.Min(Rate, d.rate) * seconds * .25; souls += gain; if (gain >= 1) Notify("YOUR SOULS KEPT FLOWING\n+" + Format(gain) + " Souls while away.", false); }
             if (forest != null) forest.Restore(incoming);
             cameraRig.CenterOnPlayer(); saveBlockedByRejectedData=false; return true;
@@ -1047,7 +1079,7 @@ namespace LightingBlocks
         static bool LightingPositionValid(Vector3 p)
         {
             if(!Finite(p.x)||!Finite(p.y)||!Finite(p.z)||p.y< -5||p.y>10)return false;
-            if(!PlatformSupport.TryGetWorldBounds(out Bounds b))return Math.Abs(p.x)<=2048&&Math.Abs(p.z)<=2048;
+            if(!PlatformSupport.TryGetWorldBounds(out Bounds b))return Math.Abs(p.x)<=2*LightingBridgeGrid.HubMargin&&Math.Abs(p.z)<=2*LightingBridgeGrid.HubMargin;
             return p.x>=b.min.x-LightingBridgeGrid.HubMargin&&p.x<=b.max.x+LightingBridgeGrid.HubMargin&&p.z>=b.min.z-LightingBridgeGrid.HubMargin&&p.z<=b.max.z+LightingBridgeGrid.HubMargin;
         }
         static bool LightingLayoutSupports(Vector3 point,HashSet<Vector2Int> connected)
