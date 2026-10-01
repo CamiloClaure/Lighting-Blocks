@@ -101,6 +101,9 @@ namespace LightingBlocks
         { for (int i = 0; i < Neighbors.Length; i++) yield return cell + Neighbors[i]; }
         public static bool IsOccupied(GameManager game, Vector2Int cell) => game.Tiles.Contains(cell);
         public static bool OverlapsPlatform(Vector2Int cell) => PlatformSupport.OverlapsCell(Cell(cell.x, cell.y), CellSize);
+        // Open void in bounds, off any platform: OverlapsPlatform and InBounds on the cached snapshot, for
+        // scans of thousands of cells (LightingDots.DrawFar).
+        public static bool Open(Vector2Int cell) { var p = Platforms(); return !p.Overlaps(cell) && p.InBounds(cell); }
 
         public static bool InBounds(Vector2Int cell)
         {

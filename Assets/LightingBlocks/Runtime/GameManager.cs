@@ -35,6 +35,10 @@ namespace LightingBlocks
         public int grenadeLevel;
         // Lighting-only Spirit Pull (LightingPull): F takes every dot within the grenade's radius for its level.
         public int pullLevel;
+        // Lighting-only Far Sight (passive, LightingFog.World): each level sees one chunk (8 m) farther.
+        public int sightLevel;
+        // Lighting-only Daybreak (LightingReveal): V lifts the fog to 16 chunks for 1.5/3/5/8 s by level.
+        public int revealLevel;
         // Lighting-only upgrade. Eight levels, price ceil(60 * 1.65^level), each adding 25% of base
         // connected-path income, applied once after existing path bonuses (see Recalculate). Wired
         // into Cost/Level/Purchase, gated on BridgeProfile.Current.isLighting.
@@ -218,6 +222,7 @@ namespace LightingBlocks
             WorldDressing.Build(this);
             if (BridgeProfile.Current.isLighting && GetComponent<LightingGrenade>() == null) gameObject.AddComponent<LightingGrenade>();
             if (BridgeProfile.Current.isLighting && GetComponent<LightingPull>() == null) gameObject.AddComponent<LightingPull>();
+            if (BridgeProfile.Current.isLighting && GetComponent<LightingReveal>() == null) gameObject.AddComponent<LightingReveal>();
             if (forest != null) { forest.Build(); if (safeToSave) Save(); }
             GameAudio.PlayMusic("IntroGusta");
         }
@@ -245,13 +250,10 @@ namespace LightingBlocks
                 // ponytail: test cheat. L adds 25 particles to the Lighting wallet. Delete to ship.
                 if (BridgeProfile.Current.isLighting && k.lKey.wasPressedThisFrame && ForestWorld.For(this) is ForestWorld cheatWorld && cheatWorld.TryAddInventory(25 * ForestWorld.ParticleUnitsPerParticle))
                 { Notify("PARTICLES GRANTED\n+25 particles · " + cheatWorld.SharedInventoryLabel, false); Save(); }
-                if (k.digit1Key.wasPressedThisFrame) Purchase("speed");
-                if (BridgeProfile.Current.isLighting)
+                // Lighting's Speed and Particle Yield are passives, learned in the skill tree only.
+                if (!BridgeProfile.Current.isLighting)
                 {
-                    if (k.digit2Key.wasPressedThisFrame) Purchase("soulgain");
-                }
-                else
-                {
+                    if (k.digit1Key.wasPressedThisFrame) Purchase("speed");
                     if (k.digit2Key.wasPressedThisFrame) Purchase("links");
                     if (k.digit3Key.wasPressedThisFrame) Purchase("strength");
                     if (k.digit4Key.wasPressedThisFrame) Purchase("radiance");
@@ -356,30 +358,35 @@ namespace LightingBlocks
                 case "dash": return BridgeProfile.Current.isLighting ? Math.Ceiling(25 * Math.Pow(1.8, dashLevel)) : 0;
                 case "grenade": return BridgeProfile.Current.isLighting ? Math.Ceiling(40 * Math.Pow(1.8, grenadeLevel)) : 0;
                 case "pull": return BridgeProfile.Current.isLighting ? Math.Ceiling(30 * Math.Pow(1.8, pullLevel)) : 0;
+                // ponytail: tune.
+                case "sight": return BridgeProfile.Current.isLighting ? Math.Ceiling(20 * Math.Pow(1.7, sightLevel)) : 0;
+                case "reveal": return BridgeProfile.Current.isLighting ? Math.Ceiling(35 * Math.Pow(1.8, revealLevel)) : 0;
                 case "stone": return Math.Min(60, Math.Ceiling(12 * Math.Pow(1.12, summoned)));
                 case "grave": return 45;
                 default: return 0;
             }
         }
-        public int Level(string id) => id == "dash" ? dashLevel : id == "grenade" ? grenadeLevel : id == "pull" ? pullLevel : id == "speed" ? speed : id == "links" ? links : id == "strength" ? strength : id == "radiance" ? radiance : id == "soulgain" ? soulGainLevel : generator;
-        public int Cap(string id) => id == "dash" ? BoxPlayer.DashTiles.Length : id == "grenade" || id == "pull" ? LightingGrenade.GrenadeTiles.Length : id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
+        public int Level(string id) => id == "dash" ? dashLevel : id == "grenade" ? grenadeLevel : id == "pull" ? pullLevel : id == "sight" ? sightLevel : id == "reveal" ? revealLevel : id == "speed" ? speed : id == "links" ? links : id == "strength" ? strength : id == "radiance" ? radiance : id == "soulgain" ? soulGainLevel : generator;
+        public int Cap(string id) => id == "dash" ? BoxPlayer.DashTiles.Length : id == "grenade" || id == "pull" ? LightingGrenade.GrenadeTiles.Length : id == "sight" ? LightingFog.SightLevels : id == "reveal" ? LightingReveal.Seconds.Length : id == "speed" ? 6 : id == "links" || id == "strength" ? 3 : id == "radiance" ? 5 : 8;
         public bool Purchase(string id)
         {
             if (GameHUD.SimulationPaused) return false;
             if (BridgeProfile.Current.isLighting)
             {
-                if (id != "speed" && id != "soulgain" && id != "dash" && id != "grenade" && id != "pull") return false;
+                if (id != "speed" && id != "soulgain" && id != "dash" && id != "grenade" && id != "pull" && id != "sight" && id != "reveal") return false;
                 if (Level(id) >= Cap(id)) return Deny("FULLY AWAKENED\nThis power has reached its maximum level.");
                 if (!CanBuyLightingUpgrades()) return Deny("STAND BY A WISDOM TREE\nSkill purchases need supported ground within 3 metres of any Wisdom Tree.");
                 var world = ForestWorld.For(this);
                 int unitPrice = checked((int)Math.Ceiling(Cost(id) * ForestWorld.ParticleUnitsPerParticle));
                 if (world == null || world.SharedInventory < unitPrice) return Deny("NOT ENOUGH PARTICLES\nHave " + (world==null?"0":world.SharedInventoryLabel) + " / " + Format(Cost(id)) + " particles.");
                 if (!world.TrySpendInventory(unitPrice)) return false;
-                switch (id) { case "speed": speed++; break; case "soulgain": soulGainLevel++; break; case "dash": dashLevel++; break; case "grenade": grenadeLevel++; break; case "pull": pullLevel++; break; }
+                switch (id) { case "speed": speed++; break; case "soulgain": soulGainLevel++; break; case "dash": dashLevel++; break; case "grenade": grenadeLevel++; break; case "pull": pullLevel++; break; case "sight": sightLevel++; break; case "reveal": revealLevel++; break; }
                 ApplyUpgrades(); // no Recalculate: none of these skills changes a tile or the network
 
                 Notify(id == "speed" ? "SPEED AWAKENED\nWalking and hauling are faster." : id == "soulgain" ? "PARTICLE YIELD " + soulGainLevel + "\nPickups now yield " + (1 + .25 * soulGainLevel).ToString("0.00") + " particles." : id == "grenade" ? "LIGHT GRENADE " + grenadeLevel + "\nHold right mouse to charge, release to throw up to " + LightingGrenade.GrenadeTiles[grenadeLevel - 1] + " tiles (" + LightingGrenade.ThrowCost + " particles)."
                     : id == "pull" ? "SPIRIT PULL " + pullLevel + "\nPress F to pull every particle within " + LightingPull.Radius(pullLevel) + " tiles (" + LightingPull.Cooldown + " s cooldown)."
+                    : id == "sight" ? "FAR SIGHT " + sightLevel + "\nYou now see " + (GetComponent<LightingFog>() is LightingFog sightFog ? sightFog.World(this).black : 24 + LightingFog.SightStep * sightLevel).ToString("0") + " metres into the dark."
+                    : id == "reveal" ? "DAYBREAK " + revealLevel + "\nPress V to lift the fog for " + LightingReveal.Seconds[revealLevel - 1] + " s (" + LightingReveal.Cooldown + " s cooldown)."
                     : "DASH " + dashLevel + "\nShift bursts " + BoxPlayer.DashTiles[dashLevel - 1] + " tiles, building across the void.");
                 Save(); return true;
             }
@@ -875,7 +882,7 @@ namespace LightingBlocks
             // mismatched schema without touching the file is what keeps an incompatible save from
             // ever being overwritten - see ImportSave and Load.
             public string schema;
-            public int speed, links, strength, radiance, generator, summoned, soulGainLevel, dashLevel, grenadeLevel, pullLevel; public bool completed; public Vector3 player;
+            public int speed, links, strength, radiance, generator, summoned, soulGainLevel, dashLevel, grenadeLevel, pullLevel, sightLevel, revealLevel; public bool completed; public Vector3 player;
             public List<BlockSave> blocks = new List<BlockSave>();
             // Lighting v6: placed tiles are cells, not blocks (blocks keeps the loose stones): x,z pairs,
             // and the cells whose colour is not LightingBridgeGrid.RequiredTier's as x,z,tier triples.
@@ -885,7 +892,7 @@ namespace LightingBlocks
         }
         public string ExportSave()
         {
-            var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), schema = BridgeProfile.Current.saveSchema, speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, soulGainLevel = soulGainLevel, dashLevel = dashLevel, grenadeLevel = grenadeLevel, pullLevel = pullLevel, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
+            var data = new SaveData { forest = ForestWorld.For(this)?.State, souls = souls, rate = Rate, utc = DateTimeOffset.UtcNow.ToUnixTimeSeconds(), schema = BridgeProfile.Current.saveSchema, speed = speed, links = links, strength = strength, radiance = radiance, generator = generator, summoned = summoned, soulGainLevel = soulGainLevel, dashLevel = dashLevel, grenadeLevel = grenadeLevel, pullLevel = pullLevel, sightLevel = sightLevel, revealLevel = revealLevel, completed = completed, player = CanStand(player.transform.position) ? player.transform.position : safePosition };
             bool lighting = BridgeProfile.Current.isLighting;
             foreach (var b in Blocks)
             {
@@ -911,7 +918,7 @@ namespace LightingBlocks
             // Before v6 a Lighting save kept its placed tiles in blocks too; a v6 save holds loose stones only.
             int maximumBlocks=lighting&&d!=null&&d.version<6?int.MaxValue:150;
             bool supportedVersion=d!=null&&(d.version==1||d.version==2||d.version==3||d.version==4||lighting&&(d.version==5||d.version==6));
-            if (d == null || !supportedVersion || d.blocks == null || d.blocks.Count > maximumBlocks || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.soulGainLevel < 0 || d.soulGainLevel > 8 || lighting && (d.dashLevel < 0 || d.dashLevel > BoxPlayer.DashTiles.Length || d.grenadeLevel < 0 || d.grenadeLevel > LightingGrenade.GrenadeTiles.Length || d.pullLevel < 0 || d.pullLevel > LightingGrenade.GrenadeTiles.Length) || d.summoned < 0 || !(lighting?LightingPositionValid(d.player):PositionValid(d.player))) return false;
+            if (d == null || !supportedVersion || d.blocks == null || d.blocks.Count > maximumBlocks || !Finite(d.souls) || d.souls < 0 || !Finite(d.rate) || d.rate < 0 || d.speed < 0 || d.speed > 6 || d.links < 0 || d.links > 3 || d.strength < 0 || d.strength > 3 || d.radiance < 0 || d.radiance > 5 || d.generator < 0 || d.generator > 8 || d.soulGainLevel < 0 || d.soulGainLevel > 8 || lighting && (d.dashLevel < 0 || d.dashLevel > BoxPlayer.DashTiles.Length || d.grenadeLevel < 0 || d.grenadeLevel > LightingGrenade.GrenadeTiles.Length || d.pullLevel < 0 || d.pullLevel > LightingGrenade.GrenadeTiles.Length || d.sightLevel < 0 || d.sightLevel > LightingFog.SightLevels || d.revealLevel < 0 || d.revealLevel > LightingReveal.Seconds.Length) || d.summoned < 0 || !(lighting?LightingPositionValid(d.player):PositionValid(d.player))) return false;
             // A save whose schema does not match the active profile's is a different world's save
             // (or a legacy one, under Lighting): reject it without writing anything. Every legacy
             // profile leaves saveSchema null, so this never engages for them.
@@ -1020,7 +1027,7 @@ namespace LightingBlocks
                 b.id = saved.id; b.tier = saved.tier; b.placed = saved.placed; b.rewarded = saved.rewarded; b.gap = saved.gap; b.column = saved.column; b.row = saved.row; b.transform.position = saved.position; ConfigureBlock(b, false);
             }
             Physics.SyncTransforms();
-            souls = d.souls; speed = d.speed; links = d.links; strength = d.strength; radiance = d.radiance; generator = d.generator; soulGainLevel = d.soulGainLevel; dashLevel = lighting ? d.dashLevel : 0; grenadeLevel = lighting ? d.grenadeLevel : 0; pullLevel = lighting ? d.pullLevel : 0; summoned = d.summoned; completed = d.completed;
+            souls = d.souls; speed = d.speed; links = d.links; strength = d.strength; radiance = d.radiance; generator = d.generator; soulGainLevel = d.soulGainLevel; dashLevel = lighting ? d.dashLevel : 0; grenadeLevel = lighting ? d.grenadeLevel : 0; pullLevel = lighting ? d.pullLevel : 0; sightLevel = lighting ? d.sightLevel : 0; revealLevel = lighting ? d.revealLevel : 0; summoned = d.summoned; completed = d.completed;
             if(lighting&&lightingV4)souls=0;
             ApplyUpgrades(); Recalculate(); if(!lighting)completed &= Bridges[1];
             var cc = player.GetComponent<CharacterController>(); cc.enabled = false; player.transform.position = CanStand(d.player) ? d.player : new Vector3(0, .025f, 3); cc.enabled = true; safePosition = player.transform.position;

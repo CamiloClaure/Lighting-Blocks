@@ -26,6 +26,8 @@ namespace LightingBlocks
                 case "dash": return "sprint";
                 case "grenade": return "meteor-impact";
                 case "pull": return "magnet";
+                case "sight": return "spyglass";
+                case "reveal": return "sunrise";
                 default: return null; // root and the legacy powers keep their numerals
             }
         }
@@ -34,11 +36,12 @@ namespace LightingBlocks
         public static Color TierColor(int tier) => tier <= 0 ? Dormant : tier == 1 ? Bronze : tier == 2 ? Silver : Gold;
 
         // Builds into a square parent of the given size; the halo goes behind the parent's other children.
-        public static SkillBadge Build(RectTransform parent, string id, float size)
+        // A passive skill's frame is a rounded square, an active one's a circle.
+        public static SkillBadge Build(RectTransform parent, string id, float size, bool square = false)
         {
             var badge = new SkillBadge { size = size };
             badge.Halo = Layer("Badge halo", parent, SkillTree.Dot(), size * 1.55f, Color.clear); badge.Halo.transform.SetAsFirstSibling();
-            badge.Outer = Layer("Badge outer ring", parent, SkillTree.Ring(), size * 1.16f, Gold);
+            badge.Outer = Layer("Badge outer ring", parent, square ? SkillTree.SquareRing() : SkillTree.Ring(), size * 1.16f, Gold);
             badge.Icon = Layer("Badge icon", parent, GameHUD.IconSprite(IconName(id)), size * .58f, Color.white);
             for (int i = 0; i < badge.sparks.Length; i++) badge.sparks[i] = Layer("Badge spark " + i, parent, SkillTree.Dot(), size * .13f, Gold);
             return badge;
@@ -68,8 +71,9 @@ namespace LightingBlocks
         }
     }
 
-    // Lighting's in-game ability bar, bottom centre: Dash, Light Grenade and Spirit Pull, each with its
-    // badge, key, level pips, a dark sweep while it recharges and a gold ring while the grenade charges.
+    // Lighting's in-game ability bar, bottom centre: the active skills (Dash, Light Grenade, Spirit Pull,
+    // Daybreak), each with its badge, key, level pips, a dark sweep while it recharges and a gold ring
+    // while the grenade charges or Daybreak holds the fog back. Passive skills live in the tree only.
     // A skill not learned yet shows grey with a padlock.
     public sealed class AbilityBar
     {
@@ -88,7 +92,7 @@ namespace LightingBlocks
         public static AbilityBar Build(Transform parent, GameManager game, Font font)
         {
             var bar = new AbilityBar { game = game };
-            var abilities = new[] { ("dash", "SHIFT"), ("grenade", "RMB"), ("pull", "F") };
+            var abilities = new[] { ("dash", "SHIFT"), ("grenade", "RMB"), ("pull", "F"), ("reveal", "V") };
             float width = abilities.Length * SlotSize + (abilities.Length - 1) * Gap;
             var root = new GameObject("Ability Bar", typeof(RectTransform)).GetComponent<RectTransform>(); root.SetParent(parent, false);
             root.anchorMin = root.anchorMax = root.pivot = new Vector2(.5f, 0); root.sizeDelta = new Vector2(width, SlotSize + 40); root.anchoredPosition = new Vector2(0, 20);
@@ -125,7 +129,7 @@ namespace LightingBlocks
         public void Refresh(float time)
         {
             if (game == null || game.player == null) return;
-            var grenade = game.GetComponent<LightingGrenade>(); var pull = game.GetComponent<LightingPull>();
+            var grenade = game.GetComponent<LightingGrenade>(); var pull = game.GetComponent<LightingPull>(); var reveal = game.GetComponent<LightingReveal>();
             foreach (var slot in slots)
             {
                 int level = game.Level(slot.id), cap = game.Cap(slot.id);
@@ -135,6 +139,11 @@ namespace LightingBlocks
                 if (slot.id == "dash") recharge = game.player.DashCooldownRemaining / BoxPlayer.DashCooldown;
                 else if (slot.id == "grenade" && grenade != null) { busy = grenade.Busy; charge = grenade.Charging ? grenade.Charge : 0; }
                 else if (slot.id == "pull" && pull != null) recharge = pull.CooldownLeft / LightingPull.Cooldown;
+                else if (slot.id == "reveal" && reveal != null)
+                {
+                    recharge = reveal.CooldownLeft / LightingReveal.Cooldown;
+                    if (reveal.Active && level > 0) charge = reveal.Remaining / LightingReveal.Seconds[Mathf.Min(level, LightingReveal.Seconds.Length) - 1];
+                }
                 slot.cooldown.fillAmount = busy ? 1 : Mathf.Clamp01(recharge);
                 slot.cooldown.color = new Color(0, 0, 0, busy ? .4f : .7f);
                 slot.charge.fillAmount = Mathf.Clamp01(charge);

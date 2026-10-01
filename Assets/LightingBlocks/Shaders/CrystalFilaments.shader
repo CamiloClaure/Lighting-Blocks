@@ -19,6 +19,7 @@ Shader "LightingBlocks/Crystal Filaments"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing // far tiles and dots, LightingTiles/LightingDots.DrawFar
             #pragma multi_compile_fog
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             CBUFFER_START(UnityPerMaterial)
@@ -28,9 +29,9 @@ Shader "LightingBlocks/Crystal Filaments"
             // Lighting, so worldFade always evaluates to 1 there - legacy scenes are unaffected.
             float4 _LightingFogCenter;
             float _LightingFogActive, _LightingWorldClear, _LightingWorldBlack;
-            struct A { float4 p:POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; };
+            struct A { float4 p:POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct V { float4 p:SV_POSITION; float4 color:COLOR; float2 uv:TEXCOORD0; float fog:TEXCOORD1; float3 world:TEXCOORD2; };
-            V vert(A i) { V o; o.p=TransformObjectToHClip(i.p.xyz); o.world=TransformObjectToWorld(i.p.xyz); o.color=i.color; o.uv=i.uv; o.fog=ComputeFogFactor(o.p.z); return o; }
+            V vert(A i) { V o; UNITY_SETUP_INSTANCE_ID(i); o.p=TransformObjectToHClip(i.p.xyz); o.world=TransformObjectToWorld(i.p.xyz); o.color=i.color; o.uv=i.uv; o.fog=ComputeFogFactor(o.p.z); return o; }
             half4 frag(V i):SV_Target
             {
                 float transverse=abs(i.uv.x*2-1);

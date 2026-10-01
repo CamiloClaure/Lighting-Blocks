@@ -48,7 +48,23 @@ namespace LightingBlocks
         ForestWorld cachedWorld; uint cachedRevision;
         readonly List<Renderer> renderers = new List<Renderer>();
         readonly List<MaterialPropertyBlock> blocks = new List<MaterialPropertyBlock>();
-        Vector2Int cullCell; int cullRevision = -1;
+        Vector2Int cullCell; int cullRevision = -1; float cullBlack = -1;
+
+        // Far Sight: one chunk (8 m) more black distance per level, the clear distance scaled with it;
+        // Daybreak then lerps both out to LightingReveal.Reach. Level 0 with the fog in place is the
+        // Inspector's 12/24. Computed on demand, so CullTiles and the checks never read a stale value.
+        public const int SightLevels = 4;
+        public static float SightStep => LightingTiles.ChunkSize * LightingBridgeGrid.CellSize;
+        public (float clear, float black) World(GameManager game) => Sight(game, worldClearDistance, worldBlackDistance);
+        public (float clear, float hidden) Particles(GameManager game) => Sight(game, particleClearDistance, particleHiddenDistance);
+        static (float, float) Sight(GameManager game, float clear, float black)
+        {
+            int level = game != null ? Mathf.Clamp(game.sightLevel, 0, SightLevels) : 0;
+            float grown = black + SightStep * level; clear *= grown / Mathf.Max(black, .01f);
+            var reveal = game != null ? game.GetComponent<LightingReveal>() : null;
+            float lift = reveal != null ? reveal.Lift : 0;
+            return (Mathf.Lerp(clear, LightingReveal.Reach - SightStep, lift), Mathf.Lerp(grown, LightingReveal.Reach, lift));
+        }
 
         void Awake() { wisdomProperties = new MaterialPropertyBlock(); }
 
@@ -82,19 +98,27 @@ namespace LightingBlocks
             Vector3 player = game.player.transform.position;
             Shader.SetGlobalFloat(FogActiveId, 1);
             Shader.SetGlobalVector(FogCenterId, player);
-            Shader.SetGlobalFloat(WorldClearId, worldClearDistance);
-            Shader.SetGlobalFloat(WorldBlackId, Mathf.Max(worldBlackDistance, worldClearDistance + .01f));
+            var (worldClear, worldBlack) = World(game);
+            Shader.SetGlobalFloat(WorldClearId, worldClear);
+            Shader.SetGlobalFloat(WorldBlackId, Mathf.Max(worldBlack, worldClear + .01f));
             CullTiles(game);
+            // While Daybreak runs the far lists are built once at its full reach; the fog band hides the rest.
+            var reveal = game.GetComponent<LightingReveal>(); bool revealing = reveal != null && reveal.Active;
+            game.Tiles.DrawFar(player, revealing ? LightingReveal.Reach : worldBlack);
 
             var forest = ForestWorld.For(game);
             if (forest == null) return;
+            var (clear, hidden) = Particles(game);
+            hidden = Mathf.Max(hidden, clear + .01f);
+            // ponytail: base sight keeps the near pool's look; far dots only once sight grows past it.
+            bool farther = worldBlack > worldBlackDistance + .01f;
+            if (forest.Dots != null) { forest.Dots.SkipAppear = farther; if (farther) forest.Dots.DrawFar(player, clear, hidden, revealing ? LightingReveal.Reach : hidden, particleColor); }
             SyncWisdomRenderers(forest);
             UpdateWisdomEmission();
             var visuals = forest.PickupVisuals;
             if (cachedWorld != forest || cachedRevision != forest.VisualRevision || renderers.Count != visuals.Count)
             { Resync(visuals); cachedWorld=forest; cachedRevision=forest.VisualRevision; }
 
-            float clear = particleClearDistance, hidden = Mathf.Max(particleHiddenDistance, clear + .01f);
             for (int i = 0; i < visuals.Count; i++)
             {
                 var visual = visuals[i]; var r = renderers[i];
@@ -116,11 +140,11 @@ namespace LightingBlocks
         // O(loaded tiles) per two-metre step of the player: LightingTiles keeps only the chunks near it.
         public void CullTiles(GameManager game, bool force = false)
         {
-            var cell = LightingBridgeGrid.CellOf(game.player.transform.position);
-            if (!force && cell == cullCell && game.lightingGridRevision == cullRevision) return;
-            cullCell = cell; cullRevision = game.lightingGridRevision;
+            var cell = LightingBridgeGrid.CellOf(game.player.transform.position); float black = World(game).black;
+            if (!force && cell == cullCell && game.lightingGridRevision == cullRevision && black == cullBlack) return;
+            cullCell = cell; cullRevision = game.lightingGridRevision; cullBlack = black;
             // Two metres past black: a tile's nearest corner is then beyond it too.
-            float reach = (worldBlackDistance + 2f) / LightingBridgeGrid.CellSize; reach *= reach;
+            float reach = (black + 2f) / LightingBridgeGrid.CellSize; reach *= reach;
             foreach (var b in game.Blocks)
             {
                 if (b == null) continue;

@@ -12,13 +12,14 @@ Pass {Blend One One ZWrite Off Cull Back
 HLSLPROGRAM
 #pragma vertex vert
 #pragma fragment frag
+#pragma multi_compile_instancing // far tiles and dots, LightingTiles/LightingDots.DrawFar
 #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-struct A {float4 positionOS:POSITION;float3 normalOS:NORMAL;};
+struct A {float4 positionOS:POSITION;float3 normalOS:NORMAL;UNITY_VERTEX_INPUT_INSTANCE_ID};
 struct V {float4 positionCS:SV_POSITION;float3 world:TEXCOORD0;float3 normal:TEXCOORD1;float3 local:TEXCOORD2;};
 CBUFFER_START(UnityPerMaterial)
 float4 _BaseColor;float4 _EmissionColor;float _Surface;float _ZWrite;float _SrcBlend;float _DstBlend;
 CBUFFER_END
-V vert(A i){V o;float pulse=1+sin(_Time.y*1.7)*0.025;o.local=i.positionOS.xyz;o.world=TransformObjectToWorld(i.positionOS.xyz*pulse);o.positionCS=TransformWorldToHClip(o.world);o.normal=TransformObjectToWorldNormal(i.normalOS);return o;}
+V vert(A i){V o;UNITY_SETUP_INSTANCE_ID(i);float pulse=1+sin(_Time.y*1.7)*0.025;o.local=i.positionOS.xyz;o.world=TransformObjectToWorld(i.positionOS.xyz*pulse);o.positionCS=TransformWorldToHClip(o.world);o.normal=TransformObjectToWorldNormal(i.normalOS);return o;}
 half4 frag(V i):SV_Target {
 float facing=saturate(dot(normalize(i.normal),normalize(GetWorldSpaceViewDir(i.world))));
 float rim=pow(1-facing,2.5);

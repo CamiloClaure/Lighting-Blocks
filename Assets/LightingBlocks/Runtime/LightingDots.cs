@@ -12,7 +12,7 @@ namespace LightingBlocks
     public sealed class LightingDots : MonoBehaviour
     {
         public const int DensityPerMille = 180, MaxVisible = 40, DotLights = 4;
-        public const float StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f, PullSeconds = .35f;
+        public const float StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f, PullSeconds = .35f / .95f;
         // The reference soul's emission, (1, .72, .08) x 4; LightingFog fades it with distance.
         public static readonly Color Emission = new Color(4f, 2.88f, .32f);
         static readonly Color LightColor = new Color(1f, .8f, .15f);
@@ -30,6 +30,12 @@ namespace LightingBlocks
         readonly List<(Vector2Int cell, int distance)> candidates = new List<(Vector2Int, int)>();
         readonly HashSet<Vector2Int> wanted = new HashSet<Vector2Int>(), shown = new HashSet<Vector2Int>(), collected = new HashSet<Vector2Int>();
         Vector2Int streamCell; bool dirty = true;
+        // Far dots (DrawFar): what the fog shows past the near pool while sight reaches past its base.
+        readonly HashSet<Vector2Int> near = new HashSet<Vector2Int>();
+        readonly List<Vector2Int> far = new List<Vector2Int>();
+        readonly List<Matrix4x4>[] farBands = { new List<Matrix4x4>(), new List<Matrix4x4>(), new List<Matrix4x4>(), new List<Matrix4x4>() };
+        readonly MaterialPropertyBlock[] farBlocks = new MaterialPropertyBlock[4];
+        Vector2Int farCell; int farRevision = -1; float farReach = -1;
         float time, lightTimer, collectTimer;
         // The player's position at the last pickup poll: a poll tests the whole path since then, so a
         // 40 m/s dash (4 m between polls) still takes every dot it passes through.
@@ -38,6 +44,13 @@ namespace LightingBlocks
         public IReadOnlyList<Transform> Visuals => visuals;
         public IReadOnlyList<Light> Lights => lights;
         public IEnumerable<Vector2Int> ShownCells { get { for (int i = 0; i < MaxVisible; i++) if (used[i]) yield return cells[i]; } }
+        // Bumped whenever Stream rebuilds the shown set (a step to a new cell, a dot taken or back).
+        public int Revision { get; private set; }
+        // LightingFog sets this while sight reaches past its base: a dot entering the near pool was
+        // already drawn far, so it does not scale in from nothing.
+        public bool SkipAppear { get; set; }
+        public int FarCount => far.Count;
+        public IReadOnlyList<Vector2Int> FarCells => far;
 
         // Pure function of seed and cell: a murmur3 finalizer over the three inputs.
         public static bool HasDot(int seed, Vector2Int cell)
@@ -107,15 +120,20 @@ namespace LightingBlocks
             {
                 if (!used[i]) continue;
                 appear[i] = Mathf.Min(1, appear[i] + delta / AppearSeconds);
-                visuals[i].position = Position(cells[i]) + Vector3.up * (Mathf.Sin(time * 2 + cells[i].x * .7f + cells[i].y * 1.3f) * Bob);
+                visuals[i].position = Hovering(cells[i]);
                 visuals[i].localScale = Vector3.one * (Size * Mathf.SmoothStep(0, 1, appear[i]));
             }
             var catcher = game.player.transform.position + Vector3.up;
             for (int i = 0; i < MaxVisible; i++)
             {
                 if (flight[i] <= 0) continue;
-                flight[i] = Mathf.Min(1, flight[i] + delta / PullSeconds); float t = Mathf.SmoothStep(0, 1, flight[i]);
-                visuals[i].position = Vector3.Lerp(flyFrom[i], catcher, t); visuals[i].localScale = Vector3.one * (Size * (1 - .6f * t));
+                flight[i] = Mathf.Min(1, flight[i] + delta / PullSeconds);
+                // Smootherstep (no jolt at either end) along an arc that rises a fifth of the distance; the
+                // dot melts into the player over the last 40% instead of vanishing mid-air.
+                float s = flight[i], t = s * s * s * (s * (s * 6 - 15) + 10), melt = Mathf.InverseLerp(.6f, 1, s);
+                var from = flyFrom[i]; var top = (from + catcher) * .5f + Vector3.up * (.2f * Vector3.Distance(from, catcher));
+                visuals[i].position = Vector3.Lerp(Vector3.Lerp(from, top, t), Vector3.Lerp(top, catcher, t), t);
+                visuals[i].localScale = Vector3.one * (Size * (1 - melt * melt * (3 - 2 * melt)));
                 if (flight[i] >= 1) { flight[i] = 0; visuals[i].gameObject.SetActive(false); dirty = true; }
             }
             lightTimer -= delta; if (lightTimer <= 0) { lightTimer = .2f; PlaceLights(); }
@@ -131,6 +149,8 @@ namespace LightingBlocks
             }
         }
         public static Vector3 Position(Vector2Int cell) { var p = LightingBridgeGrid.Cell(cell.x, cell.y); p.y = Hover; return p; }
+        // Where the dot floats now, its bob included.
+        public Vector3 Hovering(Vector2Int cell) => Position(cell) + Vector3.up * (Mathf.Sin(time * 2 + cell.x * .7f + cell.y * 1.3f) * Bob);
 
         // Rebuilds the shown set only when the player changes cell or a dot is taken or returns. A dot
         // that stays keeps its visual; a new one takes a free visual and scales in.
@@ -169,8 +189,56 @@ namespace LightingBlocks
                 // ponytail: a dot left without a slot while pulled dots fly shows on the restream when they land.
                 while (free < MaxVisible && (used[free] || flight[free] > 0)) free++;
                 if (free == MaxVisible) break;
-                used[free] = true; cells[free] = c; appear[free] = 0;
+                used[free] = true; cells[free] = c; appear[free] = SkipAppear ? 1 : 0;
                 visuals[free].position = Position(c); visuals[free].localScale = Vector3.zero; visuals[free].gameObject.SetActive(true);
+            }
+            Revision++;
+        }
+
+        // LightingFog, while sight reaches past its base (Far Sight, Daybreak): every dot past the near
+        // pool out to hidden metres, GPU-instanced from the seed (no GameObjects), bobbing like the near
+        // ones. The candidates out to reach (128 m at most) are listed again on a new cell, a restream
+        // or a new reach; Daybreak passes its full reach, so the lifting fog does not relist each frame.
+        // ponytail: four fade bands, not a colour per dot; the step hides under the fog's own gradient.
+        public void DrawFar(Vector3 player, float clear, float hidden, float reach, Color color)
+        {
+            var state = world != null ? world.State : null;
+            if (state == null || material == null || visuals.Count == 0) { far.Clear(); return; }
+            reach = Mathf.Min(Mathf.Max(reach, hidden), LightingReveal.Reach);
+            var cell = LightingBridgeGrid.CellOf(player);
+            if (cell != farCell || Revision != farRevision || Mathf.Abs(reach - farReach) > LightingBridgeGrid.CellSize * .5f)
+            {
+                farCell = cell; farRevision = Revision; farReach = reach; far.Clear();
+                near.Clear(); foreach (var c in ShownCells) near.Add(c);
+                int cells = Mathf.CeilToInt(reach / LightingBridgeGrid.CellSize);
+                for (int x = -cells; x <= cells; x++)
+                    for (int z = -cells; z <= cells; z++)
+                    {
+                        var c = new Vector2Int(cell.x + x, cell.y + z); var p = Position(c);
+                        if ((p.x - player.x) * (p.x - player.x) + (p.z - player.z) * (p.z - player.z) > reach * reach) continue;
+                        if (!HasDot(state.seed, c) || collected.Contains(c) || near.Contains(c) || !LightingBridgeGrid.Open(c)) continue;
+                        far.Add(c);
+                    }
+            }
+            if (far.Count == 0) return;
+            foreach (var band in farBands) band.Clear();
+            foreach (var c in far)
+            {
+                var p = Hovering(c); float d = new Vector2(p.x - player.x, p.z - player.z).magnitude;
+                if (d > hidden) continue;
+                float t = Mathf.InverseLerp(clear, hidden, d); t = t * t * (3 - 2 * t);
+                farBands[Mathf.Min(3, (int)(t * 4))].Add(Matrix4x4.TRS(p, Quaternion.identity, Vector3.one * Size));
+            }
+            material.enableInstancing = true;
+            var mesh = visuals[0].GetComponent<MeshFilter>().sharedMesh;
+            for (int b = 0; b < farBands.Length; b++)
+            {
+                var band = farBands[b]; if (band.Count == 0) continue;
+                float fade = (b + .5f) / farBands.Length;
+                var block = farBlocks[b] ??= new MaterialPropertyBlock();
+                block.SetColor("_BaseColor", Color.Lerp(color, Color.black, fade)); block.SetColor("_EmissionColor", Emission * (1 - fade));
+                var rp = new RenderParams(material) { matProps = block, shadowCastingMode = ShadowCastingMode.Off, receiveShadows = false, worldBounds = new Bounds(player, Vector3.one * (reach * 2 + 4)) };
+                for (int start = 0; start < band.Count; start += 1023) Graphics.RenderMeshInstanced(rp, mesh, 0, band, Mathf.Min(1023, band.Count - start), start);
             }
         }
 

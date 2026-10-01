@@ -8,6 +8,7 @@ namespace LightingBlocks
     // The powers screen is an actual tree: roots under the base node, a tapered trunk, curved side
     // branches with sap that grows in as their parent awakens, a violet crown behind the skills, and a
     // burst on the node you just bought. Skills with an icon (SkillBadge) show it dressed by level.
+    // Lighting's passive skills (always on, no key) wear a rounded-square frame, its active ones a circle.
     public sealed class SkillTree : MonoBehaviour
     {
         public GameManager game;
@@ -28,7 +29,7 @@ namespace LightingBlocks
             public string id, title, blurb;
             public Vector2 centre;
             public float size;
-            public bool supply;
+            public bool supply, passive;
             public RectTransform circle;
             public Image ring, disc, burst;
             public Text numeral, label, price;
@@ -55,7 +56,7 @@ namespace LightingBlocks
         Node focus;
         float time;
         int clickFrame = -1;
-        static Sprite discSprite, ringSprite, dotSprite;
+        static Sprite discSprite, ringSprite, dotSprite, squareDiscSprite, squareRingSprite;
 
         public static SkillTree Build(RectTransform panel, GameManager game, Font font, UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
         {
@@ -76,13 +77,16 @@ namespace LightingBlocks
             // do not exist there (removed from both the tree and the purchase routes - see GameManager).
             if (BridgeProfile.Current.isLighting)
             {
-                Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(295, 550), 104);
-                Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(560, 550), 104);
+                Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(295, 550), 104, passive: true);
+                Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(560, 550), 104, passive: true);
                 Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(430, 375), 104);
                 Add("root", BridgeProfile.Current.isLighting ? "THE BRIDGE PATH" : "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
                 Add("grenade", "LIGHT GRENADE", "Throw a charged spirit into the void: it lays tiles where it bursts and relights the tiles already there.", new Vector2(430, 200), 104);
                 Add("pull", "SPIRIT PULL", "Draw every particle around you to you, even over the open void.", new Vector2(645, 375), 104);
+                Add("sight", "FAR SIGHT", "See farther into the dark: tiles, particles and islands show from farther away.", new Vector2(215, 375), 104, passive: true);
+                Add("reveal", "DAYBREAK", "Lift the fog for a moment and see the world around you, out to sixteen chunks.", new Vector2(200, 200), 104);
                 Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash"); Connect("dash", "grenade"); Connect("soulgain", "pull");
+                Connect("speed", "sight"); Connect("sight", "reveal");
             }
             else
             {
@@ -114,8 +118,8 @@ namespace LightingBlocks
             Refresh();
         }
 
-        void Add(string id, string title, string blurb, Vector2 centre, float size, bool supply = false)
-            => nodes.Add(new Node { id = id, title = title, blurb = blurb, centre = centre, size = size, supply = supply });
+        void Add(string id, string title, string blurb, Vector2 centre, float size, bool supply = false, bool passive = false)
+            => nodes.Add(new Node { id = id, title = title, blurb = blurb, centre = centre, size = size, supply = supply, passive = passive });
         Node Get(string id) { foreach (var node in nodes) if (node.id == id) return node; return null; }
         void Connect(string from, string to) => edges.Add(new Edge { from = Get(from), to = Get(to) });
 
@@ -165,13 +169,13 @@ namespace LightingBlocks
         {
             var circle = Rect("Power " + node.id, root, node.centre.x - node.size * .5f, node.centre.y - node.size * .5f, node.size, node.size);
             node.circle = circle;
-            node.disc = Graphic("Disc", circle, Disc(), new Color(.10f, .085f, .07f, .96f));
-            node.ring = Graphic("Ring", circle, Ring(), Dormant);
-            node.burst = Graphic("Burst", circle, Ring(), new Color(1, 1, 1, 0));
+            node.disc = Graphic("Disc", circle, node.passive ? SquareDisc() : Disc(), new Color(.10f, .085f, .07f, .96f));
+            node.ring = Graphic("Ring", circle, node.passive ? SquareRing() : Ring(), Dormant);
+            node.burst = Graphic("Burst", circle, node.passive ? SquareRing() : Ring(), new Color(1, 1, 1, 0));
             node.numeral = Label("Level", circle, "·", 0, 0, node.size, node.size, Mathf.RoundToInt(node.size * .34f), Gold, TextAnchor.MiddleCenter);
             node.numeral.rectTransform.anchorMin = Vector2.zero; node.numeral.rectTransform.anchorMax = Vector2.one;
             node.numeral.rectTransform.offsetMin = node.numeral.rectTransform.offsetMax = Vector2.zero;
-            if (SkillBadge.IconName(node.id) != null) { node.badge = SkillBadge.Build(circle, node.id, node.size); node.numeral.enabled = false; }
+            if (SkillBadge.IconName(node.id) != null) { node.badge = SkillBadge.Build(circle, node.id, node.size, node.passive); node.numeral.enabled = false; }
 
             float below = node.centre.y + node.size * .5f;
             int cap = Cap(node);
@@ -319,6 +323,7 @@ namespace LightingBlocks
             detailTitle.text = focus.title;
             detailLevel.text = focus.id == "root" ? "THE ROOT OF THE TREE"
                 : supply ? "STONE SOURCE"
+                : BridgeProfile.Current.isLighting ? (focus.passive ? "PASSIVE" : "ACTIVE") + " · LEVEL " + Numerals[Mathf.Clamp(level, 0, Numerals.Length - 1)] + " / " + Numerals[Mathf.Clamp(cap, 0, Numerals.Length - 1)]
                 : "LEVEL " + Numerals[Mathf.Clamp(level, 0, Numerals.Length - 1)] + "  /  " + Numerals[Mathf.Clamp(cap, 0, Numerals.Length - 1)];
             detailBlurb.text = focus.blurb;
             detailRequirement.text = Requirement(focus.id);
@@ -337,12 +342,22 @@ namespace LightingBlocks
         {
             switch (id)
             {
-                case "speed": return BridgeProfile.Current.isLighting ? "Hotkey [1].\nMove faster across platforms, with or without stones." : "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
-                case "soulgain": return BridgeProfile.Current.isLighting ? "Hotkey [2].\nEach level adds 0.25 particle to every pickup.\nCurrent pickup: " + (1 + .25 * game.soulGainLevel).ToString("0.00") + " particles." : "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
+                case "speed": return BridgeProfile.Current.isLighting ? "Always on.\nEach level adds 0.65 m/s to walking and hauling speed." : "Hotkey [1].\nEach level adds 0.65 m/s to walking and hauling speed.";
+                case "soulgain": return BridgeProfile.Current.isLighting ? "Always on.\nEach level adds 0.25 particle to every pickup.\nCurrent pickup: " + (1 + .25 * game.soulGainLevel).ToString("0.00") + " particles." : "Hotkey [2].\nMultiplies your connected path's income.\nNow x" + (1 + .25 * game.soulGainLevel).ToString("0.00")
                     + ".\nNext level: x" + (1 + .25 * (game.soulGainLevel + 1)).ToString("0.00") + ".";
                 case "dash": return "Press Shift to burst " + BoxPlayer.DashTiles[Mathf.Clamp(game.dashLevel, 1, BoxPlayer.DashTiles.Length) - 1] + " tiles the way you face or move (levels: " + string.Join("/", BoxPlayer.DashTiles) + ").\nDashing off an edge lays bridge tiles into the void.\n0.3-second cooldown. Unavailable while hauling.";
                 case "grenade": return "Hold right mouse to charge, release to throw along the camera. Costs " + LightingGrenade.ThrowCost + " particles per throw.\nReach and blast radius: " + LightingGrenade.Radius(game.grenadeLevel) + " tiles (levels: " + string.Join("/", LightingGrenade.GrenadeTiles) + ").\nThe blast lays tiles over the void that connect to your network and relights the tiles already there.";
                 case "pull": return "Press F to pull every particle within " + LightingPull.Radius(game.pullLevel) + " tiles (levels: " + string.Join("/", LightingGrenade.GrenadeTiles) + ", the Light Grenade's radius).\nIt takes particles over the open void too.\n" + LightingPull.Cooldown + "-second cooldown.";
+                case "sight":
+                {
+                    var fog = game.GetComponent<LightingFog>(); float baseSight = fog != null ? fog.worldBlackDistance : 24;
+                    var levels = new string[LightingFog.SightLevels];
+                    for (int l = 0; l < levels.Length; l++) levels[l] = (baseSight + LightingFog.SightStep * (l + 1)).ToString("0");
+                    return "Always on.\nSee one chunk (" + LightingFog.SightStep.ToString("0") + " m) farther into the dark per level: " + (baseSight + LightingFog.SightStep * game.sightLevel).ToString("0") + " m now (levels: "
+                        + string.Join("/", levels) + " m).";
+                }
+                case "reveal": return "Press V to lift the fog out to " + LightingReveal.RevealChunks + " chunks (" + LightingReveal.Reach.ToString("0") + " m) for " + LightingReveal.Seconds[Mathf.Clamp(game.revealLevel, 1, LightingReveal.Seconds.Length) - 1]
+                    + " s (levels: " + string.Join("/", LightingReveal.Seconds) + " s).\nYour network and the particles out there show too.\n" + LightingReveal.Cooldown + "-second cooldown once the fog returns.";
                 case "links": return "Hotkey [2].\nOrbit " + game.Capacity + " stones at once.\nEach level adds one stone. Q drops them.";
                 case "strength": return "Hotkey [3].\nGrave Stone needs Strength I.\nAncient Obsidian needs Strength III.";
                 case "radiance": return "Hotkey [4].\nRange " + (9 + game.radiance * 3) + " m.\nEach level adds 3 m of light.";
@@ -398,17 +413,21 @@ namespace LightingBlocks
         internal static Sprite Disc() => discSprite != null ? discSprite : discSprite = Paint(d => Mathf.InverseLerp(1f, .94f, d));
         internal static Sprite Ring() => ringSprite != null ? ringSprite : ringSprite = Paint(d => Mathf.Clamp01(1 - Mathf.Abs(d - .87f) / .1f));
         internal static Sprite Dot() => dotSprite != null ? dotSprite : dotSprite = Paint(d => Mathf.InverseLerp(1f, .55f, d));
-        static Sprite Paint(System.Func<float, float> alpha)
+        internal static Sprite SquareDisc() => squareDiscSprite != null ? squareDiscSprite : squareDiscSprite = Paint(d => Mathf.InverseLerp(1f, .94f, d), true);
+        internal static Sprite SquareRing() => squareRingSprite != null ? squareRingSprite : squareRingSprite = Paint(d => Mathf.Clamp01(1 - Mathf.Abs(d - .87f) / .1f), true);
+        // square: a superellipse (x^4 + y^4 = 1), a square with rounded corners, instead of a circle.
+        static Sprite Paint(System.Func<float, float> alpha, bool square = false)
         {
             const int size = 128;
             var texture = new Texture2D(size, size, TextureFormat.RGBA32, false)
-            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, name = "Skill tree shape" };
+            { filterMode = FilterMode.Bilinear, wrapMode = TextureWrapMode.Clamp, name = square ? "Skill tree square" : "Skill tree shape" };
             var pixels = new Color[size * size];
             float half = (size - 1) * .5f;
             for (int y = 0; y < size; y++)
                 for (int x = 0; x < size; x++)
                 {
-                    float distance = Mathf.Sqrt((x - half) * (x - half) + (y - half) * (y - half)) / half;
+                    float dx = (x - half) / half, dy = (y - half) / half;
+                    float distance = square ? Mathf.Pow(dx * dx * dx * dx + dy * dy * dy * dy, .25f) : Mathf.Sqrt(dx * dx + dy * dy);
                     pixels[y * size + x] = new Color(1, 1, 1, Mathf.Clamp01(alpha(distance)));
                 }
             texture.SetPixels(pixels); texture.Apply();

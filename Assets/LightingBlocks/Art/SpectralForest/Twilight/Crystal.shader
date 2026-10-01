@@ -24,6 +24,7 @@ Shader "LightingBlocks/Twilight Crystal"
             HLSLPROGRAM
             #pragma vertex vert
             #pragma fragment frag
+            #pragma multi_compile_instancing // far tiles and dots, LightingTiles/LightingDots.DrawFar
             #pragma multi_compile_fog
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/DeclareOpaqueTexture.hlsl"
@@ -37,11 +38,11 @@ Shader "LightingBlocks/Twilight Crystal"
             // Lighting, so worldFade always evaluates to 1 there - legacy scenes are unaffected.
             float4 _LightingFogCenter;
             float _LightingFogActive, _LightingWorldClear, _LightingWorldBlack;
-            struct A { float4 p:POSITION; float3 n:NORMAL; float2 uv:TEXCOORD0; };
+            struct A { float4 p:POSITION; float3 n:NORMAL; float2 uv:TEXCOORD0; UNITY_VERTEX_INPUT_INSTANCE_ID };
             struct V { float4 p:SV_POSITION; float3 w:TEXCOORD0; float3 n:TEXCOORD1; float2 uv:TEXCOORD2; float fog:TEXCOORD3; float top:TEXCOORD4; };
             V vert(A i)
             {
-                V o; VertexPositionInputs p=GetVertexPositionInputs(i.p.xyz);
+                V o; UNITY_SETUP_INSTANCE_ID(i); VertexPositionInputs p=GetVertexPositionInputs(i.p.xyz);
                 o.p=p.positionCS; o.w=p.positionWS; o.n=TransformObjectToWorldNormal(i.n);
                 o.uv=i.uv; o.top=step(.99,i.n.y); o.fog=ComputeFogFactor(o.p.z); return o;
             }

@@ -7,3 +7,5 @@ sprint.png         Lorc        https://game-icons.net/1x1/lorc/sprint.html
 meteor-impact.png  Lorc        https://game-icons.net/1x1/lorc/meteor-impact.html
 magnet.png         Lorc        https://game-icons.net/1x1/lorc/magnet.html
 padlock.png        Lorc        https://game-icons.net/1x1/lorc/padlock.html
+spyglass.png       Lorc        https://game-icons.net/1x1/lorc/spyglass.html
+sunrise.png        Delapouite  https://game-icons.net/1x1/delapouite/sunrise.html

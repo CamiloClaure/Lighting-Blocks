@@ -91,7 +91,7 @@ namespace LightingBlocks.Editor
                 Assert(!labels.Any(t=>t.Contains("souls keep flowing")||t.Contains("Soul Gain")),"Lighting skill screen has no passive Souls / old gain wording");
                 foreach (var retired in new[] { "strength", "links", "radiance", "generator" })
                     Assert(!skills.ContainsKey(retired), "Lighting skill tree must not expose " + retired);
-                Assert(skills.Count == 2, "Lighting skill tree has exactly two purchasable powers, got " + skills.Count);
+                Assert(skills.Count == 7, "Lighting skill tree has exactly seven purchasable powers, got " + skills.Count);
             }
             finally
             {

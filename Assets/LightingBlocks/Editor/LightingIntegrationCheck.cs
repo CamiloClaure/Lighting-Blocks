@@ -68,6 +68,8 @@ namespace LightingBlocks.Editor
         // The placed network, loaded or not: a snapshot, and every cell with the colour it was laid in.
         static System.Collections.Generic.HashSet<Vector2Int> Cells(GameManager game) => new System.Collections.Generic.HashSet<Vector2Int>(game.Tiles.Cells);
         static (Vector2Int cell, int tier)[] PlacedCells(GameManager game) => game.Tiles.Cells.Select(c => (cell: c, tier: GameManager.RequiredTier(0, c.x, c.y))).OrderBy(t => t.cell.x).ThenBy(t => t.cell.y).ToArray();
+        // DrawFar until every chunk in reach has its poses (a cold cast spreads them over frames); returns the frames.
+        static int DrawFarAll(GameManager game, Vector3 at, float reach) { int frames = 0; do { game.Tiles.DrawFar(at, reach); frames++; } while (game.Tiles.FarPending && frames < 100); return frames; }
         // Takes back every tile laid since the snapshot.
         static void RestoreTiles(GameManager game, System.Collections.Generic.HashSet<Vector2Int> before)
         {
@@ -99,6 +101,7 @@ namespace LightingBlocks.Editor
             CheckDash(game, forest);
             CheckGrenade(game, forest);
             CheckPull(game, forest);
+            CheckSightAndReveal(game, forest);
             CheckAbilityHud(game);
             CheckSounds(game);
             CheckDashPerformance(game, forest);
@@ -659,18 +662,124 @@ namespace LightingBlocks.Editor
             }
         }
 
+        // ---- Far Sight (passive) and Daybreak (V): sight grows by chunks; past the streamed world the
+        // tiles and dots are drawn from data ----
+        static void CheckSightAndReveal(GameManager game, ForestWorld forest)
+        {
+            var fog = game.GetComponent<LightingFog>(); var reveal = game.GetComponent<LightingReveal>(); var dots = forest.Dots;
+            Check(fog != null && reveal != null && dots != null, "Daybreak rides on the Lighting GameManager beside its fog");
+            var tree = forest.WisdomTrees.First(t => t != null);
+            int oldSight = game.sightLevel, oldReveal = game.revealLevel, oldInventory = forest.State.inventory;
+            var baseline = Cells(game);
+            var lateUpdate = typeof(LightingFog).GetMethod("LateUpdate", BindingFlags.Instance | BindingFlags.NonPublic);
+            try
+            {
+                game.sightLevel = 0; game.revealLevel = 0;
+                Check(Math.Abs(game.Cost("sight") - 20) < .001 && game.Cap("sight") == 4 && Math.Abs(game.Cost("reveal") - 35) < .001 && game.Cap("reveal") == 4,
+                    "Far Sight costs 20 particles and Daybreak 35, four levels each");
+                forest.State.inventory = 55 * ForestWorld.ParticleUnitsPerParticle;
+                Teleport(game, tree.transform.position + Vector3.right * 8);
+                Check(!game.Purchase("sight") && game.sightLevel == 0, "Far Sight cannot be bought away from a Wisdom Tree");
+                Teleport(game, tree.transform.position + Vector3.right * 2);
+                Check(game.Purchase("sight") && game.Purchase("reveal") && game.sightLevel == 1 && game.revealLevel == 1 && forest.SharedInventory == 0,
+                    "Buying Far Sight and Daybreak at a tree spends exactly 55 particles");
+                string save = game.ExportSave(); game.sightLevel = game.revealLevel = 0;
+                Check(game.ImportSave(save) && game.sightLevel == 1 && game.revealLevel == 1, "Both levels survive save and load");
+                var invalid = JsonUtility.FromJson<GameManager.SaveData>(save); invalid.sightLevel = 5;
+                Check(!game.ImportSave(JsonUtility.ToJson(invalid)) && game.sightLevel == 1, "A Far Sight level past the cap is rejected");
+                invalid.sightLevel = 1; invalid.revealLevel = 5;
+                Check(!game.ImportSave(JsonUtility.ToJson(invalid)) && game.revealLevel == 1, "A Daybreak level past the cap is rejected");
+
+                game.sightLevel = 0; var (clear0, black0) = fog.World(game);
+                game.sightLevel = 4; var (clear4, black4) = fog.World(game);
+                Check(clear0 == 12 && black0 == 24 && Mathf.Approximately(clear4, 28) && Mathf.Approximately(black4, 56),
+                    "Sight is 12/24 m at level 0 and 28/56 m at Far Sight 4, one chunk per level");
+
+                // Daybreak: rise, hold, fall, cooldown.
+                game.sightLevel = 0; game.revealLevel = 0; reveal.CooldownLeft = 0;
+                Check(!reveal.TryReveal() && !reveal.Active, "Daybreak needs a level");
+                game.revealLevel = 1;
+                Check(reveal.TryReveal() && reveal.Active, "V lifts the fog");
+                for (int i = 0; i < 30; i++) reveal.Step(1f / 60);
+                var (clearLifted, blackLifted) = fog.World(game);
+                Check(LightingReveal.Reach == 128 && Mathf.Approximately(blackLifted, 128) && Mathf.Approximately(clearLifted, 120),
+                    "Lifted, the fog sits at 16 chunks: clear to 120 m, black at 128 m");
+                Check(!reveal.TryReveal(), "A second cast while the fog is lifted is refused");
+                float held = 0; while (reveal.Active && held < 10) { reveal.Step(1f / 60); held += 1f / 60; }
+                Check(!reveal.Active && held > 2.1f && held < 2.3f && reveal.CooldownLeft == LightingReveal.Cooldown && fog.World(game).black == 24,
+                    "Level 1 holds the fog back 1.5 s, it returns over 0.8 s and the 30 s cooldown starts (" + held.ToString("0.00") + " s after the rise)");
+                Check(!reveal.TryReveal() && !reveal.Active, "Daybreak inside its cooldown is refused");
+                reveal.Step(LightingReveal.Cooldown);
+                Check(reveal.CooldownLeft == 0 && reveal.TryReveal(), "After 30 s it casts again");
+                while (reveal.Active) reveal.Step(.1f);
+                reveal.CooldownLeft = 0;
+
+                // Far tiles: a streamed tile's renderers are where its far copy draws.
+                var cell0 = game.Tiles.Cells.First();
+                Teleport(game, LightingBridgeGrid.Cell(cell0.x, cell0.y));
+                var live = game.Tiles.Visual(cell0);
+                var renderers = live.GetComponent<BlockArt>().placedVisual.GetComponentsInChildren<MeshRenderer>(true).Where(r => r.enabled).ToArray();
+                bool Close(Matrix4x4 a, Matrix4x4 b) { for (int i = 0; i < 16; i++) if (Math.Abs(a[i] - b[i]) > 1e-3f) return false; return true; }
+                Check(renderers.Length > 0 && renderers.Length == game.Tiles.FarParts(live.tier) && Enumerable.Range(0, renderers.Length).All(k => Close(game.Tiles.FarPose(cell0, live.tier, k), renderers[k].localToWorldMatrix)),
+                    "A far tile draws its " + renderers.Length + " parts exactly where a streamed tile's own renderers are");
+
+                // A data-only block 60-100 m out over the void (the side with the least platform): no chunk
+                // of it loads, and only a lifted fog draws it.
+                var at = game.player.transform.position; var origin = LightingBridgeGrid.CellOf(at);
+                DrawFarAll(game, at, LightingReveal.Reach); int farBefore = game.Tiles.FarCount;
+                int visuals = game.Tiles.VisualCount, created = game.Tiles.Created;
+                System.Collections.Generic.List<Vector2Int> Block(Vector2Int along)
+                {
+                    var side = new Vector2Int(along.y, along.x); var open = new System.Collections.Generic.List<Vector2Int>();
+                    for (int a = 30; a < 50; a++) for (int s = -5; s < 5; s++)
+                    {
+                        var c = origin + along * a + side * s;
+                        if (!LightingBridgeGrid.OverlapsPlatform(c) && !game.Tiles.Contains(c)) open.Add(c);
+                    }
+                    return open;
+                }
+                var fixture = new[] { Vector2Int.right, Vector2Int.left, Vector2Int.up, Vector2Int.down }.Select(Block).OrderByDescending(b => b.Count).First();
+                foreach (var c in fixture) game.Tiles.Add(c);
+                Check(fixture.Count > 100 && game.Tiles.VisualCount == visuals && game.Tiles.Created == created, "Fixture: " + fixture.Count + " tiles 60-100 m out, stored without GameObjects");
+                DrawFarAll(game, at, 24);
+                Check(game.Tiles.FarCount == 0, "Under the normal fog nothing past the streamed chunks is drawn");
+                DrawFarAll(game, at, LightingReveal.Reach);
+                Check(game.Tiles.FarCount - farBefore == fixture.Count && game.Tiles.VisualCount == visuals && game.Tiles.Created == created,
+                    "Lifted, every far tile is drawn from data (" + game.Tiles.FarCount + " instanced) with no new GameObject");
+                RestoreTiles(game, baseline);
+
+                // Far dots: past the near pool, only once sight grows past its base.
+                dots.Refresh();
+                game.sightLevel = 0; lateUpdate.Invoke(fog, null);
+                Check(!dots.SkipAppear, "At base sight the near pool keeps its scale-in");
+                game.sightLevel = 4; lateUpdate.Invoke(fog, null);
+                var shown = new System.Collections.Generic.HashSet<Vector2Int>(dots.ShownCells);
+                Func<Vector2Int, float> flat = c => { var p = LightingDots.Position(c); return new Vector2(p.x - at.x, p.z - at.z).magnitude; };
+                at = game.player.transform.position;
+                Check(dots.SkipAppear && dots.FarCount > shown.Count && !dots.FarCells.Any(shown.Contains) && dots.FarCells.All(c => dots.IsDot(c) && flat(c) <= 56.01f),
+                    "At Far Sight 4 the " + dots.FarCount + " dots past the near pool's " + shown.Count + " out to 56 m are drawn from data");
+            }
+            finally
+            {
+                RestoreTiles(game, baseline);
+                while (reveal.Active) reveal.Step(.1f);
+                game.sightLevel = oldSight; game.revealLevel = oldReveal; reveal.CooldownLeft = 0; forest.State.inventory = oldInventory;
+                lateUpdate.Invoke(fog, null);
+            }
+        }
+
         // ---- Ability bar and skill badges: game-icons.net icons, a richer frame per level, a tree-shaped tree ----
         static void CheckAbilityHud(GameManager game)
         {
             var hud = GameHUD.Current; var bar = hud.Abilities;
-            Check(bar != null && string.Join("/", bar.Slots.Select(s => s.id)) == "dash/grenade/pull", "The ability bar holds Dash, Light Grenade and Spirit Pull");
+            Check(bar != null && string.Join("/", bar.Slots.Select(s => s.id)) == "dash/grenade/pull/reveal", "The ability bar holds the active skills: Dash, Light Grenade, Spirit Pull and Daybreak");
             Check(bar.Slots.All(s => s.badge.Icon.sprite != null && s.badge.Icon.sprite.texture.name == SkillBadge.IconName(s.id) && s.padlock.sprite.texture.name == "padlock"),
                 "Every ability shows its game-icons.net icon and padlock from Resources/UI/Icons");
             Check(SkillBadge.Tier(0, 3) == 0 && SkillBadge.Tier(1, 3) == 1 && SkillBadge.Tier(2, 3) == 2 && SkillBadge.Tier(3, 3) == 3
                 && string.Join(",", Enumerable.Range(1, 5).Select(l => SkillBadge.Tier(l, 5))) == "1,1,2,2,3", "Badge tiers run locked, bronze, silver, gold at max (Dash spreads its five levels)");
-            var grenade = game.GetComponent<LightingGrenade>(); var pull = game.GetComponent<LightingPull>();
+            var grenade = game.GetComponent<LightingGrenade>(); var pull = game.GetComponent<LightingPull>(); var reveal = game.GetComponent<LightingReveal>();
             var charge = typeof(LightingGrenade).GetField("charge", BindingFlags.Instance | BindingFlags.NonPublic);
-            int oldDash = game.dashLevel, oldGrenade = game.grenadeLevel, oldPull = game.pullLevel;
+            int oldDash = game.dashLevel, oldGrenade = game.grenadeLevel, oldPull = game.pullLevel, oldReveal = game.revealLevel;
             try
             {
                 game.dashLevel = 0; game.grenadeLevel = 1; game.pullLevel = 3; pull.CooldownLeft = 0; bar.Refresh(0);
@@ -682,21 +791,31 @@ namespace LightingBlocks.Editor
                 pull.CooldownLeft = LightingPull.Cooldown * .5f; charge.SetValue(grenade, .5f); bar.Refresh(0);
                 Check(Math.Abs(pullSlot.cooldown.fillAmount - .5f) < .01f && Math.Abs(throwSlot.charge.fillAmount - .5f) < .01f,
                     "The Spirit Pull slot sweeps dark for its remaining cooldown and the grenade slot rings its charge");
+                var revealSlot = bar.Slots[3]; game.revealLevel = 1; reveal.CooldownLeft = 0;
+                reveal.TryReveal(); for (int i = 0; i < 30; i++) reveal.Step(1f / 60); bar.Refresh(0);
+                Check(revealSlot.charge.fillAmount > .9f && revealSlot.charge.fillAmount < 1, "The Daybreak slot rings the time the fog stays lifted");
+                while (reveal.Active) reveal.Step(.1f); reveal.CooldownLeft = LightingReveal.Cooldown * .5f; bar.Refresh(0);
+                Check(Math.Abs(revealSlot.cooldown.fillAmount - .5f) < .01f && revealSlot.charge.fillAmount == 0, "Then it sweeps dark for its cooldown");
 
                 hud.SetView(GameHUD.ScreenView.Skills);
                 var tree = UnityEngine.Object.FindAnyObjectByType<SkillTree>(FindObjectsInactive.Include);
                 for (int i = 0; i < 200; i++) tree.Refresh();
                 var branches = tree.Branches.ToArray();
-                Check(branches.Length == 5 && branches.All(b => b.bark != null && b.sap != null && b.bark.Grown == 1) && tree.RootCount == 4,
-                    "The skill tree draws 5 curved bark branches with sap over them, and 4 roots");
+                Check(branches.Length == 7 && branches.All(b => b.bark != null && b.sap != null && b.bark.Grown == 1) && tree.RootCount == 4,
+                    "The skill tree draws 7 curved bark branches with sap over them, and 4 roots");
                 Check(branches.Where(b => b.sap.name.StartsWith("Sap root")).All(b => b.sap.Grown > .99f && (b.sap.Point(1) - b.bark.b).sqrMagnitude < .01f),
                     "Sap grows the whole way along the branches from the always-awake base");
-                Check(tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Count(i => i.name == "Badge icon") == 5, "Every Lighting skill node shows its icon");
+                Check(tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Count(i => i.name == "Badge icon") == 7, "Every Lighting skill node shows its icon");
+                var discs = tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Where(i => i.name == "Disc" && i.transform.parent.name != "Power root").ToArray();
+                var passive = new[] { "Power speed", "Power soulgain", "Power sight" };
+                Check(discs.Length == 7 && discs.All(d => (d.sprite.texture.name == "Skill tree square") == passive.Contains(d.transform.parent.name)),
+                    "Passive skills (Swift Stride, Particle Yield, Far Sight) wear a square frame, active ones a round one");
             }
             finally
             {
                 hud.SetView(GameHUD.ScreenView.Playing); charge.SetValue(grenade, -1f);
                 game.dashLevel = oldDash; game.grenadeLevel = oldGrenade; game.pullLevel = oldPull; pull.CooldownLeft = 0;
+                while (reveal.Active) reveal.Step(.1f); game.revealLevel = oldReveal; reveal.CooldownLeft = 0;
             }
         }
 
@@ -941,6 +1060,23 @@ namespace LightingBlocks.Editor
                 report.AppendLine("PERF: teleport 640 m (stream the whole radius) " + teleportMs.ToString("0") + " ms; walking stream frames over 2 ms: "
                     + string.Join("/", streamMs.Where(ms => ms > 2).Select(ms => ms.ToString("0.0"))));
                 Check(streamWorst < 1000.0 / 60 && game.Tiles.VisualCount < 6400, "Streaming while walking across the network fits a 60 FPS frame (" + streamWorst.ToString("0.0") + " ms worst, " + game.Tiles.VisualCount + " loaded)");
+
+                // Daybreak in the middle of it: every unloaded tile within 128 m drawn from data. The cast
+                // builds each chunk's poses once; a step to the next chunk only copies them.
+                var middle = game.player.transform.position;
+                game.Tiles.DrawFar(middle, 0); // parts and JIT
+                double farCastMs = 0; int castFrames = 0; var castMs = new System.Collections.Generic.List<double>();
+                do { watch.Restart(); game.Tiles.DrawFar(middle, LightingReveal.Reach); castMs.Add(watch.Elapsed.TotalMilliseconds); farCastMs = Math.Max(farCastMs, castMs[castMs.Count - 1]); castFrames++; }
+                while (game.Tiles.FarPending && castFrames < 100);
+                watch.Restart(); game.Tiles.DrawFar(middle, LightingReveal.Reach); double farFrameMs = watch.Elapsed.TotalMilliseconds;
+                var step = middle + Vector3.right * LightingTiles.ChunkSize * LightingBridgeGrid.CellSize;
+                Teleport(game, step, false); game.Tiles.Stream(step, true);
+                double farStepMs = 0; int stepFrames = 0;
+                do { watch.Restart(); game.Tiles.DrawFar(step, LightingReveal.Reach); farStepMs = Math.Max(farStepMs, watch.Elapsed.TotalMilliseconds); stepFrames++; }
+                while (game.Tiles.FarPending && stepFrames < 100);
+                report.AppendLine("PERF: Daybreak over the dense network: " + game.Tiles.FarCount + " far tiles, cast frames " + string.Join("/", castMs.Select(ms => ms.ToString("0.0"))) + " ms, next chunk " + farStepMs.ToString("0.0") + " ms, steady frame " + farFrameMs.ToString("0.00") + " ms");
+                Check(game.Tiles.FarCount > 5000 && farCastMs < 1000.0 / 60 && castFrames <= 24 && farStepMs < 8 && farFrameMs < 2,
+                    "Daybreak draws " + game.Tiles.FarCount + " far tiles: the cast fills in over " + castFrames + " frames (worst " + farCastMs.ToString("0.0") + " ms, inside the 0.4 s rise), next chunk " + farStepMs.ToString("0.0") + " ms, steady " + farFrameMs.ToString("0.00") + " ms");
 
                 // Dash west off the far edge, then a level-3 blast past it: both lay tiles at 100k.
                 game.dashLevel = BoxPlayer.DashTiles.Length; game.player.ResetDash();
