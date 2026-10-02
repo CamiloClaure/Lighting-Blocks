@@ -6,7 +6,12 @@ namespace LightingBlocks
         public Transform soul;
         public Renderer halo;
         Vector3 home;
-        void Start(){if(soul!=null)home=soul.localPosition;}
+        void Start()
+        {
+            if(soul!=null)home=soul.localPosition;
+            // Lighting: no visible soul orb or halo beside the player; the light on the same object stays (game.soulLight).
+            if(BridgeProfile.Current.isLighting){var orb=soul!=null?soul.GetComponent<Renderer>():null;if(orb!=null)orb.enabled=false;if(halo!=null)halo.enabled=false;}
+        }
         void OnDisable() { Shader.SetGlobalColor("_LightingCharacterColor", Color.clear); }
         void Update()
         {

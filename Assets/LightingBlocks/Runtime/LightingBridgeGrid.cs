@@ -185,7 +185,7 @@ namespace LightingBlocks
             {
                 uint h = (uint)(x * 73856093) ^ (uint)(z * 19349663);
                 h ^= h >> 13; h *= 2654435761u; h ^= h >> 16;
-                return (int)(h % 3u);
+                return (int)(h % 5u); // one of BridgeBlock's five Lighting colours
             }
         }
 

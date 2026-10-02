@@ -407,7 +407,7 @@ namespace LightingBlocks
             if (particleText != null && forest != null && forest.State != null)
             {
                 particleText.text = BridgeProfile.Current.isLighting
-                    ? "Particles: " + forest.SharedInventoryLabel + "\n" + NearbyReceiverLabel(game)
+                    ? "Particles: " + forest.SharedInventoryLabel
                     : forest.InventoryLabel + "\n" + game.ConnectedCount + " path blocks";
             }
             bool journey = game.ConnectedCount > 0 || (BridgeProfile.Current.isLighting ? (ForestWorld.For(game)?.SharedInventory ?? 0) > 0 : game.souls > 0) || System.IO.File.Exists(game.SavePath);
@@ -430,7 +430,7 @@ namespace LightingBlocks
             }
             var wisdom = game.player == null ? null : forest?.Nearby(game.player.transform.position);
             if (box == null && wisdom != null) hint = wisdom.Charging ? "Charging the Wisdom Tree..." : "WISDOM TREE\nE: Charge with 3 particles" + (BridgeProfile.Current.treeReturn ? " · R: Return stones" : "");
-            contextText.text = BridgeProfile.Current.isLighting ? (game.player.HeldBox!=null?"Release SPACE at the glowing bridge edge":LightingDepositHint(game)) : diamond + "  " + hint;
+            contextText.text = BridgeProfile.Current.isLighting ? (game.player.HeldBox!=null?"Release SPACE at the glowing bridge edge":game.LightingCarryHint) : diamond + "  " + hint;
             RefreshPlacePrompt();
             journalText.text = "I · They called it the end of the universe. But souls still wander between its broken shores.\n\n"
                 + (game.Bridges[0] ? "II · Your first bridge did more than carry you. It gave the lost a path home." : "II · A memory waits across the first rift.") + "\n\n"
@@ -438,24 +438,6 @@ namespace LightingBlocks
             foreach (var binding in purchases) UpdatePurchase(binding);
             if (skillTree != null) skillTree.Refresh();
             if (abilityBar != null && playRoot.activeSelf) abilityBar.Refresh(Time.unscaledTime);
-        }
-        // Lighting only: the nearest nearby tree selector's colour, or a fallback when
-        // none is in range. Shared by the resources panel and the E-key context hint below.
-        static string NearbyReceiverLabel(GameManager game)
-        {
-            var receiver = NearestReceiver(game);
-            return receiver != null ? BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " tile selector · E to request" : "Visit a Wisdom Tree for free tiles";
-        }
-        static string LightingDepositHint(GameManager game)
-        {
-            var receiver = NearestReceiver(game);
-            return receiver != null ? "E TO REQUEST A FREE " + BridgeBlock.TierColour(receiver.ColorIndex).ToUpperInvariant() + " TILE" : game.LightingCarryHint;
-        }
-        static ColorReceiver NearestReceiver(GameManager game)
-        {
-            var particles = game.GetComponent<LightingParticles>();
-            if (particles == null || game.player == null) return null;
-            return particles.Nearest(game.player.transform.position + Vector3.up * .7f, LightingParticles.DepositRange, game.player.transform);
         }
         // The placement preview has no public handle, so the chip finds it by name once and caches it.
         // ponytail: one Find per second while it is missing; make GameManager expose the ghost if that ever shows up in a profile.

@@ -22732,6 +22732,8 @@ MonoBehaviour:
   - {fileID: 185448514208453511, guid: bbbe43a590b96ae41a2fda3fd82fcc87, type: 3}
   - {fileID: 9004826255967715289, guid: 2569ba2f724e3954fb7bf709c24a2d21, type: 3}
   - {fileID: 8578155936858143694, guid: 6fefbaca85e2b5f4e86f325cb9024caf, type: 3}
+  - {fileID: 185448514208453511, guid: 7fffd1d724ff9424f8a63deceaaa79f4, type: 3}
+  - {fileID: 185448514208453511, guid: b76b0d5bb1e1bd9479a3846819d2359e, type: 3}
   soulLight: {fileID: 695587322}
   characterLightIntensity: 18
   characterLightRange: 24
@@ -22749,6 +22751,11 @@ MonoBehaviour:
   radiance: 0
   generator: 0
   summoned: 0
+  dashLevel: 0
+  grenadeLevel: 0
+  pullLevel: 0
+  sightLevel: 0
+  revealLevel: 0
   soulGainLevel: 0
   completed: 0
 --- !u!4 &1430005266

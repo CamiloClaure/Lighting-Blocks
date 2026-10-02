@@ -9,19 +9,29 @@ namespace LightingBlocks
     // branches with sap that grows in as their parent awakens, a violet crown behind the skills, and a
     // burst on the node you just bought. Skills with an icon (SkillBadge) show it dressed by level.
     // Lighting's passive skills (always on, no key) wear a rounded-square frame, its active ones a circle.
+    // Lighting draws it as a star chart instead: a night sky with a twinkling starfield, straight star
+    // lines that light up as their parent awakens, and every skill a star that glows once learned.
     public sealed class SkillTree : MonoBehaviour
     {
         public GameManager game;
         public Font font;
 
         const float PanelWidth = 1180, PanelHeight = 800;
-        static readonly Color Card = new Color(.12f, .105f, .09f, .98f);
+        static readonly Color TreeCard = new Color(.12f, .105f, .09f, .98f);
         static readonly Color White = new Color(.95f, .90f, .82f);
-        static readonly Color Muted = new Color(.73f, .69f, .61f);
+        static readonly Color TreeMuted = new Color(.73f, .69f, .61f);
         static readonly Color Mint = new Color(.90f, .72f, .36f);
         static readonly Color Gold = new Color(1f, .84f, .48f);
-        static readonly Color Dormant = new Color(.34f, .30f, .26f);
+        static readonly Color TreeDormant = new Color(.34f, .30f, .26f);
         static readonly Color Bark = new Color(.30f, .22f, .15f), Sap = new Color(.78f, .58f, .28f), Crown = new Color(.35f, .22f, .55f, .14f);
+        // Star chart (Lighting): a dim line that starlight grows along.
+        static readonly Color StarLine = new Color(.36f, .42f, .62f, .55f), Starlight = new Color(.80f, .86f, 1f);
+        bool stars;
+        Color Card => stars ? new Color(.05f, .07f, .14f, .98f) : TreeCard;
+        Color Muted => stars ? new Color(.62f, .68f, .82f) : TreeMuted;
+        Color Dormant => stars ? new Color(.30f, .34f, .48f) : TreeDormant;
+        Color DiscDark => stars ? new Color(.04f, .06f, .13f, .96f) : new Color(.10f, .085f, .07f, .96f);
+        Color DiscLit => stars ? new Color(.10f, .13f, .26f, .97f) : new Color(.24f, .17f, .08f, .97f);
         static readonly string[] Numerals = { "·", "I", "II", "III", "IV", "V", "VI", "VII", "VIII" };
 
         sealed class Node
@@ -35,6 +45,7 @@ namespace LightingBlocks
             public Text numeral, label, price;
             public Image[] pips;
             public SkillBadge badge;
+            public Image halo, flareWide, flareTall; // star chart only
             public Button button;
             public int shown;
             public float punch, hover;
@@ -56,19 +67,22 @@ namespace LightingBlocks
         Node focus;
         float time;
         int clickFrame = -1;
+        // Star chart: each background star with its base alpha, twinkle speed and phase.
+        readonly List<(Image image, float alpha, float speed, float phase)> sky = new List<(Image, float, float, float)>();
         static Sprite discSprite, ringSprite, dotSprite, squareDiscSprite, squareRingSprite;
 
         public static SkillTree Build(RectTransform panel, GameManager game, Font font, UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
         {
             var tree = panel.gameObject.AddComponent<SkillTree>();
-            tree.game = game; tree.font = font; tree.root = panel;
+            tree.game = game; tree.font = font; tree.root = panel; tree.stars = BridgeProfile.Current.isLighting;
             tree.Compose(close, out closeButton, out skills);
             return tree;
         }
 
         void Compose(UnityEngine.Events.UnityAction close, out Button closeButton, out Dictionary<string, Button> skills)
         {
-            Label("Skill Heading", root, BridgeProfile.Current.isLighting ? "THE WISDOM TREE" : "THE TREE OF THE LIGHTING SOUL", 30, 76, 640, 36, 28, White);
+            if (stars) BuildSky();
+            Label("Skill Heading", root, BridgeProfile.Current.isLighting ? "THE WISDOM CONSTELLATION" : "THE TREE OF THE LIGHTING SOUL", 30, 76, 640, 36, 28, White);
             Label("Skill Help", root, BridgeProfile.Current.isLighting ? "Click a skill to awaken its next level. Learning needs a Wisdom Tree." : "Powers grow from the path you build. Souls keep flowing while you choose.",
                 30, 112, 700, 24, 17, Muted);
             closeButton = Button("Skills Close", root, "CLOSE  [TAB]", PanelWidth - 190, 24, 160, 44, close);
@@ -77,14 +91,15 @@ namespace LightingBlocks
             // do not exist there (removed from both the tree and the purchase routes - see GameManager).
             if (BridgeProfile.Current.isLighting)
             {
-                Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(295, 550), 104, passive: true);
-                Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(560, 550), 104, passive: true);
-                Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(430, 375), 104);
-                Add("root", BridgeProfile.Current.isLighting ? "THE BRIDGE PATH" : "THE SOUL PATH", "Every power grows from the bridge you build.", new Vector2(430, 680), 76);
-                Add("grenade", "LIGHT GRENADE", "Throw a charged spirit into the void: it lays tiles where it bursts and relights the tiles already there.", new Vector2(430, 200), 104);
-                Add("pull", "SPIRIT PULL", "Draw every particle around you to you, even over the open void.", new Vector2(645, 375), 104);
-                Add("sight", "FAR SIGHT", "See farther into the dark: tiles, particles and islands show from farther away.", new Vector2(215, 375), 104, passive: true);
-                Add("reveal", "DAYBREAK", "Lift the fog for a moment and see the world around you, out to sixteen chunks.", new Vector2(200, 200), 104);
+                // Star chart positions: scattered like a constellation, every label clear of the other stars.
+                Add("speed", "SWIFT STRIDE", "Move faster across the platforms, with or without stones.", new Vector2(230, 660), 104, passive: true);
+                Add("soulgain", "PARTICLE YIELD", "Each level makes every particle pickup worth 0.25 more particles.", new Vector2(650, 640), 104, passive: true);
+                Add("dash", "DASH", "Burst forward, building tiles across the void.", new Vector2(400, 360), 104);
+                Add("root", "THE BRIDGE PATH", "Every power grows from the bridge you build.", new Vector2(440, 560), 76);
+                Add("grenade", "LIGHT GRENADE", "Throw a charged spirit into the void: it lays tiles where it bursts and relights the tiles already there.", new Vector2(610, 215), 104);
+                Add("pull", "SPIRIT PULL", "Draw every particle around you to you, even over the open void.", new Vector2(705, 400), 104);
+                Add("sight", "FAR SIGHT", "See farther into the dark: tiles, particles and islands show from farther away.", new Vector2(190, 480), 104, passive: true);
+                Add("reveal", "DAYBREAK", "Lift the fog for a moment and see the world around you, out to sixteen chunks.", new Vector2(140, 290), 104);
                 Connect("root", "speed"); Connect("root", "soulgain"); Connect("root", "dash"); Connect("dash", "grenade"); Connect("soulgain", "pull");
                 Connect("speed", "sight"); Connect("sight", "reveal");
             }
@@ -102,12 +117,15 @@ namespace LightingBlocks
                 Connect("links", "strength"); Connect("radiance", "strength");
             }
 
-            // Back to front: crown, roots, bark, sap, then the nodes on top.
-            foreach (var node in nodes)
-                if (node.id != "root") Graphic("Crown " + node.id, Rect("Crown host " + node.id, root, node.centre.x - node.size * 1.3f, node.centre.y - node.size * 1.3f, node.size * 2.6f, node.size * 2.6f), Dot(), Crown);
-            BuildRoots(Get("root"));
+            // Back to front: crown, roots, bark, sap, then the nodes on top. The star chart has its sky
+            // instead of crown and roots, and each star's glow under the nodes.
+            if (!stars)
+                foreach (var node in nodes)
+                    if (node.id != "root") Graphic("Crown " + node.id, Rect("Crown host " + node.id, root, node.centre.x - node.size * 1.3f, node.centre.y - node.size * 1.3f, node.size * 2.6f, node.size * 2.6f), Dot(), Crown);
+            if (!stars) BuildRoots(Get("root"));
             foreach (var edge in edges) BuildEdge(edge);
             foreach (var edge in edges) BuildSap(edge);
+            if (stars) foreach (var node in nodes) BuildGlow(node);
             foreach (var node in nodes) BuildNode(node);
             BuildDetail();
 
@@ -128,6 +146,8 @@ namespace LightingBlocks
         void BuildEdge(Edge edge)
         {
             Vector2 to = edge.to.centre;
+            // A star line: straight, centre to centre, under both stars.
+            if (stars) { edge.bark = Branch("Star line " + edge.from.id + " to " + edge.to.id, edge.from.centre, (edge.from.centre + to) * .5f, to, 3, 3, StarLine); return; }
             bool trunk = Mathf.Abs(to.x - edge.from.centre.x) < 1;
             Vector2 from = trunk ? edge.from.centre : edge.from.centre + new Vector2(0, -(edge.from.size * .5f + 16));
             Vector2 control = trunk ? (from + to) * .5f : new Vector2(Mathf.Lerp(from.x, to.x, .75f), Mathf.Lerp(from.y, to.y, .25f));
@@ -137,7 +157,8 @@ namespace LightingBlocks
         void BuildSap(Edge edge)
         {
             var bark = edge.bark;
-            edge.sap = Branch("Sap " + edge.from.id + " to " + edge.to.id, Flip(bark.a), Flip(bark.control), Flip(bark.b), bark.baseWidth * .45f, bark.tipWidth * .45f, Dormant);
+            float share = stars ? 1 : .45f;
+            edge.sap = Branch("Sap " + edge.from.id + " to " + edge.to.id, Flip(bark.a), Flip(bark.control), Flip(bark.b), bark.baseWidth * share, bark.tipWidth * share, Dormant);
             edge.sap.SetGrown(0);
             var spark = Rect("Branch spark", root, 0, 0, 16, 16); spark.pivot = new Vector2(.5f, .5f);
             edge.spark = spark.gameObject.AddComponent<Image>();
@@ -152,6 +173,35 @@ namespace LightingBlocks
                 Vector2 tip = node.centre + end;
                 Branch("Root", node.centre, new Vector2(node.centre.x + end.x * .25f, tip.y), tip, 16, 3, new Color(Bark.r, Bark.g, Bark.b, .5f));
             }
+        }
+        // Star chart backdrop: night sky, three faint nebulae, and a seeded starfield that Refresh twinkles.
+        void BuildSky()
+        {
+            Graphic("Night sky", root, null, new Color(.02f, .03f, .07f, .97f));
+            foreach (var (x, y, size, color) in new[] { (300f, 360f, 560f, new Color(.35f, .22f, .65f, .10f)), (630f, 540f, 480f, new Color(.15f, .30f, .70f, .08f)), (480f, 210f, 400f, new Color(.20f, .45f, .60f, .06f)) })
+                Graphic("Nebula", Rect("Nebula host", root, x - size * .5f, y - size * .5f, size, size), Dot(), color);
+            var random = new System.Random(7);
+            for (int i = 0; i < 90; i++)
+            {
+                float size = 2 + (float)random.NextDouble() * 3, alpha = .25f + (float)random.NextDouble() * .55f;
+                var star = Rect("Sky star", root, 10 + (float)random.NextDouble() * 830, 150 + (float)random.NextDouble() * 640, size, size).gameObject.AddComponent<Image>();
+                star.sprite = Dot(); star.raycastTarget = false; star.color = new Color(.85f, .9f, 1f, alpha);
+                sky.Add((star, alpha, .6f + (float)random.NextDouble() * 1.8f, (float)random.NextDouble() * 6.3f));
+            }
+        }
+        // A star's glow: a soft halo and a four-point flare (two stretched dots), dark until it is learned.
+        void BuildGlow(Node node)
+        {
+            Image Centred(string name, float width, float height)
+            {
+                var rect = Rect(name + " " + node.id, root, 0, 0, width, height);
+                rect.pivot = new Vector2(.5f, .5f); rect.anchoredPosition = Flip(node.centre);
+                var image = rect.gameObject.AddComponent<Image>(); image.sprite = Dot(); image.color = Color.clear; image.raycastTarget = false;
+                return image;
+            }
+            node.halo = Centred("Star halo", node.size * 1.9f, node.size * 1.9f);
+            node.flareWide = Centred("Star flare", node.size * 2.4f, 6);
+            node.flareTall = Centred("Star flare", 6, node.size * 2.4f);
         }
         BranchGraphic Branch(string name, Vector2 from, Vector2 control, Vector2 to, float baseWidth, float tipWidth, Color color)
         {
@@ -169,7 +219,7 @@ namespace LightingBlocks
         {
             var circle = Rect("Power " + node.id, root, node.centre.x - node.size * .5f, node.centre.y - node.size * .5f, node.size, node.size);
             node.circle = circle;
-            node.disc = Graphic("Disc", circle, node.passive ? SquareDisc() : Disc(), new Color(.10f, .085f, .07f, .96f));
+            node.disc = Graphic("Disc", circle, node.passive ? SquareDisc() : Disc(), DiscDark);
             node.ring = Graphic("Ring", circle, node.passive ? SquareRing() : Ring(), Dormant);
             node.burst = Graphic("Burst", circle, node.passive ? SquareRing() : Ring(), new Color(1, 1, 1, 0));
             node.numeral = Label("Level", circle, "·", 0, 0, node.size, node.size, Mathf.RoundToInt(node.size * .34f), Gold, TextAnchor.MiddleCenter);
@@ -188,7 +238,7 @@ namespace LightingBlocks
                 node.pips[i].sprite = Dot(); node.pips[i].color = Dormant; node.pips[i].raycastTarget = false;
             }
             // A soft dark backing keeps the name and price readable where a branch runs behind them.
-            Graphic("Label shade", Rect("Label shade host " + node.id, root, node.centre.x - 150, below + 14, 300, 56), Dot(), new Color(.05f, .04f, .03f, .85f));
+            Graphic("Label shade", Rect("Label shade host " + node.id, root, node.centre.x - 150, below + 14, 300, 56), Dot(), stars ? new Color(.02f, .03f, .07f, .8f) : new Color(.05f, .04f, .03f, .85f));
             node.label = Label("Name " + node.id, root, node.title, node.centre.x - 110, below + 22, 220, 22, 16, White, TextAnchor.MiddleCenter);
             node.price = Label("Price " + node.id, root, "", node.centre.x - 110, below + 42, 220, 20, 15, Mint, TextAnchor.MiddleCenter);
 
@@ -278,7 +328,18 @@ namespace LightingBlocks
                     : tier;
                 if (node.id == "root") ring = Gold;
                 node.ring.color = Color.Lerp(ring, Color.white, pop);
-                node.disc.color = Color.Lerp(new Color(.10f, .085f, .07f, .96f), new Color(.24f, .17f, .08f, .97f), level > 0 ? 1 : 0);
+                node.disc.color = Color.Lerp(DiscDark, DiscLit, level > 0 ? 1 : 0);
+                if (stars)
+                {
+                    // Learned stars shine brighter by level; the pole star (root) always does. An affordable one glimmers.
+                    float lit = node.id == "root" ? 1 : level > 0 ? Mathf.Lerp(.55f, 1f, level / (float)Mathf.Max(1, cap)) : 0;
+                    float twinkle = 1 + Mathf.Sin(time * 1.7f + node.centre.x * .05f) * .08f;
+                    node.halo.color = new Color(1f, .9f, .62f, lit > 0 ? .30f * lit : affordable ? .10f : .04f);
+                    node.halo.rectTransform.localScale = Vector3.one * (twinkle + pop * .3f);
+                    node.flareWide.color = node.flareTall.color = new Color(1f, .95f, .80f, lit * .75f);
+                    node.flareWide.rectTransform.localScale = new Vector3(twinkle + pop, 1, 1);
+                    node.flareTall.rectTransform.localScale = new Vector3(1, twinkle + pop, 1);
+                }
                 node.numeral.text = supply ? "+" : node.id == "root" ? game.ConnectedCount.ToString() : Numerals[Mathf.Clamp(level, 0, Numerals.Length - 1)];
                 node.numeral.color = Color.Lerp(level > 0 || supply ? Gold : Muted, Color.white, pop);
                 node.label.color = Color.Lerp(White, Gold, node.hover);
@@ -304,11 +365,15 @@ namespace LightingBlocks
                 edge.grown = Mathf.MoveTowards(edge.grown, live ? 1 : 0, step * 2.2f);
                 float eased = Mathf.SmoothStep(0, 1, edge.grown);
                 edge.sap.SetGrown(eased);
-                edge.sap.color = Color.Lerp(Dormant, Sap, eased);
+                edge.sap.color = Color.Lerp(stars ? StarLine : Dormant, stars ? Starlight : Sap, eased);
                 bool flowing = eased > .98f;
                 float travel = Mathf.Repeat(time * .42f + edge.from.centre.x * .003f, 1);
                 edge.spark.rectTransform.anchoredPosition = edge.sap.Point(travel);
-                edge.spark.color = new Color(1, .88f, .56f, flowing ? Mathf.Sin(travel * Mathf.PI) * .85f : 0);
+                edge.spark.color = stars ? new Color(.85f, .92f, 1f, flowing ? Mathf.Sin(travel * Mathf.PI) * .85f : 0) : new Color(1, .88f, .56f, flowing ? Mathf.Sin(travel * Mathf.PI) * .85f : 0);
+            }
+            foreach (var (image, alpha, speed, phase) in sky)
+            {
+                var c = image.color; c.a = alpha * (.55f + .45f * Mathf.Sin(time * speed + phase)); image.color = c;
             }
 
             RefreshDetail();
@@ -398,7 +463,7 @@ namespace LightingBlocks
         Button Button(string name, Transform parent, string caption, float x, float y, float width, float height, UnityEngine.Events.UnityAction action)
         {
             var rect = Rect(name, parent, x, y, width, height);
-            rect.gameObject.AddComponent<Image>().color = new Color(.30f, .235f, .145f);
+            rect.gameObject.AddComponent<Image>().color = stars ? new Color(.16f, .20f, .36f) : new Color(.30f, .235f, .145f);
             var button = rect.gameObject.AddComponent<Button>();
             button.targetGraphic = rect.GetComponent<Image>();
             var colors = button.colors;

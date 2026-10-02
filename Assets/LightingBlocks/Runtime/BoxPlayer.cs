@@ -49,7 +49,7 @@ namespace LightingBlocks
         // The last side contact (not floor) of a controller move, named in DashStop.
         Collider sideHit; Vector3 sideNormal;
         void OnControllerColliderHit(ControllerColliderHit hit) { if (hit.normal.y < .7f) { sideHit = hit.collider; sideNormal = hit.normal; } }
-        static string PathOf(Transform t) => t == null ? "?" : t.parent == null ? t.name : PathOf(t.parent) + "/" + t.name;
+        static string PathOf(Transform t) => t == null ? "?" : (t.parent == null ? t.name : PathOf(t.parent) + "/" + t.name) + (t.GetComponent<BridgeBlock>() is BridgeBlock b ? " [" + b.id + (b.placed ? "" : " loose") + "]" : "");
         public float DashCooldownRemaining => dashCooldownRemaining;
         int animationState;
         static readonly int Idle = Animator.StringToHash("Base Layer.Idle");

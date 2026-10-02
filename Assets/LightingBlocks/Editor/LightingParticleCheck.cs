@@ -122,7 +122,7 @@ namespace LightingBlocks.Editor
         static void Run(GameManager game)
         {
             var forest=ForestWorld.For(game);var system=game.GetComponent<LightingParticles>();
-            Assert(system!=null&&system.Receivers.Count==9,"Three near-tree free color selectors per Wisdom Tree");
+            Assert(system!=null&&GameObject.Find("Free tile selector 0")==null,"No colour selector cubes beside the Wisdom Trees");
             Assert(ForestWorld.ParticleUnitsPerParticle==4,"One particle is stored as four integer quarter units");
             Assert(ForestWorld.FormatParticleUnits(0)=="0"&&ForestWorld.FormatParticleUnits(4)=="1"&&ForestWorld.FormatParticleUnits(5)=="1.25"&&ForestWorld.FormatParticleUnits(6)=="1.5"&&ForestWorld.FormatParticleUnits(7)=="1.75"&&ForestWorld.FormatParticleUnits(8)=="2","Quarter-particle wallet formatting is exact");
             CheckDotField(game,forest);
@@ -180,19 +180,16 @@ namespace LightingBlocks.Editor
             game.speed=game.Cap("speed");game.soulGainLevel=game.Cap("soulgain");forest.State.inventory=400;int capWallet=forest.SharedInventory;
             Assert(!game.Purchase("speed")&&!game.Purchase("soulgain")&&forest.SharedInventory==capWallet,"Max-level Speed and Particle Yield reject purchases without spending");
             game.speed=originalSpeed;game.soulGainLevel=originalYield;game.ApplyUpgrades();forest.State.inventory=0;GameHUD.Current.BeginJourney();
-            // Each tree serves one free selected color only after its output clears.
+            // A free tile an old save still has pending is served only after the tree's output clears.
             owner.freeDeliveryColor=-1;owner.freeDeliveryColors.Clear();owner.charge=new[]{0,0,0};owner.rewards.Clear();
-            Teleport(game,tree.transform.position+Vector3.right*8);
-            Assert(!tree.RequestTile(2)&&owner.freeDeliveryColor==-1,"A remote direct tree request is rejected");
             Teleport(game,tree.transform.position+Vector3.right*2);
-            Assert(tree.RequestTile(2)&&owner.freeDeliveryColor==2,"Supported ground within three metres requests a free matching tile");
-            Assert(!tree.RequestTile(1)&&owner.freeDeliveryColor==2,"Only one player-selected tile can wait at a tree");
+            owner.freeDeliveryColor=2;
             int walletBefore=forest.SharedInventory,blocksBefore=game.Blocks.Count(b=>!b.placed);
             var obstacles=new List<GameObject>();foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
             Physics.SyncTransforms();tree.Tick(.61f);
             Assert(game.Blocks.Count(b=>!b.placed)==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output preserves the free request");
             foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();tree.Tick(.61f);
-            Assert(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output creates exactly the selected tile");
+            Assert(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output creates exactly the pending tile");
             Assert(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Free delivery clears its request without particle charges or paid rewards");
             Assert(forest.SharedInventory==walletBefore,"Free delivery leaves the wallet unchanged");
         }

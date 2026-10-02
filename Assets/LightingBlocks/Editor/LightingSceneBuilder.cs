@@ -80,7 +80,7 @@ namespace LightingBlocks.Editor
             var world = new GameObject("Lighting World").transform;
             var blocksRoot = new GameObject("Bridge Stones").transform; blocksRoot.SetParent(world, false);
             game.blocksRoot = blocksRoot;
-            game.blockPrefabs = new[] { LoadPrefab(0), LoadPrefab(1), LoadPrefab(2) };
+            game.blockPrefabs = Enumerable.Range(0, 5).Select(LoadPrefab).ToArray(); // blue, violet, amber, green, red (CrystalTiles)
             // Soul Gain replaces Soul Well in Lighting (Agent C's economy work): no physical prop.
             game.soulWell = null; game.wellCore = null;
 

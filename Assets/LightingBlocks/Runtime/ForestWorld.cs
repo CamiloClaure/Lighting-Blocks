@@ -198,17 +198,9 @@ namespace LightingBlocks
                 island.queue.Clear();
             }
         }
-        public void RefreshReceivers(string islandId)
-        {
-            var system=GetComponent<LightingParticles>();if(system==null)return;
-            foreach(var receiver in system.Receivers)
-                if(receiver!=null&&receiver.Tree.Definition.id==islandId)receiver.Refresh();
-        }
         // ---- Lighting resource transfers ---------------------------------------------------------
-        // Every source of shared-inventory or receiver-charge change - walk-over pickup (TryCollect),
-        // tile-return refunds (GameManager.ReturnStones) and E-key deposits (Deposit, via
-        // LightingParticles.TryDeposit) - routes through these, so inventory/charge/rewards can never
-        // be applied twice.
+        // Every source of shared-inventory change - walk-over pickup (TryCollect) and tile-return
+        // refunds (GameManager.ReturnStones) - routes through these, so inventory can never be applied twice.
         public const int ParticleUnitsPerParticle=4;
         // Seconds a collected Lighting particle waits before it respawns (legacy keeps 30).
         public const float LightingRespawnSeconds=15f;
@@ -234,7 +226,7 @@ namespace LightingBlocks
         }
         public enum DepositResult{Success,Full,Empty}
         // Retained as a compatibility surface for stale editor checks. Lighting no longer deposits
-        // or charges particles; requests belong to a nearby WisdomTree via LightingParticles.
+        // or charges particles; loose tiles come from the island stock (LightingParticles).
         public DepositResult Deposit(string islandId,int color)=>DepositResult.Empty;
         // One-time import only: the old save's positions are all invalid once the profile has
         // shifted the islands (particle slots are validated against a regenerated layout, and every
@@ -362,7 +354,7 @@ namespace LightingBlocks
         }
         public bool FindOutput(IslandForestDefinition d,out Vector3 point)
         {
-            point=default;int loose=0;foreach(var b in game.Blocks)if(!b.placed)loose++;if(loose>=35)return false;
+            point=default;int loose=0;foreach(var b in game.Blocks)if(!b.placed&&(b.id==null||!b.id.StartsWith("stock-",StringComparison.Ordinal)))loose++;if(loose>=35)return false; // the island stock does not count
             foreach(var offset in d.outputOffsets)
             {
                 var p=d.wisdomPosition+offset;bool valid=true;

@@ -42,19 +42,6 @@ namespace LightingBlocks
         static readonly Color CordInk=new Color(.12f,.1f,.16f,1);
         void Awake(){properties=new MaterialPropertyBlock();}
         public void Initialize(ForestWorld world,IslandForestDefinition definition){forest=world;game=world.GetComponent<GameManager>();Definition=definition;}
-        public bool RequestTile(int color)
-        {
-            if(!BridgeProfile.Current.isLighting||GameHUD.GameplayBlocked||color<0||color>2||Charging)return false;
-            var player=game==null?null:game.player;
-            if(player==null||!game.CanStand(player.transform.position)||(new Vector2(player.transform.position.x-transform.position.x,player.transform.position.z-transform.position.z)).sqrMagnitude>9f)
-            {game?.Notify("RETURN TO A WISDOM TREE TO REQUEST A TILE",false);return false;}
-            var inventory=forest.Inventory(Definition.id);
-            if(inventory.freeDeliveryColor>=0){game.Notify("A TILE IS ALREADY WAITING AT THIS TREE",false);return false;}
-            inventory.freeDeliveryColor=color;remaining=0;channelled=false;
-            ForestSoundscape.Play("charge",transform.position,.1f);
-            game.Notify("THE TREE IS CALLING A "+BridgeBlock.TierColour(color).ToUpperInvariant()+" TILE",false);
-            game.Save();return true;
-        }
         public bool BeginCharge(bool silent=false)
         {
             if(BridgeProfile.Current.isLighting||GameHUD.GameplayBlocked||Charging)return false;
@@ -67,7 +54,8 @@ namespace LightingBlocks
         {
             if(GameHUD.SimulationPaused||delta<=0)return;
             var inventory=forest.Inventory(Definition.id);
-            // Lighting serves any migrated free deliveries first, then one selected request; legacy remains a paid charge.
+            // Lighting serves the free deliveries an old save still has pending (migrated, then the one selected at
+            // the retired colour selectors); the island stock replaced requests (LightingParticles). Legacy remains a paid charge.
             int migratedColor=BridgeProfile.Current.isLighting&&inventory.freeDeliveryColors!=null&&inventory.freeDeliveryColors.Count>0?inventory.freeDeliveryColors[0]:-1;
             int requestedColor=migratedColor>=0?migratedColor:inventory.freeDeliveryColor;
             bool lightingRequest=requestedColor>=0;

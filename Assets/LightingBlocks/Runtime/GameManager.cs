@@ -427,7 +427,7 @@ namespace LightingBlocks
             return forest.WisdomTrees.Any(tree => tree != null && Vector2.Distance(playerXZ, new Vector2(tree.transform.position.x, tree.transform.position.z)) <= 3f);
         }
         public string LightingCarryHint => ForestWorld.For(this)?.enableLightingParticles == true
-            ? "Walk over loose particles to collect them. Press E at a Wisdom Tree to request a free coloured bridge tile."
+            ? "Walk over loose particles to collect them. Coloured tiles lie on every island: carry one to a lit edge of its own colour."
             : "Stand on a hub or connected tile. Hold SPACE to carry a nearby bridge block.";
         public void ApplyUpgrades()
         {
@@ -478,14 +478,20 @@ namespace LightingBlocks
                 if (UnityEngine.Random.value < RequiredShare) tier = wanted;
                 else { int other = UnityEngine.Random.Range(0, count - 1); if (other >= wanted) other++; tier = other; }
             }
+            block = AddLooseTile(tier, point, "wisdom-" + Guid.NewGuid().ToString("N"));
+            return block != null;
+        }
+        // A loose tile on the ground: a Wisdom Tree delivery, or Lighting's island stock (LightingParticles).
+        public BridgeBlock AddLooseTile(int tier, Vector3 point, string id)
+        {
             BridgeBlock created = null;
             try {
                 created = Instantiate(blockPrefabs[tier], point, Quaternion.identity, blocksRoot);
-                created.id = "wisdom-" + Guid.NewGuid().ToString("N");
-                ConfigureBlock(created); Blocks.Add(created); Physics.SyncTransforms(); block = created; return true;
+                created.id = id; created.tier = tier;
+                ConfigureBlock(created); Blocks.Add(created); Physics.SyncTransforms(); return created;
             } catch (Exception e) {
                 if (created != null) { Blocks.Remove(created); created.gameObject.SetActive(false); Destroy(created.gameObject); }
-                Debug.LogException(e); return false;
+                Debug.LogException(e); return null;
             }
         }
         // Test aid: top the island underfoot up to a full satchel.
@@ -858,7 +864,6 @@ namespace LightingBlocks
         public void Interact()
         {
             if (GameHUD.GameplayBlocked) return;
-            if (BridgeProfile.Current.isLighting && (GetComponent<LightingParticles>()?.TryDeposit(player) ?? false)) return;
             var wisdom = ForestWorld.For(this)?.Nearby(player.transform.position);
             if (wisdom != null) { if(BridgeProfile.Current.isLighting)Notify(LightingCarryHint,false);else wisdom.BeginCharge(); return; }
             if (completed) { Notify(BridgeProfile.Current.isLighting?"THE NEXT DAWN IS OPEN\nKeep extending the connected network. Upgrade Speed and Particle Yield at a Wisdom Tree.":"THE NEXT DAWN IS OPEN\nContinue growing your paths and powers.", false); return; }
@@ -866,7 +871,7 @@ namespace LightingBlocks
             { completed = true; Notify(BridgeProfile.Current.isLighting ? "THE NEXT DAWN\nAll three hubs are connected. Keep extending and reshaping your network." : "THE NEXT DAWN\nThe souls were never lost. They were waiting for a way home.\nChapter complete. Your bridges and Soul Well keep generating."); Save(); return; }
             Notify(BridgeProfile.Current.isLighting ? Objective + "\nHold left mouse to move a tile; release beside an open glowing edge." : Bridges[1] ? "NEXT AREA READY\nCross the second bridge and press E beside the distant beacon." : "BUILD THE SOUL PATH\n" + Objective + "\nHold left mouse to drag. Release at the glowing edge.", false);
         }
-        public string Objective => BridgeProfile.Current.isLighting ? "Collect loose particles. Press E beside any Wisdom Tree for a free coloured bridge tile, then attach it to a lit hub edge or connected tile. Build in any orthogonal direction, around corners, and across the network to reach all three hubs. Upgrade Speed and Particle Yield at a Wisdom Tree."
+        public string Objective => BridgeProfile.Current.isLighting ? "Collect loose particles. Pick up the coloured tiles lying on each island and attach each one to a lit hub edge or connected tile of its own colour. Build in any orthogonal direction, around corners, and across the network to reach all three hubs. Upgrade Speed and Particle Yield at a Wisdom Tree."
             : !Bridges[0] ? (BridgeProfile.Current.mixedBridge
                 ? "Collect particles; E at the Wisdom Tree makes blocks. Every tile asks for its own stone colour - the preview shows which; wrong stones go back to the tree with R. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with " + Rows + " forward tiles."
                 : "Collect particles; E at the Wisdom Tree makes blocks. Connect the first shore: " + Blocks.Count(b => b.Connected && b.gap == 0) + " path blocks. Reach the far side with " + Rows + " forward tiles.")
@@ -930,7 +935,7 @@ namespace LightingBlocks
             if (BridgeProfile.Current.saveSchema != null && d.schema != BridgeProfile.Current.saveSchema) return false;
             if(lighting&&!lightingV4&&d.version!=5&&d.version!=6)return false;
             if(lighting&&d.version>=5&&d.schema!="lighting-v1")return false;
-            if(d.blocks.Any(b=>b==null||string.IsNullOrEmpty(b.id)||b.tier<0||b.tier>2||!lightingV4&&(b.cellTierOverride < -1||b.cellTierOverride>2)||!(lighting?LightingPositionValid(b.position):PositionValid(b.position))||b.placed&&(!lighting&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows)||lighting&&(!lightingV4&&(!LightingBridgeGrid.InBounds(new Vector2Int(b.column,b.row))||b.gap!=0)||lightingV4&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows))))||d.blocks.Select(b=>b.id).Distinct().Count()!=d.blocks.Count)return false;
+            if(d.blocks.Any(b=>b==null||string.IsNullOrEmpty(b.id)||b.tier<0||b.tier>=BridgeBlock.TierCount||!lightingV4&&(b.cellTierOverride < -1||b.cellTierOverride>=BridgeBlock.TierCount)||!(lighting?LightingPositionValid(b.position):PositionValid(b.position))||b.placed&&(!lighting&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows)||lighting&&(!lightingV4&&(!LightingBridgeGrid.InBounds(new Vector2Int(b.column,b.row))||b.gap!=0)||lightingV4&&(b.gap<0||b.gap>1||Math.Abs(b.column)>2||b.row<0||b.row>=Rows))))||d.blocks.Select(b=>b.id).Distinct().Count()!=d.blocks.Count)return false;
             if(!lighting&&d.blocks.Where(b=>b.placed).Any(b=>!Accepts(b.gap,b.column,b.row,b.tier)))return false;
             if(lighting&&!lightingV4)
             {
@@ -995,7 +1000,7 @@ namespace LightingBlocks
                 var raw=d.tiles??Array.Empty<int>(); if(raw.Length%2!=0)return false;
                 for(int i=0;i<raw.Length;i+=2){var c=new Vector2Int(raw[i],raw[i+1]);if(!placedCells.Add(c)||!LightingBridgeGrid.InBounds(c)||LightingBridgeGrid.OverlapsPlatform(c))return false;}
                 var tiers=d.tileTiers??Array.Empty<int>(); if(tiers.Length%3!=0)return false;
-                for(int i=0;i<tiers.Length;i+=3){var c=new Vector2Int(tiers[i],tiers[i+1]);if(tiers[i+2]<0||tiers[i+2]>2||!placedCells.Contains(c)||!tileTiers.TryAdd(c,tiers[i+2]))return false;}
+                for(int i=0;i<tiers.Length;i+=3){var c=new Vector2Int(tiers[i],tiers[i+1]);if(tiers[i+2]<0||tiers[i+2]>=BridgeBlock.TierCount||!placedCells.Contains(c)||!tileTiers.TryAdd(c,tiers[i+2]))return false;}
             }
             else if(lighting)
             {

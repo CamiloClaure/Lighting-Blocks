@@ -9,11 +9,49 @@ using UnityEngine.Rendering.Universal;
 
 namespace LightingBlocks.Editor
 {
-    // A tile-only rebuild. Does not regenerate a forest or open/save the user's scene.
+    // A tile-only rebuild. Does not regenerate a forest or open/save the user's scene
+    // (AddMissingTiers is the exception: it adds new tiers to Lighting.unity's blockPrefabs).
+    [InitializeOnLoad]
     public static class CrystalTiles
     {
         const string Art="Assets/LightingBlocks/Art/SpectralForest/Twilight";
-        static readonly string[] Colours={"#246DFF","#B03DFF","#FFAE38"};
+        const string Prefabs="Assets/LightingBlocks/Art/Prefabs/Bridge Stone ";
+        // blue, violet, amber, green, red: BridgeBlock.TierColour order.
+        static readonly string[] Colours={"#246DFF","#B03DFF","#FFAE38","#33E07A","#FF4A3D"};
+        static CrystalTiles(){EditorApplication.update+=Poll;}
+        // Library/CrystalTiles.request runs AddMissingTiers from an open editor; the result lands in Library/CrystalTiles.txt.
+        static void Poll()
+        {
+            if(EditorApplication.isPlayingOrWillChangePlaymode||EditorApplication.isCompiling||!File.Exists("Library/CrystalTiles.request"))return;
+            AssetDatabase.Refresh();if(EditorApplication.isCompiling)return;
+            File.Delete("Library/CrystalTiles.request");
+            string result;try{result="SUCCESS: "+AddMissingTiers();}catch(Exception e){result="FAIL: "+e;}
+            File.WriteAllText("Library/CrystalTiles.txt",result);
+        }
+        // Builds every Bridge Stone N.prefab that Colours names but the project lacks (copied from tier 0,
+        // then rebuilt in its own colour), and points Lighting.unity's GameManager at all of them.
+        // Existing tiers are left as they are.
+        public static string AddMissingTiers()
+        {
+            if(EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Stop play mode before adding tiers.");
+            for(int i=0;i<UnityEngine.SceneManagement.SceneManager.sceneCount;i++)
+                if(UnityEngine.SceneManagement.SceneManager.GetSceneAt(i).isDirty) throw new InvalidOperationException("Save or discard the open scene first: "+UnityEngine.SceneManagement.SceneManager.GetSceneAt(i).path);
+            var built=new List<int>();
+            for(int tier=0;tier<Colours.Length;tier++)
+            {
+                if(AssetDatabase.LoadAssetAtPath<BridgeBlock>(Prefabs+tier+".prefab")!=null) continue;
+                if(!AssetDatabase.CopyAsset(Prefabs+"0.prefab",Prefabs+tier+".prefab")) throw new Exception("Could not copy Bridge Stone 0 to tier "+tier);
+                Build(AssetDatabase.LoadAssetAtPath<BridgeBlock>(Prefabs+tier+".prefab"),tier); built.Add(tier);
+            }
+            AssetDatabase.SaveAssets();
+            var scene=EditorSceneManager.OpenScene("Assets/Scenes/Lighting.unity");
+            var game=UnityEngine.Object.FindAnyObjectByType<GameManager>();
+            if(game==null) throw new Exception("No GameManager in Lighting.unity");
+            var prefabs=new BridgeBlock[Colours.Length];
+            for(int tier=0;tier<prefabs.Length;tier++) prefabs[tier]=AssetDatabase.LoadAssetAtPath<BridgeBlock>(Prefabs+tier+".prefab");
+            game.blockPrefabs=prefabs; EditorUtility.SetDirty(game); EditorSceneManager.MarkSceneDirty(scene); EditorSceneManager.SaveScene(scene);
+            return "built tiers ["+string.Join(",",built)+"], Lighting.unity blockPrefabs = "+prefabs.Length;
+        }
         static Color Tint(int tier) { ColorUtility.TryParseHtmlString(Colours[tier],out var c); return c; }
         static T Save<T>(T value,string path) where T:UnityEngine.Object
         {
@@ -46,8 +84,8 @@ namespace LightingBlocks.Editor
         public static void Apply()
         {
             if(EditorApplication.isPlayingOrWillChangePlaymode) throw new InvalidOperationException("Stop play mode before rebuilding tiles.");
-            for(int tier=0;tier<3;tier++)
-                Build(AssetDatabase.LoadAssetAtPath<BridgeBlock>("Assets/LightingBlocks/Art/Prefabs/Bridge Stone "+tier+".prefab"),tier);
+            for(int tier=0;tier<Colours.Length;tier++)
+                Build(AssetDatabase.LoadAssetAtPath<BridgeBlock>(Prefabs+tier+".prefab"),tier);
             AssetDatabase.SaveAssets();
         }
         public static void Build(BridgeBlock prefab,int tier)
@@ -76,6 +114,7 @@ namespace LightingBlocks.Editor
                 }
                 art.bodies=bodies.ToArray(); art.lightDetails=details.ToArray(); art.seams=Array.Empty<Renderer>();
                 root.GetComponent<Renderer>().enabled=false;
+                root.GetComponent<BridgeBlock>().tier=tier; // TrySpawnAtWisdomTree and save loads take the prefab's own tier
                 art.Refresh(); PrefabUtility.SaveAsPrefabAsset(root,path);
             }
             finally { PrefabUtility.UnloadPrefabContents(root); }

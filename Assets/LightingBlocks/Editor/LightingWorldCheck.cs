@@ -186,12 +186,12 @@ namespace LightingBlocks.Editor
             var testTree=testTreeObject.AddComponent<WisdomTree>();testTree.Initialize(forest,island);
             var selectorParent=new GameObject("Selector check parent").transform;
             particles.AddTree(forest,testTree,selectorParent,layout);
-            Check(particles.Receivers.Count==3,"Each Wisdom Tree owns exactly three free color selectors");
-            for(int color=0;color<3;color++)
+            Check(selectorParent.childCount==0,"A Wisdom Tree no longer gets colour selector cubes");
+            for(int n=0;n<20;n++)
             {
-                var selector=particles.Receivers[color];
-                Check(selector.ColorIndex==color&&Vector3.Distance(selector.transform.position,testTree.transform.position)<=3f,"Selector "+color+" matches its tile tier and sits beside its Wisdom Tree");
-                Check(PlatformSupport.Supports(selector.transform.position),"Selector "+color+" sits on supported hub ground");
+                Check(particles.RandomSpot(testTree,out var spot),"The island stock finds a free spot on "+island.id);
+                Check(PlatformSupport.At(spot)?.hubId==island.id&&PlatformSupport.Supports(spot+new Vector3(.45f,0,.45f))&&PlatformSupport.Supports(spot-new Vector3(.45f,0,.45f))
+                    &&new Vector2(spot.x-testTree.transform.position.x,spot.z-testTree.transform.position.z).magnitude>=4f,"Stock spot "+n+" lies on "+island.id+"'s own ground, 4 m or more from its tree");
             }
             UnityEngine.Object.DestroyImmediate(selectorParent.gameObject);UnityEngine.Object.DestroyImmediate(testTreeObject);UnityEngine.Object.DestroyImmediate(selectorHost);
             foreach (var go in extraPlatforms) UnityEngine.Object.DestroyImmediate(go);
@@ -281,19 +281,16 @@ namespace LightingBlocks.Editor
             var forest=ForestWorld.For(game);var island=forest.configuration.islands[0];var tree=forest.WisdomTrees[0];
             var owner=forest.Inventory(island.id);owner.freeDeliveryColor=-1;owner.freeDeliveryColors.Clear();owner.charge=new[]{0,0,0};owner.rewards.Clear();
             forest.State.inventory=13;int walletBefore=forest.SharedInventory;int blocksBefore=game.Blocks.Count(b=>!b.placed);
-            Teleport(game,tree.transform.position+Vector3.right*8);
-            Check(!tree.RequestTile(2)&&owner.freeDeliveryColor==-1,"A direct remote tree request is refused");
+            Check(GameObject.Find("Free tile selector 0")==null,"No colour selector cubes beside the Wisdom Trees");
             Teleport(game,tree.transform.position+Vector3.right*2);
-            Check(tree.RequestTile(2)&&owner.freeDeliveryColor==2,"Supported ground within three metres can request one free matching tile");
-            Check(!tree.RequestTile(1)&&owner.freeDeliveryColor==2,"Each tree accepts only one user request at a time");
-            Check(forest.SharedInventory==walletBefore,"Requesting a tile spends no particles");
+            owner.freeDeliveryColor=2; // a request an old save still has pending
             var obstacles=new List<GameObject>();
             foreach(var offset in island.outputOffsets){var o=GameObject.CreatePrimitive(PrimitiveType.Cube);o.transform.position=island.wisdomPosition+offset;obstacles.Add(o);}
             Physics.SyncTransforms();tree.Tick(.61f);
-            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output keeps the selected free tile pending");
+            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore&&owner.freeDeliveryColor==2,"A blocked output keeps a pending free tile pending");
             foreach(var o in obstacles)ForestWorld.Remove(o);Physics.SyncTransforms();
             tree.Tick(.61f);
-            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output releases exactly the selected free tile after its delay");
+            Check(game.Blocks.Count(b=>!b.placed)==blocksBefore+1&&game.Blocks.Last(b=>!b.placed).tier==2,"A clear output releases exactly the pending free tile after its delay");
             Check(owner.freeDeliveryColor==-1&&owner.charge.All(c=>c==0)&&owner.rewards.Count==0,"Successful free delivery clears only its request and creates no particle charge");
             Check(forest.SharedInventory==walletBefore,"Free tile creation leaves the particle wallet unchanged");
         }

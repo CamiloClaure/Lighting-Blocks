@@ -95,6 +95,7 @@ namespace LightingBlocks.Editor
             var forest = ForestWorld.For(game);
 
             CheckLightingGridAndEconomy(game, forest);
+            CheckTileStockAndColours(game, forest);
             CheckBranchingGrid(game,forest);
             CheckSaveRoundTrip(game, forest);
             CheckSkillTreeClick(game, forest);
@@ -124,6 +125,52 @@ namespace LightingBlocks.Editor
             Check(Math.Abs(game.Cost("speed")-10)<.001&&Math.Abs(game.Cost("soulgain")-15)<.001,"Lighting upgrade costs use 10 particles for Speed and 15 for Particle Yield at level zero");
             var platforms=UnityEngine.Object.FindObjectsByType<PlatformSupport>(FindObjectsSortMode.None);
             Check(platforms.Select(p=>p.hubId).Distinct().Count()==3&&platforms.All(p=>p.GetComponent<BridgeBlock>()==null),"The three hubs use platform support separate from placed grid tiles");
+        }
+
+        // ---- island tile stock and the five Lighting colours ------------------------------------
+        static void CheckTileStockAndColours(GameManager game, ForestWorld forest)
+        {
+            Check(BridgeBlock.TierCount == 5 && game.blockPrefabs.Length == 5 && Enumerable.Range(0, 5).All(t => game.blockPrefabs[t] != null && game.blockPrefabs[t].tier == t)
+                && BridgeBlock.TierColour(3) == "green" && BridgeBlock.TierColour(4) == "red", "Lighting tiles come in five colours, one prefab each: blue, violet, amber, green and red");
+            var asked = new System.Collections.Generic.HashSet<int>();
+            for (int x = 0; x < 20; x++) for (int z = 0; z < 20; z++) asked.Add(LightingBridgeGrid.RequiredTier(x, z));
+            Check(asked.SetEquals(Enumerable.Range(0, 5)), "Cells ask for all five colours");
+
+            var stock = game.GetComponent<LightingParticles>(); var trees = forest.WisdomTrees;
+            stock.Restock(0, true);
+            bool Full() => trees.Count == 3 && trees.All(t => Enumerable.Range(0, 5).All(tier => stock.Stock(t.Definition.id, tier) == LightingParticles.StockPerColour));
+            Check(Full(), "Every island holds " + LightingParticles.StockPerColour + " loose tiles of each colour");
+            var loose = game.Blocks.Where(b => !b.placed && b.id.StartsWith("stock-")).ToArray();
+            Check(loose.Length == 45 && loose.All(b =>
+            {
+                var home = trees.Single(t => b.id.StartsWith(LightingParticles.StockPrefix(t.Definition.id, b.tier)));
+                var d = b.transform.position - home.transform.position;
+                return forest.IslandAt(b.transform.position)?.id == home.Definition.id && new Vector2(d.x, d.z).magnitude >= 4;
+            }), "All 45 stock tiles lie on their own island, clear of its Wisdom Tree");
+            string island = trees[0].Definition.id; var taken = loose.First(b => b.id.StartsWith(LightingParticles.StockPrefix(island, 4)));
+            game.Blocks.Remove(taken); ForestWorld.Remove(taken.gameObject); Physics.SyncTransforms();
+            stock.Restock(LightingParticles.RestockSeconds - 1);
+            Check(stock.Stock(island, 4) == LightingParticles.StockPerColour - 1, "A taken stock tile is not replaced early");
+            stock.Restock(2);
+            var replaced = game.Blocks.LastOrDefault(b => !b.placed && b.id.StartsWith(LightingParticles.StockPrefix(island, 4)));
+            Check(Full() && replaced != null && replaced.tier == 4 && forest.IslandAt(replaced.transform.position)?.id == island,
+                "A red tile taken from " + island + " is replaced there, in red, after " + LightingParticles.RestockSeconds + " s");
+            string saved = game.ExportSave();
+            Check(game.ImportSave(saved) && Full(), "A save keeps the island stock where it lies");
+
+            var before = Cells(game);
+            var edges = HubEdges("island-1").Where(c => !game.Tiles.Contains(c) && LightingBridgeGrid.IsFrontier(game, c) && !LightingBridgeGrid.HasObstruction(c, game)).ToArray();
+            var red = edges.First(c => LightingBridgeGrid.RequiredTier(c.x, c.y) == 4); var other = edges.First(c => LightingBridgeGrid.RequiredTier(c.x, c.y) != 4);
+            SpawnGridTile(game, other, 4, false, "THIS TILE ASKS FOR");
+            var placed = SpawnGridTile(game, red, 4);
+            Check(placed.placed && placed.tier == 4 && game.Tiles.Contains(red), "A red tile fits a cell that asks for red");
+            var data = JsonUtility.FromJson<GameManager.SaveData>(game.ExportSave());
+            data.tileTiers = (data.tileTiers ?? new int[0]).Concat(new[] { red.x, red.y, 3 }).ToArray();
+            Check(game.ImportSave(JsonUtility.ToJson(data)) && GameManager.RequiredTier(0, red.x, red.y) == 3, "A save keeps a green colour override on a placed tile");
+            Check(game.ImportSave(saved) && Cells(game).SetEquals(before), "The network from before the colour check reloads");
+            // The rest of the suite walks and dashes over island 1 along fixed paths: take the stock off the islands.
+            foreach (var b in game.Blocks.Where(b => !b.placed && b.id.StartsWith("stock-")).ToArray()) { game.Blocks.Remove(b); ForestWorld.Remove(b.gameObject); }
+            Physics.SyncTransforms();
         }
 
         static Bounds HubBounds(string id)
@@ -867,6 +914,9 @@ namespace LightingBlocks.Editor
         static void CheckAbilityHud(GameManager game)
         {
             var hud = GameHUD.Current; var bar = hud.Abilities;
+            var atmosphere = UnityEngine.Object.FindAnyObjectByType<PlayerAtmosphere>(); var orb = atmosphere != null && atmosphere.soul != null ? atmosphere.soul.GetComponent<Renderer>() : null;
+            Check(orb != null && !orb.enabled && atmosphere.halo != null && !atmosphere.halo.enabled && game.soulLight.enabled && game.soulLight.range > 0,
+                "No soul orb or halo floats beside the player; its light still shines");
             Check(bar != null && string.Join("/", bar.Slots.Select(s => s.id)) == "dash/grenade/pull/reveal", "The ability bar holds the active skills: Dash, Light Grenade, Spirit Pull and Daybreak");
             game.Notify("CHECK NOTICE"); hud.RefreshUI();
             var hidden = hud.GetComponentsInChildren<Transform>(true).Where(t => t.name == "Fragment Calls" || t.name == "Interaction Hint" || t.name == "Action Feedback").ToArray();
@@ -900,10 +950,15 @@ namespace LightingBlocks.Editor
                 var tree = UnityEngine.Object.FindAnyObjectByType<SkillTree>(FindObjectsInactive.Include);
                 for (int i = 0; i < 200; i++) tree.Refresh();
                 var branches = tree.Branches.ToArray();
-                Check(branches.Length == 7 && branches.All(b => b.bark != null && b.sap != null && b.bark.Grown == 1) && tree.RootCount == 4,
-                    "The skill tree draws 7 curved bark branches with sap over them, and 4 roots");
+                Check(branches.Length == 7 && branches.All(b => b.bark != null && b.sap != null && b.bark.Grown == 1 && b.bark.name.StartsWith("Star line")
+                    && (b.bark.control - (b.bark.a + b.bark.b) * .5f).sqrMagnitude < .01f) && tree.RootCount == 0,
+                    "The Lighting skill screen is a star chart: 7 straight star lines with starlight over them, no roots");
                 Check(branches.Where(b => b.sap.name.StartsWith("Sap root")).All(b => b.sap.Grown > .99f && (b.sap.Point(1) - b.bark.b).sqrMagnitude < .01f),
-                    "Sap grows the whole way along the branches from the always-awake base");
+                    "Starlight grows the whole way along the lines from the always-lit pole star");
+                var images = tree.GetComponentsInChildren<UnityEngine.UI.Image>(true);
+                float Flare(string id) => images.Where(i => i.name == "Star flare " + id).Max(i => i.color.a);
+                Check(images.Count(i => i.name == "Sky star") == 90 && images.Any(i => i.name == "Night sky"), "A night sky with 90 twinkling stars sits behind it");
+                Check(Flare("dash") == 0 && Flare("grenade") > .3f && Flare("root") > .5f, "An unlearned skill's star has no flare; a learned one and the pole star shine");
                 Check(tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Count(i => i.name == "Badge icon") == 7, "Every Lighting skill node shows its icon");
                 var discs = tree.GetComponentsInChildren<UnityEngine.UI.Image>(true).Where(i => i.name == "Disc" && i.transform.parent.name != "Power root").ToArray();
                 var passive = new[] { "Power speed", "Power soulgain", "Power sight" };
@@ -1101,7 +1156,7 @@ namespace LightingBlocks.Editor
                 // Version 5 kept every placed tile as a block with an id and a position.
                 var old = JsonUtility.FromJson<GameManager.SaveData>(baselineSave);
                 old.version = 5; var recoloured = baseline.First();
-                int oddTier = (LightingBridgeGrid.RequiredTier(recoloured.x, recoloured.y) + 1) % 3, overrides = 0;
+                int oddTier = (LightingBridgeGrid.RequiredTier(recoloured.x, recoloured.y) + 1) % BridgeBlock.TierCount, overrides = 0;
                 foreach (var c in baseline)
                 {
                     int tier = c == recoloured ? oddTier : GameManager.RequiredTier(0, c.x, c.y), hashed = LightingBridgeGrid.RequiredTier(c.x, c.y);
