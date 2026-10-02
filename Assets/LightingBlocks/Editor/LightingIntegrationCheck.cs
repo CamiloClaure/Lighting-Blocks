@@ -982,10 +982,13 @@ namespace LightingBlocks.Editor
         {
             string[] paths = { "Audio/Forest/wind", "Audio/Forest/leaves", "Audio/Forest/collect", "Audio/Forest/charge", "Audio/Forest/release", "Audio/Forest/crystal",
                 "Audio/SFX/PasosNotas/04LB A#",
+                "Audio/LightingSteps/soft_step_01", "Audio/LightingSteps/soft_step_02", "Audio/LightingSteps/soft_step_03", "Audio/LightingSteps/soft_step_04",
+                "Audio/LightingSteps/soft_step_05", "Audio/LightingSteps/soft_step_06", "Audio/LightingSteps/soft_step_07", "Audio/LightingSteps/soft_step_08",
                 "Audio/LightingPickups/pickup_01", "Audio/LightingPickups/pickup_02", "Audio/LightingPickups/pickup_03", "Audio/LightingPickups/pickup_04",
                 "Audio/Music/IntroGusta", "Audio/SFX/Bloques" };
             var missing = paths.Where(p => Resources.Load<AudioClip>(p) == null).ToArray();
             Check(missing.Length == 0, "Every Lighting sound clip loads" + (missing.Length > 0 ? " (missing: " + string.Join(", ", missing) + ")" : ""));
+            Check(paths.Where(p => p.Contains("soft_step")).All(p => Resources.Load<AudioClip>(p).channels == 2), "The ASMR footsteps are stereo");
             var mixer = Resources.Load<UnityEngine.Audio.AudioMixer>("Forest/ForestMix");
             Check(mixer != null && new[] { "Master", "Music", "Ambience", "Effects", "Wildlife", "Magic", "UI" }.All(g => mixer.FindMatchingGroups(g).Length > 0),
                 "The Forest mixer has the Master/Music/Ambience/Effects/Wildlife/Magic/UI groups");
@@ -1014,7 +1017,22 @@ namespace LightingBlocks.Editor
             Check(StepVoice() != null && StepVoice().isPlaying, "Stepping onto a new hub cell plays the 04LB A# note");
             StepVoice().Stop(); StepOnto(nextHubCell + Vector3.forward * .4f);
             Check(!StepVoice().isPlaying, "Moving within the same cell plays no second note");
-            Check(!game.player.GetComponents<AudioSource>().Any(s => s.clip != null && s.clip.name.StartsWith("step_")), "No per-stride impact clip is loaded in Lighting");
+            Check(!game.player.GetComponents<AudioSource>().Any(s => s.clip != null && s.clip.name.StartsWith("step_")), "No legacy forest step clip is loaded in Lighting");
+            // The note is a little quieter now; a soft ASMR step sounds per stride on top of it, never during a dash.
+            float sliders = ForestSoundscape.Volume("Master") * ForestSoundscape.Volume("Effects") * ForestSoundscape.Volume("Footsteps");
+            StepOnto(hubCell); // back across: a new cell, so a note
+            var feet = game.player.GetComponent<LightingFootsteps>();
+            Check(feet != null && StepVoice().isPlaying && Mathf.Abs(StepVoice().volume - LightingFootsteps.NoteVolume * sliders) < .001f && LightingFootsteps.NoteVolume < .5f,
+                "The floor note plays at " + LightingFootsteps.NoteVolume + " of the sliders, down from .5");
+            var playFootstep = typeof(BoxPlayer).GetMethod("PlayFootstep", BindingFlags.NonPublic | BindingFlags.Instance);
+            var dashTime = typeof(BoxPlayer).GetField("dashTimeRemaining", BindingFlags.NonPublic | BindingFlags.Instance);
+            int strides = feet.StrideCount; playFootstep.Invoke(game.player, null); string first = feet.LastStride; playFootstep.Invoke(game.player, null); string second = feet.LastStride;
+            int Foot(string clip) => int.Parse(clip.Substring(clip.Length - 2)) % 2;
+            Check(feet.StrideCount == strides + 2 && first.StartsWith("soft_step_") && second.StartsWith("soft_step_") && Foot(first) != Foot(second) && StepVoice().isPlaying,
+                "Each stride plays a soft ASMR step, feet alternating (" + first + ", " + second + "), without cutting off the floor note");
+            dashTime.SetValue(game.player, 1f); playFootstep.Invoke(game.player, null); dashTime.SetValue(game.player, 0f);
+            Check(feet.StrideCount == strides + 2, "A dash makes no footsteps");
+            StepVoice().Stop(); feet.Stride.Stop();
             var pickup = game.GetComponent<LightingPickupAudio>();
             int played = pickup != null ? pickup.PlaybackCount : -1;
             if (pickup != null) pickup.PlayPickup();

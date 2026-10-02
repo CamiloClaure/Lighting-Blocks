@@ -482,8 +482,15 @@ namespace LightingBlocks
         {
             // Fire before the audio guard: a missing clip must not also swallow the visual.
             if (Stepped != null) Stepped(transform.position);
-            // Lighting sounds once per floor cell entered (BridgeSteps.StepNote), not per stride.
-            if (BridgeProfile.Current.isLighting) return;
+            // Lighting: a soft footstep per stride (none while dashing) on top of the note per floor cell
+            // entered (BridgeSteps.StepNote).
+            if (BridgeProfile.Current.isLighting)
+            {
+                if (IsDashing) return;
+                var steps = GetComponent<LightingFootsteps>(); if (steps == null) steps = gameObject.AddComponent<LightingFootsteps>(); // not ??: Unity's fake null
+                steps.PlayStride();
+                return;
+            }
             var clip = ForestSoundscape.Footstep(transform.position);
             if (sfx == null || clip == null) return;
             sfx.pitch = 1; sfx.PlayOneShot(clip);
