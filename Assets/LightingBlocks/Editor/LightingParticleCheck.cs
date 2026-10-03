@@ -98,7 +98,10 @@ namespace LightingBlocks.Editor
             Assert(forest.PickupVisuals.Count==LightingDots.MaxVisible&&dots.Lights.Count==LightingDots.DotLights,"A pool of 40 dot visuals and 4 dot lights");
             var material=forest.PickupVisuals[0].GetComponent<Renderer>().sharedMaterial;
             Assert(material!=null&&material.shader.name=="LightingBlocks/Living Spirit"&&material.GetColor("_BaseColor")==LightingParticles.ParticleColor,"Dots use the imported Living Spirit shader in the reference yellow");
-            int seed=forest.State.seed,hits=0,changed=0;
+            int before=dots.Seed,differ=0;dots.NewField();
+            for(int x=-30;x<30;x++)for(int z=-30;z<30;z++){var c=new Vector2Int(x,z);if(LightingDots.HasDot(before,c)!=LightingDots.HasDot(dots.Seed,c))differ++;}
+            Assert(dots.Seed!=before&&differ>400,"Each world build lays a new field ("+differ+" of 3600 cells differ)");
+            int seed=dots.Seed,hits=0,changed=0;
             for(int x=-30;x<30;x++)for(int z=-30;z<30;z++){var c=new Vector2Int(x,z);if(LightingDots.HasDot(seed,c))hits++;if(LightingDots.HasDot(seed,c)!=LightingDots.HasDot(seed+1,c))changed++;}
             Assert(hits>=540&&hits<=756,"About 18% of grid cells hold a dot ("+hits+" of 3600)");
             Assert(changed>400,"Another seed lays a different field ("+changed+" of 3600 differ)");
@@ -144,14 +147,14 @@ namespace LightingBlocks.Editor
             var tree=forest.WisdomTrees[0];
             var support=PlaceTestTile(game);var supportCell=LightingBridgeGrid.CellOf(support.transform.position);
             // The test tile lands wherever a frontier is free; move the seed until the field puts a dot there.
-            int seed=forest.State.seed;while(!LightingDots.HasDot(forest.State.seed,supportCell))forest.State.seed++;
+            int seed=forest.State.seed;while(!LightingDots.HasDot(dots.Seed,supportCell))forest.State.seed++;
             Teleport(game,support.transform.position+Vector3.up*.205f);dots.Refresh();
             GameHUD.Current.ShowPause();Assert(!dots.TryCollect(supportCell),"Paused gameplay prevents collection");GameHUD.Current.BeginJourney();
             audio.ResetSequence();
             int[] yieldLevels={0,1,8};
             foreach(int level in yieldLevels)
             {
-                game.soulGainLevel=level;forest.State.dots.RemoveAll(d=>d.x==supportCell.x&&d.z==supportCell.y);dots.Refresh();
+                game.soulGainLevel=level;dots.ResetField();
                 int before=forest.SharedInventory;int plays=audio.PlaybackCount;
                 Assert(forest.PickupVisuals.Any(t=>t.gameObject.activeSelf&&LightingBridgeGrid.CellOf(t.position)==supportCell),"The dot over the tile is drawn before pickup");
                 Assert(dots.TryCollect(supportCell)&&forest.SharedInventory-before==4+level,"Pickup on a real connected tile yields "+(1+level*.25f).ToString("0.00")+" particles at Particle Yield "+level);
@@ -160,10 +163,15 @@ namespace LightingBlocks.Editor
             var taken=forest.State.dots.Single(d=>d.x==supportCell.x&&d.z==supportCell.y);
             Assert(taken.remaining==ForestWorld.LightingRespawnSeconds,"A collected dot's cell waits "+ForestWorld.LightingRespawnSeconds+" seconds");
             Assert(!dots.TryCollect(supportCell)&&!dots.ShownCells.Contains(supportCell)&&!forest.PickupVisuals.Any(t=>t.gameObject.activeSelf&&LightingBridgeGrid.CellOf(t.position)==supportCell),"The collected dot disappears and cannot be taken twice");
-            forest.Tick(ForestWorld.LightingRespawnSeconds-.1f,false);Assert(!dots.IsDot(supportCell),"The cell stays empty until its time is up");
+            forest.Tick(ForestWorld.LightingRespawnSeconds-.1f,false);Assert(!dots.IsDot(supportCell)&&dots.Moved.Count==0,"No dot comes back before its time is up");
             forest.Tick(.2f,false);
-            Assert(dots.IsDot(supportCell)&&dots.ShownCells.Contains(supportCell)&&forest.State.dots.Count==0,"After "+ForestWorld.LightingRespawnSeconds+" seconds the dot returns to the same cell");
-            forest.State.seed=seed;dots.Refresh();
+            var from=game.player.transform.position;
+            Func<Vector2Int,bool> ring=c=>{var p=LightingDots.Position(c);float d=new Vector2(p.x-from.x,p.z-from.z).magnitude;return d>=LightingDots.RespawnNear-1.5f&&d<=LightingDots.StreamDistance+1.5f;};
+            var back=dots.Moved.FirstOrDefault();
+            Assert(dots.Moved.Count==1&&forest.State.dots.Count==0&&!dots.IsDot(supportCell)&&dots.IsDot(back)&&ring(back),"After "+ForestWorld.LightingRespawnSeconds+" seconds the dot comes back at a random spot 8-24 m away ("+back+"), not its old cell");
+            for(int i=0;i<20;i++)dots.Respawn();
+            Assert(dots.Moved.Count==21&&dots.Moved.All(c=>dots.IsDot(c)&&ring(c)),"20 more respawns land in 20 distinct free void cells 8-24 m away");
+            dots.ResetField();forest.State.seed=seed;dots.Refresh();
 
             forest.State.inventory=0;int speedBefore=game.speed;
             Teleport(game,tree.transform.position+Vector3.right*2);

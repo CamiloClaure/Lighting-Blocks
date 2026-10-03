@@ -67,10 +67,11 @@ namespace LightingBlocks
             if(state.particleVersion>=2&&state.inventory<0)return false;
             if(state.dots!=null)
             {
-                // Lighting's only saved dot state: cells taken in the last LightingRespawnSeconds.
+                // Lighting's only saved dot state: dots taken in the last LightingRespawnSeconds. A cell need not
+                // hold a dot of the saved seed: the field is salted per world build (LightingDots.Seed).
                 var taken=new HashSet<Vector2Int>();
                 if(state.dots.Count>4096)return false;
-                foreach(var dot in state.dots){var cell=new Vector2Int(dot?.x??0,dot?.z??0);if(dot==null||!float.IsFinite(dot.remaining)||dot.remaining<=0||dot.remaining>LightingRespawnSeconds||!taken.Add(cell)||!LightingDots.HasDot(state.seed,cell))return false;}
+                foreach(var dot in state.dots){var cell=new Vector2Int(dot?.x??0,dot?.z??0);if(dot==null||!float.IsFinite(dot.remaining)||dot.remaining<=0||dot.remaining>LightingRespawnSeconds||!taken.Add(cell))return false;}
             }
             var ids=new HashSet<string>();
             foreach(var i in state.islands)

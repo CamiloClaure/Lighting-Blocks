@@ -63,7 +63,21 @@ namespace LightingBlocks
             ForestSoundscape.Route(sfx,"Footsteps"); sfx.spatialBlend = .8f; sfx.playOnAwake = false; sfx.volume = GameAudio.SfxVolume;
         }
 
-        void Start(){BuildWizardHat();}
+        void Start()
+        {
+            BuildWizardHat();
+            if(BridgeProfile.Current.isLighting)
+            {
+                // ponytail: size and strength tuned by eye.
+                Shadow=GroundShadow.Attach(transform,1.1f,.55f,true);
+                if(visual!=null) visual.localPosition=Vector3.down*(controller.skinWidth+SoleLift);
+            }
+        }
+        // The rig's idle soles stand this far over its origin (measured: toe bones .21 m up, soles 1.3 cm
+        // under them), so the character hovered over the floor. ponytail: one offset for every clip;
+        // the Run plant reaches 7 cm lower than idle, so a running foot dips about 6 cm into the floor.
+        const float SoleLift = .19f;
+        public GroundShadow Shadow { get; private set; }
 
         // ponytail: material fallback is a global scan, only hit when the leather hat child is missing from the scene entirely.
         void BuildWizardHat()

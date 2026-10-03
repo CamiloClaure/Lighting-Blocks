@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
@@ -5,14 +6,16 @@ namespace LightingBlocks
 {
     // Lighting's fundamental particles, imported from the reference prototype (lightning-block-d,
     // SoulCollectionSystem): a seeded field floats a yellow spirit dot over about 18% of the void grid
-    // cells, and nothing is stored per dot. Only the nearest MaxVisible within StreamDistance are drawn,
-    // and the nearest DotLights within LightDistance carry a small light. A dot is collected standing on
-    // a tile under it; its cell then stays empty for ForestWorld.LightingRespawnSeconds (the timers are
-    // ForestSave.dots, the only saved state).
+    // cells. The field's Seed is the world seed salted anew on every world build, so each load lays
+    // different dots. Only the nearest MaxVisible within StreamDistance are drawn, and the nearest
+    // DotLights within LightDistance carry a small light. A dot is collected standing on a tile under
+    // it; its cell stays empty, and ForestWorld.LightingRespawnSeconds later a dot appears at a random
+    // free void cell RespawnNear..StreamDistance from the player (the timers are ForestSave.dots, the
+    // only saved state).
     public sealed class LightingDots : MonoBehaviour
     {
         public const int DensityPerMille = 180, MaxVisible = 40, DotLights = 4;
-        public const float StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f, PullSeconds = .35f / .95f;
+        public const float RespawnNear = 8f, StreamDistance = 24f, LightDistance = 12f, Hover = .85f, Bob = .16f, Size = .3f, AppearSeconds = .6f, PullSeconds = .35f / .95f;
         // The reference soul's emission, (1, .72, .08) x 4; LightingFog fades it with distance.
         public static readonly Color Emission = new Color(4f, 2.88f, .32f);
         static readonly Color LightColor = new Color(1f, .8f, .15f);
@@ -30,6 +33,10 @@ namespace LightingBlocks
         readonly List<(Vector2Int cell, int distance)> candidates = new List<(Vector2Int, int)>();
         readonly HashSet<Vector2Int> wanted = new HashSet<Vector2Int>(), shown = new HashSet<Vector2Int>(), collected = new HashSet<Vector2Int>();
         Vector2Int streamCell; bool dirty = true;
+        // This world build's field: seeded cells whose dot was taken, and dots respawned elsewhere.
+        // ponytail: session only, gone grows by one per pickup; a reload lays a new field anyway.
+        int salt;
+        readonly HashSet<Vector2Int> gone = new HashSet<Vector2Int>(), moved = new HashSet<Vector2Int>();
         // Far dots (DrawFar): what the fog shows past the near pool while sight reaches past its base.
         readonly HashSet<Vector2Int> near = new HashSet<Vector2Int>();
         readonly List<Vector2Int> far = new List<Vector2Int>();
@@ -51,6 +58,8 @@ namespace LightingBlocks
         public bool SkipAppear { get; set; }
         public int FarCount => far.Count;
         public IReadOnlyList<Vector2Int> FarCells => far;
+        public int Seed => (world != null && world.State != null ? world.State.seed : 0) ^ salt;
+        public IReadOnlyCollection<Vector2Int> Moved => moved;
 
         // Pure function of seed and cell: a murmur3 finalizer over the three inputs.
         public static bool HasDot(int seed, Vector2Int cell)
@@ -62,11 +71,13 @@ namespace LightingBlocks
                 return h % 1000u < DensityPerMille;
             }
         }
-        // A dot is there now: seeded, over the void (tiled or not), in bounds, and not waiting to return.
+        // This field holds a dot here: respawned here, or seeded here and not yet taken.
+        bool Present(Vector2Int cell) => moved.Contains(cell) || HasDot(Seed, cell) && !gone.Contains(cell);
+        // A dot is there now: present, over the void (tiled or not), in bounds, and its cell not waiting.
         public bool IsDot(Vector2Int cell)
         {
             var state = world != null ? world.State : null;
-            if (state == null || !HasDot(state.seed, cell)) return false;
+            if (state == null || !Present(cell)) return false;
             if (state.dots != null) foreach (var d in state.dots) if (d.x == cell.x && d.z == cell.y) return false;
             return !LightingBridgeGrid.OverlapsPlatform(cell) && LightingBridgeGrid.InBounds(cell);
         }
@@ -93,8 +104,12 @@ namespace LightingBlocks
                 light.type = LightType.Point; light.color = LightColor; light.range = 2.5f; light.intensity = .8f; light.shadows = LightShadows.None; light.enabled = false;
                 lights.Add(light);
             }
-            dirty = true;
+            NewField();
         }
+        // A new salt, so a new field; what this session took or moved is forgotten.
+        public void NewField() { salt = Guid.NewGuid().GetHashCode(); gone.Clear(); moved.Clear(); dirty = true; }
+        // Test aid: every dot of this field back in its seeded cell, no timers.
+        public void ResetField() { world.State.dots.Clear(); gone.Clear(); moved.Clear(); Refresh(); }
         // The yellow spirit look; LightingGrenade throws a bigger one.
         public static Material SpiritMaterial()
         {
@@ -113,7 +128,8 @@ namespace LightingBlocks
             for (int i = state.dots.Count - 1; i >= 0; i--)
             {
                 state.dots[i].remaining -= delta;
-                if (state.dots[i].remaining <= 0) { state.dots.RemoveAt(i); dirty = true; }
+                if (state.dots[i].remaining > 0) continue;
+                if (Respawn()) state.dots.RemoveAt(i); else state.dots[i].remaining = 1; // no free cell near: retry in a second
             }
             Stream();
             for (int i = 0; i < MaxVisible; i++)
@@ -148,6 +164,22 @@ namespace LightingBlocks
                 if (collect) for (int i = 0; i < MaxVisible; i++) if (used[i]) TryCollect(cells[i], from, to);
             }
         }
+        // A taken dot's return: a random free void cell RespawnNear..StreamDistance from the player.
+        public bool Respawn()
+        {
+            if (game == null || game.player == null || world == null || world.State == null) return false;
+            var player = game.player.transform.position;
+            for (int attempt = 0; attempt < 40; attempt++)
+            {
+                float angle = UnityEngine.Random.value * Mathf.PI * 2, radius = UnityEngine.Random.Range(RespawnNear, StreamDistance);
+                var cell = LightingBridgeGrid.CellOf(player + new Vector3(Mathf.Cos(angle), 0, Mathf.Sin(angle)) * radius);
+                if (Present(cell) || LightingBridgeGrid.OverlapsPlatform(cell) || !LightingBridgeGrid.InBounds(cell)) continue;
+                bool waiting = false; foreach (var d in world.State.dots) if (d.x == cell.x && d.z == cell.y) { waiting = true; break; }
+                if (waiting) continue;
+                moved.Add(cell); dirty = true; return true;
+            }
+            return false;
+        }
         public static Vector3 Position(Vector2Int cell) { var p = LightingBridgeGrid.Cell(cell.x, cell.y); p.y = Hover; return p; }
         // Where the dot floats now, its bob included.
         public Vector3 Hovering(Vector2Int cell) => Position(cell) + Vector3.up * (Mathf.Sin(time * 2 + cell.x * .7f + cell.y * 1.3f) * Bob);
@@ -169,8 +201,8 @@ namespace LightingBlocks
                 {
                     int distance = x * x + z * z; if (distance > limit) continue;
                     var c = new Vector2Int(cell.x + x, cell.y + z);
-                    // Hash first: the platform test only runs on the ~18% of cells that hold a dot.
-                    if (!HasDot(state.seed, c) || collected.Contains(c) || LightingBridgeGrid.OverlapsPlatform(c) || !LightingBridgeGrid.InBounds(c)) continue;
+                    // Field first: the platform test only runs on the ~18% of cells that hold a dot.
+                    if (!Present(c) || collected.Contains(c) || LightingBridgeGrid.OverlapsPlatform(c) || !LightingBridgeGrid.InBounds(c)) continue;
                     candidates.Add((c, distance));
                 }
             candidates.Sort((a, b) => a.distance != b.distance ? a.distance.CompareTo(b.distance) : a.cell.x != b.cell.x ? a.cell.x.CompareTo(b.cell.x) : a.cell.y.CompareTo(b.cell.y));
@@ -216,7 +248,7 @@ namespace LightingBlocks
                     {
                         var c = new Vector2Int(cell.x + x, cell.y + z); var p = Position(c);
                         if ((p.x - player.x) * (p.x - player.x) + (p.z - player.z) * (p.z - player.z) > reach * reach) continue;
-                        if (!HasDot(state.seed, c) || collected.Contains(c) || near.Contains(c) || !LightingBridgeGrid.Open(c)) continue;
+                        if (!Present(c) || collected.Contains(c) || near.Contains(c) || !LightingBridgeGrid.Open(c)) continue;
                         far.Add(c);
                     }
             }
@@ -303,6 +335,7 @@ namespace LightingBlocks
         {
             if (!world.TryAddInventory(ForestWorld.ParticleUnitsPerParticle + Mathf.Clamp(game.soulGainLevel, 0, 8))) return false;
             world.State.dots.Add(new DotSave { x = cell.x, z = cell.y, remaining = ForestWorld.LightingRespawnSeconds });
+            if (!moved.Remove(cell)) gone.Add(cell);
             for (int i = 0; i < MaxVisible; i++)
             {
                 if (!used[i] || cells[i] != cell) continue;

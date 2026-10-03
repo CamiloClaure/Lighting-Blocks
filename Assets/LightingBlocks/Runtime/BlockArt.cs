@@ -12,6 +12,7 @@ namespace LightingBlocks
         public const float LightingLitGain = 2f;
         BridgeBlock block;
         MaterialPropertyBlock properties;
+        GroundShadow shadow;
         bool nearby;
         void Awake() { block=GetComponent<BridgeBlock>(); properties=new MaterialPropertyBlock(); Refresh(); }
         public void Highlight(bool value) { nearby=value; Refresh(); }
@@ -26,6 +27,9 @@ namespace LightingBlocks
             looseVisual.localScale=Vector3.Scale(inverse,new Vector3(.6f,.7142857f,.6f));
             placedVisual.localScale=inverse;
             looseVisual.gameObject.SetActive(!block.placed); placedVisual.gameObject.SetActive(block.placed);
+            // Lighting: a soft disc under the loose visual, so it hides with it once placed. Play Mode only:
+            // CrystalTiles.Build refreshes prefab contents. ponytail: size and strength tuned by eye.
+            if(shadow==null && !block.placed && Application.isPlaying && BridgeProfile.Current.isLighting) shadow=GroundShadow.Attach(looseVisual,1.5f,.5f,false);
             foreach(var seam in seams) if(seam!=null)seam.enabled=block.Connected;
             bool held=block.Box!=null && block.Box.Holder!=null;
             foreach(var body in bodies)

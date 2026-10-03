@@ -106,6 +106,7 @@ namespace LightingBlocks.Editor
             CheckSightAndReveal(game, forest);
             CheckAbilityHud(game);
             CheckSounds(game);
+            CheckGrounding(game, forest);
             CheckDashPerformance(game, forest);
             CheckUnboundedWorld(game, forest);
             CheckDotSaveMigration(game, forest);
@@ -147,6 +148,10 @@ namespace LightingBlocks.Editor
                 var d = b.transform.position - home.transform.position;
                 return forest.IslandAt(b.transform.position)?.id == home.Definition.id && new Vector2(d.x, d.z).magnitude >= 4;
             }), "All 45 stock tiles lie on their own island, clear of its Wisdom Tree");
+            var art = loose[0].GetComponent<BlockArt>(); var body = art.bodies.First(r => r != null && r.transform.IsChildOf(art.looseVisual));
+            var shade = art.looseVisual.GetComponentInChildren<GroundShadow>();
+            Check(body.bounds.min.y >= 0 && body.bounds.min.y <= .02f && shade != null && shade.Shown && Mathf.Abs(shade.transform.position.y - GroundShadow.FloorY) < .001f,
+                "A loose tile rests on the floor (bottom y " + body.bounds.min.y.ToString("F3") + ") over a soft ground shadow");
             string island = trees[0].Definition.id; var taken = loose.First(b => b.id.StartsWith(LightingParticles.StockPrefix(island, 4)));
             game.Blocks.Remove(taken); ForestWorld.Remove(taken.gameObject); Physics.SyncTransforms();
             stock.Restock(LightingParticles.RestockSeconds - 1);
@@ -164,6 +169,8 @@ namespace LightingBlocks.Editor
             SpawnGridTile(game, other, 4, false, "THIS TILE ASKS FOR");
             var placed = SpawnGridTile(game, red, 4);
             Check(placed.placed && placed.tier == 4 && game.Tiles.Contains(red), "A red tile fits a cell that asks for red");
+            var placedShade = placed == null ? null : placed.GetComponentInChildren<GroundShadow>(true);
+            Check(placedShade == null || !placedShade.Shown, "A placed tile, flush with the floor, has no ground shadow");
             var data = JsonUtility.FromJson<GameManager.SaveData>(game.ExportSave());
             data.tileTiers = (data.tileTiers ?? new int[0]).Concat(new[] { red.x, red.y, 3 }).ToArray();
             Check(game.ImportSave(JsonUtility.ToJson(data)) && GameManager.RequiredTier(0, red.x, red.y) == 3, "A save keeps a green colour override on a placed tile");
@@ -171,6 +178,39 @@ namespace LightingBlocks.Editor
             // The rest of the suite walks and dashes over island 1 along fixed paths: take the stock off the islands.
             foreach (var b in game.Blocks.Where(b => !b.placed && b.id.StartsWith("stock-")).ToArray()) { game.Blocks.Remove(b); ForestWorld.Remove(b.gameObject); }
             Physics.SyncTransforms();
+            // The imports above reset the stock's first-tick fill, and CheckSharedPreviewAndFade's
+            // SendMessage("Update") reaches LightingParticles too: mark it filled so nothing refills mid-suite.
+            typeof(LightingParticles).GetField("filled", BindingFlags.NonPublic | BindingFlags.Instance).SetValue(stock, true);
+            Check(StockLeft() == 0, "The stock is off the islands for the rest of the suite");
+        }
+        // Active stock tiles in the scene, listed in game.Blocks or not.
+        static int StockLeft() => UnityEngine.Object.FindObjectsByType<BridgeBlock>(FindObjectsSortMode.None).Count(b => b.isActiveAndEnabled && b.id != null && b.id.StartsWith("stock-"));
+
+        // ---- grounding: the player's soft shadow, and the rig's soles on the floor ----------------
+        static void CheckGrounding(GameManager game, ForestWorld forest)
+        {
+            var at = game.player.transform.position; var shadow = game.player.Shadow;
+            var ground = forest.WisdomTrees[0].transform.position + Vector3.right * 2; ground.y = .025f;
+            Teleport(game, ground); if (shadow != null) shadow.Follow();
+            Check(shadow != null && shadow.Shown && Mathf.Abs(shadow.transform.position.x - ground.x) < .001f && Mathf.Abs(shadow.transform.position.y - GroundShadow.FloorY) < .001f,
+                "The player casts a soft ground shadow on a hub");
+            var bounds = HubBounds(forest.WisdomTrees[0].Definition.id); var open = new Vector3(bounds.min.x - 9, .025f, ground.z);
+            for (int i = 0; i < 40 && game.CanStand(open); i++) open.x -= 2;
+            Teleport(game, open); shadow.Follow();
+            Check(!game.CanStand(open) && !shadow.Shown, "No ground shadow over the open void");
+            Teleport(game, ground);
+            // The lowest skinned vertex standing idle: the planted soles.
+            var animator = game.player.animator;
+            if (animator != null) { animator.Play("Base Layer.Idle", 0, 0); animator.Update(0); }
+            float lowest = float.MaxValue; var mesh = new Mesh();
+            foreach (var skin in game.player.visual.GetComponentsInChildren<SkinnedMeshRenderer>())
+            {
+                skin.BakeMesh(mesh, true); var t = skin.transform;
+                foreach (var v in mesh.vertices) lowest = Mathf.Min(lowest, (t.position + t.rotation * v).y);
+            }
+            UnityEngine.Object.DestroyImmediate(mesh);
+            Check(lowest >= -.01f && lowest <= .03f, "The player's soles touch the floor standing idle (lowest vertex y " + lowest.ToString("F3") + ")");
+            Teleport(game, at);
         }
 
         static Bounds HubBounds(string id)
@@ -556,7 +596,7 @@ namespace LightingBlocks.Editor
                 }
                 finally
                 {
-                    forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
+                    forest.State.seed = oldSeed; dots.ResetField();
                     RestoreTiles(game, baseline); game.player.ResetDash();
                 }
             }
@@ -642,6 +682,7 @@ namespace LightingBlocks.Editor
         // ---- Dash after a grenade, diagonals included: no collider on the open network stops a dash ----
         static void CheckDashAfterGrenade(GameManager game, ForestWorld forest)
         {
+            Check(StockLeft() == 0, "No stock tiles lie in the dash paths (" + StockLeft() + " active, " + game.Blocks.Count(b => b.id != null && b.id.StartsWith("stock-")) + " listed)");
             var grenade = game.GetComponent<LightingGrenade>();
             var bounds = HubBounds("island-1");
             int oldDash = game.dashLevel, oldGrenade = game.grenadeLevel, oldInventory = forest.State.inventory;
@@ -798,7 +839,7 @@ namespace LightingBlocks.Editor
             }
             finally
             {
-                forest.State.seed = oldSeed; forest.State.dots.Clear(); dots.Refresh();
+                forest.State.seed = oldSeed; dots.ResetField();
                 for (int i = 0; i < 30; i++) dots.Tick(1f / 60, false);
                 game.pullLevel = oldLevel; pull.CooldownLeft = 0;
             }

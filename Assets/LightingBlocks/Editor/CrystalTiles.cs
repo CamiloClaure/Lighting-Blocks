@@ -19,13 +19,13 @@ namespace LightingBlocks.Editor
         // blue, violet, amber, green, red: BridgeBlock.TierColour order.
         static readonly string[] Colours={"#246DFF","#B03DFF","#FFAE38","#33E07A","#FF4A3D"};
         static CrystalTiles(){EditorApplication.update+=Poll;}
-        // Library/CrystalTiles.request runs AddMissingTiers from an open editor; the result lands in Library/CrystalTiles.txt.
+        // Library/CrystalTiles.request runs AddMissingTiers, then Apply (rebuilds every tier), from an open editor; the result lands in Library/CrystalTiles.txt.
         static void Poll()
         {
             if(EditorApplication.isPlayingOrWillChangePlaymode||EditorApplication.isCompiling||!File.Exists("Library/CrystalTiles.request"))return;
             AssetDatabase.Refresh();if(EditorApplication.isCompiling)return;
             File.Delete("Library/CrystalTiles.request");
-            string result;try{result="SUCCESS: "+AddMissingTiers();}catch(Exception e){result="FAIL: "+e;}
+            string result;try{result="SUCCESS: "+AddMissingTiers();Apply();result+=", rebuilt "+Colours.Length+" tiers";}catch(Exception e){result="FAIL: "+e;}
             File.WriteAllText("Library/CrystalTiles.txt",result);
         }
         // Builds every Bridge Stone N.prefab that Colours names but the project lacks (copied from tier 0,
@@ -106,8 +106,10 @@ namespace LightingBlocks.Editor
                     var visual=new GameObject(placed?"Placed crystal":"Loose crystal");
                     visual.transform.SetParent(root.transform,false);
                     float width=placed?1.96f:1.4f,height=placed?.36f:.26f;
-                    // Keep the loose top at its original height without changing the haul collider.
-                    float lift=placed?0:.22f;
+                    // A loose root sits at y .26 (GameManager.ConfigureBlock) and BlockArt draws this visual at
+                    // world y-scale .714: this lift rests the slab's bottom 5 mm over the floor (y 0). The haul
+                    // collider is unchanged.
+                    float lift=placed?0:(.005f-.26f)/.7142857f+height*.5f;
                     bodies.Add(Renderer(visual.transform,"Crystal body",Slab("CrystalBody"+state,width,height,lift),body));
                     details.Add(Renderer(visual.transform,"Crystal runes",Filaments("CrystalLines"+state+"-"+tier,width,height,lift,placed,tier),edge));
                     if(placed) art.placedVisual=visual.transform; else art.looseVisual=visual.transform;

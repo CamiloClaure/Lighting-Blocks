@@ -50,7 +50,8 @@ namespace LightingBlocks
         public List<IslandParticleSave> islands=new List<IslandParticleSave>();
         public List<string> suppressedTrees=new List<string>();
         // Lighting particleVersion 5: dot cells collected in the last LightingRespawnSeconds, and how
-        // long until each returns. Every other dot is implied by the seed (LightingDots.HasDot).
+        // long until each respawns at a random spot near the player. Every other dot is implied by the
+        // field (LightingDots.Seed), which each world build salts anew.
         public List<DotSave> dots=new List<DotSave>();
     }
     [Serializable] public sealed class DotSave{public int x,z;public float remaining;}
